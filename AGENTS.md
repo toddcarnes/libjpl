@@ -1,7 +1,14 @@
-# AGENTS.md — libjpl contributor guide
-
 Small, dependency-free C17 library for reading JPL Development Ephemeris
 (DE) binaries. Static lib `jpl` + three public headers.
+
+## Protocol deviations
+
+If this guide's prerequisites aren't met (no git repo, missing
+toolchain, conflicting instructions), stop and ask before working
+around them — do not silently deviate. This applies to workflow
+and infrastructure only; ordinary implementation judgment calls
+stay with the implementer (record them in the commit message or
+task ledger, don't stall on them).
 
 ## Layout
 

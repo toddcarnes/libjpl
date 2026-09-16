@@ -44,5 +44,7 @@ ctest --test-dir build -C Debug --output-on-failure
   paths. Same `jpl_ephemeris*` must not be shared across threads on the
   FILE path — use `jpl_ephemeris_clone()` per thread or `jpl_open_mmap()`.
 - Physics constants come from `src/jpl_private.h`, never literals.
-- Shell here is PowerShell 5.1: chain with `;` (no `&&`/`||`), quote paths
-  with spaces, use `workdir` instead of `cd`.
+- Shell: agent-run commands execute under PowerShell 5.1, so keep them
+  5.1-compatible — chain with `;` (no `&&`/`||`), quote paths with
+  spaces, use `workdir` instead of `cd`. (The user shell is pwsh 7.6.6;
+  7-only syntax must not appear in commands agents run.)

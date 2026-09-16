@@ -4,30 +4,31 @@
 extern "C" {
 #endif
 /**
- * @brief Rotate an ecliptic J2000 state to ICRS.
- * @param state Input state, position (AU) + velocity (AU/day) in ecliptic J2000.
+ * @brief Rotate an ecliptic-of-date state to ICRS.
+ * @param state Input state, position (AU) + velocity (AU/day) in ecliptic of date. Must be non-NULL.
  * @param jd_tt TT Julian date used to evaluate bias/precession/obliquity.
- * @param out_state Output state in ICRS, may alias state.
- * @note J2000-mean-equator convention: the matrix is the transpose of the
- *       IAU 2006 ICRS-to-ecliptic matrix (eraEcm06) at jd_tt, combining frame
- *       bias + precession (eraPmat06) with mean obliquity (eraObl06).
+ * @param out_state Output state in ICRS, may alias state. Must be non-NULL.
+ * @note Date-dependent (equinox of date, not fixed J2000): the matrix is the
+ *       transpose of the IAU 2006 ICRS-to-ecliptic matrix (eraEcm06) at jd_tt,
+ *       combining frame bias + precession (eraPmat06) with mean obliquity
+ *       (eraObl06).
  * @note Aliasing-safe: position/velocity are rotated via locals before store.
  */
 void jpl_ecliptic_to_icrs(const double state[6], double jd_tt, double out_state[6]);
 /**
- * @brief Rotate an ICRS state to ecliptic J2000.
- * @param state Input state, position (AU) + velocity (AU/day) in ICRS.
+ * @brief Rotate an ICRS state to ecliptic of date.
+ * @param state Input state, position (AU) + velocity (AU/day) in ICRS. Must be non-NULL.
  * @param jd_tt TT Julian date used to evaluate bias/precession/obliquity.
- * @param out_state Output state in ecliptic J2000, may alias state.
- * @note Inverse of jpl_ecliptic_to_icrs; same J2000-mean-equator convention.
+ * @param out_state Output state in ecliptic of date, may alias state. Must be non-NULL.
+ * @note Inverse of jpl_ecliptic_to_icrs; same equinox-of-date convention.
  * @note Aliasing-safe: position/velocity are rotated via locals before store.
  */
 void jpl_icrs_to_ecliptic(const double state[6], double jd_tt, double out_state[6]);
 /**
- * @brief Ecliptic-to-ICRS rotation matrix R[3][3].
+ * @brief Ecliptic-of-date-to-ICRS rotation matrix R[3][3].
  * @param jd_tt TT Julian date used to evaluate bias/precession/obliquity.
- * @param R Output 3x3 rotation matrix mapping ecliptic vectors to ICRS.
- * @note J2000-mean-equator convention: transpose of eraEcm06 at jd_tt
+ * @param R Output 3x3 rotation matrix mapping ecliptic vectors to ICRS. Must be non-NULL.
+ * @note Equinox-of-date convention: transpose of eraEcm06 at jd_tt
  *       (bias + precession + mean obliquity, IAU 2006).
  */
 void jpl_frame_rotation_matrix(double jd_tt, double R[3][3]);

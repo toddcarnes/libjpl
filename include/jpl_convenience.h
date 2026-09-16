@@ -5,18 +5,20 @@
 extern "C" {
 #endif
 /**
- * @brief Apparent planet position, light-time + aberration, ICRS.
+ * @brief Apparent planet position (light-time + stellar aberration, ICRS).
  * @param ephem Open handle.
  * @param jd_tt TT Julian date.
- * @param planet Target body: 1-11 or 13 (planets 1-9, Moon 10, Sun 11,
- *        Earth 13; rejects SSB 12, nutations 14, librations 15, and
- *        out-of-range values).
- * @param center Center body: 0 (SSB) or 1-13 (bodies; rejects 14, 15,
- *        negatives, and values above 13).
+ * @param planet Target body: 1-11 or 13 (planets 1-9, EMB 3, Moon 10,
+ *        Sun 11, Earth 13; rejects SSB 12, nutations 14, librations 15,
+ *        and out-of-range values).
+ * @param center Center body: 0 (SSB) or 1-13 (rejects negatives and
+ *        anything above 13).
  * @param state Output array of 6 slots receiving position (AU) + velocity
- *        (AU/day) in ICRS.
+ *        (AU/day) in ICRS. DE records are already ICRS-equatorial, so no
+ *        frame rotation is applied.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT for invalid planet/center
- *         or NULL handle/state, otherwise the light-time/state error.
+ *         or NULL handle/state, otherwise the underlying light-time/state
+ *         error (RANGE/FORMAT/IO/MEMORY).
  */
 jpl_status jpl_planet_position(const jpl_ephemeris *ephem, double jd_tt, int planet, int center, double state[6]);
 /**
@@ -30,11 +32,9 @@ jpl_status jpl_planet_position(const jpl_ephemeris *ephem, double jd_tt, int pla
  *       via jpl_moon_position() + jpl_planet_position(ephem,jd_tt,JPL_EARTH,JPL_SUN,...), then add vectors.
  */
 jpl_status jpl_moon_position(const jpl_ephemeris *ephem, double jd_tt, double state[6]);
-/**
- * @brief Convert velocity from AU/day to km/s.
- * @param vel_au_day Input velocity triple in AU/day.
- * @param vel_km_s Output velocity triple in km/s (1 AU/day = 149597870.7/86400 km/s).
- */
+/** @brief Convert velocity from AU/day to km/s.
+ *  @param vel_au_day Input triple, must be non-NULL.
+ *  @param vel_km_s Output triple, must be non-NULL. */
 void jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_s[3]);
 /**
  * @brief Convert distance from km to AU.

@@ -11,9 +11,12 @@ vectors at any supported TDB Julian date.
 
 ```sh
 cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
 ```
+
+(`--config`/`-C` required on multi-config generators like MSVC; omit on
+single-config Makefiles/Ninja, which default to Release.)
 
 ## Use
 
@@ -23,7 +26,7 @@ ctest --test-dir build --output-on-failure
 jpl_ephemeris *de;
 if (jpl_open("de440.bin", &de) == JPL_OK) {
     double earth_from_sun[6];
-    jpl_get_state(de, 2451545.0, JPL_EARTH, JPL_SUN, earth_from_sun);
+    if (jpl_get_state(de, 2451545.0, JPL_EARTH, JPL_SUN, earth_from_sun) != JPL_OK) { /* handle error */ }
     /* x,y,z in AU; vx,vy,vz in AU/day */
     jpl_close(de);
 }
@@ -35,7 +38,10 @@ ensure they use the standard binary record layout.
 ### Moon wrt Sun
 
 ```c
+#include <jpl_convenience.h>
+
 double moon_earth[6], earth_sun[6], moon_sun[6];
+/* jd_tt is Terrestrial Time; geometric calls take TDB (~70 s apart). */
 if (jpl_moon_position(de, jd_tt, moon_earth) != JPL_OK) { /* handle error */ }
 if (jpl_planet_position(de, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) { /* handle error */ }
 for (int i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];

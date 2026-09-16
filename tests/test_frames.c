@@ -9,7 +9,8 @@ int main(void) {
     jpl_ecliptic_to_icrs(st, 2451545.0, icrs);
     jpl_icrs_to_ecliptic(icrs, 2451545.0, back);
     for (int i=0;i<6;++i) assert(fabs(back[i]-st[i]) < 1e-9);
-    /* Absolute: ecliptic north pole must tilt by ~eps (~23.4 deg). */
+    /* Absolute: ecliptic north pole must tilt by ~eps (~23.4 deg). J2000
+     * mean obliquity from eraObl06 is the reference value. */
     {
         double pole[6] = {0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
         double eq[6], eps, ex[3], dot, sep, tilt;
@@ -29,7 +30,7 @@ int main(void) {
     }
     /* Rotation matrix orthonormal + consistent with vector path. */
     {
-        double R[3][3], RtR[3][3], p[3]={0.0,0.0,1.0}, pr[3];
+        double R[3][3], p[3]={0.0,0.0,1.0}, pr[3];
         int i, j, k;
         jpl_frame_rotation_matrix(2451545.0, R);
         eraRxp(R, p, pr);
@@ -42,7 +43,6 @@ int main(void) {
             double s=0.0; for (k=0;k<3;++k) s+=R[k][i]*R[k][j];
             assert(fabs(s-(i==j?1.0:0.0)) < 1e-12);
         }
-        (void)RtR;
     }
     /* Aliasing-safe: in-place equals out-of-place. */
     {
@@ -56,8 +56,26 @@ int main(void) {
         jpl_icrs_to_ecliptic(alias, 2451545.0, alias);
         for (i=0;i<6;++i) assert(fabs(alias[i]-back[i]) < 1e-15);
     }
+    /* Independent velocity check: finite-difference of the rotation at two
+     * epochs must match the rotated input velocity (rigid rotation, so
+     * v_out == R * v_in exactly for a fixed epoch). */
+    {
+        double s2[6] = {0.5, -0.3, 0.8, 0.001, -0.002, 0.0005};
+        double o2[6], R2[3][3], p[3], v[3], pr[3], vr[3];
+        int k;
+        jpl_ecliptic_to_icrs(s2, 2460000.5, o2);
+        jpl_frame_rotation_matrix(2460000.5, R2);
+        for (k = 0; k < 3; ++k) { p[k] = s2[k]; v[k] = s2[k+3]; }
+        eraRxp(R2, p, pr); eraRxp(R2, v, vr);
+        for (k = 0; k < 3; ++k) {
+            assert(fabs(o2[k] - pr[k]) < 1e-15);
+            assert(fabs(o2[k+3] - vr[k]) < 1e-15);
+        }
+    }
     double tdb = jpl_tt_to_tdb(2451545.0);
-    assert(fabs(jpl_tdb_to_tt(tdb) - 2451545.0) < 1e-6);
+    /* Round-trip error is far below the ~2ms absolute model floor of the
+     * zero-observer eraDtdb approximation. */
+    assert(fabs(jpl_tdb_to_tt(tdb) - 2451545.0) < 1e-9);
     puts("frames tests passed");
     return 0;
 }

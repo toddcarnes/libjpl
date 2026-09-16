@@ -20,7 +20,10 @@ extern "C" {
  * Modern DE files can contain more numeric constants than named fields. */
 /** @brief Maximum number of named constants (400). */
 #define JPL_MAX_CONSTANT_NAMES 400
-/** @brief Maximum number of numeric constants (400). */
+/** @brief Legacy alias kept for compatibility; prefer JPL_MAX_CONSTANT_NAMES.
+ *  @note The constants record itself is NOT limited to 400 entries:
+ *        header.constant_count may exceed it, so size value buffers from
+ *        header.constant_count, not from this macro. */
 #define JPL_MAX_CONSTANTS JPL_MAX_CONSTANT_NAMES
 /** @brief Number of coefficient-layout targets (12). */
 #define JPL_TARGET_COUNT 12
@@ -63,7 +66,8 @@ typedef enum jpl_target {
     JPL_SOLAR_SYSTEM_BARYCENTER, /**< @brief Solar-system barycenter (12). */
     JPL_EARTH,                   /**< @brief Earth (13), derived from barycenter and geocentric Moon. */
     JPL_NUTATIONS,               /**< @brief Nutations (14): longitude and obliquity, radians. */
-    JPL_LIBRATIONS               /**< @brief Librations (15): three lunar libration angles, radians. */
+    JPL_LIBRATIONS,              /**< @brief Librations (15): three lunar libration angles, radians. */
+    JPL_SSB = 0                  /**< @brief Center alias: 0 means the solar-system barycenter. */
 } jpl_target;
 
 /**
@@ -116,7 +120,11 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
 
 /**
  * @brief Closes an ephemeris handle and releases its resources.
- * @param ephemeris Handle from jpl_open(), or NULL (no-op).
+ * @param ephemeris Handle from jpl_open(), jpl_open_mmap(), or
+ *        jpl_ephemeris_clone(); NULL is a no-op.
+ * @note Each handle must be closed exactly once; closing twice is
+ *       use-after-free. A single handle must not be shared across threads
+ *       on the FILE path (see jpl_get_state).
  */
 void jpl_close(jpl_ephemeris *ephemeris);
 
@@ -172,10 +180,13 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  *         jd_tdb is outside coverage, JPL_ERROR_FORMAT on corrupt records,
  *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
  * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day).
- *       Nutations (14) and librations (15) require center 0 and return radians
- *       and radians/day; nutation uses only state[0] through state[3].
- *       A single handle must not be shared across threads on the FILE path;
- *       use jpl_ephemeris_clone() per thread or jpl_open_mmap().
+ *       Nutations (14) return dpsi, deps in state[0], state[1] and their
+ *       rates in state[3], state[4]; state[2] and state[5] are zero.
+ *       Librations (15) return three angles and three rates. Both require
+ *       center 0.
+ *       A single handle must not be shared across threads, on either the
+ *       FILE or mmap path: reads update a per-handle record cache, so
+ *       sharing is a data race. Use jpl_ephemeris_clone() per thread.
  */
 jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, double jd_tdb,
                          int target, int center, double state[6]);
@@ -188,17 +199,22 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, double jd_tdb,
  * @param center Center jpl_target, or 0 for SSB.
  * @param state Output array of 6 slots receiving the relative state.
  * @param out_light_time Optional output light-time in days, may be NULL.
- * @return JPL_OK, JPL_ERROR_ARGUMENT, JPL_ERROR_RANGE if not converged, or I/O errors.
- * @note Iterates jd - light_time until delta < 1e-12 d or 10 iters. Tolerance-based per spec.
+ * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/state or target/center
+ *         outside 0-13; JPL_ERROR_RANGE on out-of-coverage jd or
+ *         non-convergence after 10 iters; JPL_ERROR_FORMAT/IO/MEMORY from
+ *         the underlying state reads.
+ * @note Iterates jd - light_time until delta < 1e-12 d or 10 iters.
+ *       Only bodies 0-13 are accepted; nutations (14) and librations (15)
+ *       have no light-time meaning and return JPL_ERROR_ARGUMENT.
  */
 jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb,
                                    int target, int center, double state[6], double *out_light_time);
 
 /**
  * @brief Applies special-relativistic stellar aberration.
- * @param state Input geometric state, pos AU + vel AU/day.
- * @param observer_vel Observer barycentric velocity AU/day.
- * @param out_state Output aberrated state, may alias state.
+ * @param state Input geometric state, pos AU + vel AU/day. NULL is a no-op.
+ * @param observer_vel Observer barycentric velocity AU/day. NULL is a no-op.
+ * @param out_state Output aberrated state, may alias state. NULL is a no-op.
  * @note Special-relativistic direction transform (cf. ERFA eraAb) with
  *       distance preservation; solar gravitational term (<=0.4uas) omitted;
  *       velocity passed through unchanged. In-place safe.
@@ -210,18 +226,45 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb
 void jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
 
 /**
+ * @brief Applies full special-relativistic stellar aberration including the
+ *        solar gravitational potential term.
+ * @param state Input geometric state, pos AU + vel AU/day. NULL is a no-op.
+ * @param observer_vel Observer barycentric velocity AU/day. NULL is a no-op.
+ * @param sun_distance_au Distance from the Sun to the observer in AU; must
+ *        be positive and finite (guarded: non-positive input falls back to
+ *        jpl_apply_aberration behavior).
+ * @param out_state Output aberrated state, may alias state. NULL is a no-op.
+ * @note Matches ERFA eraAb (Explanatory Supplement Expr. 7.40 + Klioner
+ *       2003 solar term) to ~1e-12 on unit vectors; velocity passed through
+ *       unchanged. In-place safe. See also jpl_apply_aberration, the
+ *       signature-stable wrapper that omits the solar term.
+ * @note Prefer this over jpl_apply_aberration when the Sun distance is
+ *       known; the wrapper omits the <=0.4uas solar term (singular for
+ *       Sun-centered observers).
+ */
+void jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
+                               double sun_distance_au, double out_state[6]);
+
+/**
  * @brief Opens a DE file via read-only memory mapping.
  * @param path Filesystem path.
  * @param out_ephemeris Receives handle.
  * @return JPL_OK or JPL_ERROR_ARGUMENT/IO/FORMAT/MEMORY.
- * @note Shareable across threads via jpl_ephemeris_clone(); close each handle with jpl_close(). Concurrent reads on distinct handles are safe; external sync required for clone-vs-close races.
+ * @note The file must not change while mapped (size is re-checked after
+ *       mapping, but concurrent truncation may still fault on access).
+ *       The handle itself is not shareable (per-handle record cache);
+ *       clone per thread with jpl_ephemeris_clone() and close each handle.
+ *       Concurrent reads on distinct handles are safe; external sync
+ *       required for clone-vs-close races.
  */
 jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
 /**
  * @brief Clones a handle for concurrent read access.
  * @param ephem Source handle.
  * @param out_clone Receives new handle sharing mapped data.
- * @return JPL_OK or JPL_ERROR_ARGUMENT/MEMORY/IO (IO on re-open failure for FILE handles).
+ * @return JPL_OK or JPL_ERROR_ARGUMENT (NULL args, corrupt handle),
+ *         JPL_ERROR_MEMORY on allocation failure, or JPL_ERROR_IO if the
+ *         FILE-handle clone cannot re-open the path.
  * @note Each clone must be closed with jpl_close(); underlying mapping unmaps at zero refcount. Concurrent reads on distinct handles are safe; external sync required for clone-vs-close races.
  */
 jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);

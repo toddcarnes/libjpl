@@ -16,8 +16,12 @@ add_library(jpl::jpl ALIAS jpl)
 target_compile_features(jpl PUBLIC c_std_17)
 set_target_properties(jpl PROPERTIES
     C_EXTENSIONS OFF
-    POSITION_INDEPENDENT_CODE ON
 )
+# PIC only matters when linking this static lib into a shared object.
+option(LIBJPL_PIC "Build static lib with position-independent code" ON)
+if(LIBJPL_PIC)
+    set_target_properties(jpl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 target_include_directories(jpl
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -25,9 +29,15 @@ target_include_directories(jpl
 )
 
 file(GLOB ERFA_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/*.c")
-list(FILTER ERFA_SOURCES EXCLUDE REGEX "t_erfa_c(_extra)?\\.c$")
+# Only ERFA's own test drivers carry main(); anchor the exclusion so a
+# future upstream file (e.g. t_erfa_c_foo.c) cannot slip into the library.
+list(FILTER ERFA_SOURCES EXCLUDE REGEX "/t_erfa_c(_extra)?\\.c$")
 target_sources(jpl PRIVATE ${ERFA_SOURCES})
 target_include_directories(jpl PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
+# NOTE: src/erfa is intentionally NOT installed with the 3 public headers
+# below. Downstream users never need erfa.h (frames API hides it), so the
+# PUBLIC include stays build-interface-only. Revisit only if a public header
+# ever includes erfa.h.
 target_sources(jpl PRIVATE src/jpl_frames.c)
 target_sources(jpl PRIVATE src/jpl_convenience.c)
 target_include_directories(jpl PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -92,9 +102,15 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_mmap_tests PRIVATE c_std_17)
     add_test(NAME jpl_mmap COMMAND jpl_mmap_tests)
 
-    # Real ephemerides are optional local test data.  When JPLEPH is defined at
-    # configure time, exercise the reader against DE441 as an integration test.
-    if(EXISTS "$ENV{JPLEPH}/DE441.eph")
+    add_executable(jpl_position_tests tests/test_positions.c)
+    target_link_libraries(jpl_position_tests PRIVATE jpl)
+    target_compile_features(jpl_position_tests PRIVATE c_std_17)
+
+    # Real ephemerides are optional local test data. When JPLEPH names a
+    # directory containing DE441.eph, exercise the reader against it as an
+    # integration test. Evaluated at configure time: re-run cmake -S/-B
+    # after setting JPLEPH for newly added data to register.
+    if(DEFINED ENV{JPLEPH} AND EXISTS "$ENV{JPLEPH}/DE441.eph")
         add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
         target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
         target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)

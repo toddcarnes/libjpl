@@ -1,6 +1,10 @@
 #include "jpl_convenience.h"
-#include "jpl_frames.h"
 #include "jpl_private.h"
+#include "jpl_frames.h"
+#include <string.h>
+/* DE coefficient records are Cartesian in the ICRS equatorial frame, so
+ * jpl_get_state output is already ICRS: no rotation is applied here. The
+ * frames module stays for user-side ecliptic conversion. */
 void jpl_au_per_day_to_km_per_s(const double v[3], double o[3]) {
     const double K = JPL_AU_KM/JPL_DAYSEC;
     o[0]=v[0]*K; o[1]=v[1]*K; o[2]=v[2]*K;
@@ -25,7 +29,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, double jd_tt, int planet,
         vobs[0]=cst[3];vobs[1]=cst[4];vobs[2]=cst[5];
     } else { vobs[0]=vobs[1]=vobs[2]=0.0; }
     jpl_apply_aberration(tmp, vobs, tmp);
-    jpl_ecliptic_to_icrs(tmp, jd_tt, st);
+    memcpy(st, tmp, sizeof tmp);
     return JPL_OK;
 }
 jpl_status jpl_moon_position(const jpl_ephemeris *e, double jd_tt, double st[6]) {

@@ -56,14 +56,35 @@ int main(void) {
         double vels[3][3] = {{0.01,0.002,-0.001},{-0.005,0.008,0.003},{0.0,0.0,0.0}};
         int d, q, k;
         for (d = 0; d < 4; ++d) for (q = 0; q < 3; ++q) {
-            double st[6], vo[3], got[6], be[3], exp[3], b2 = 0.0, bm;
-            for (k = 0; k < 3; ++k) { st[k] = dirs[d][k]*2.5; st[k+3] = 0.001*k; vo[k] = vels[q][k]; be[k] = vo[k]/C; b2 += be[k]*be[k]; }
+            double s6[6], vo[3], got[6], be[3], exp[3], b2 = 0.0, bm;
+            for (k = 0; k < 3; ++k) { s6[k] = dirs[d][k]*2.5; s6[k+3] = 0.001*k; vo[k] = vels[q][k]; be[k] = vo[k]/C; b2 += be[k]*be[k]; }
             bm = sqrt(1.0 - b2);
-            jpl_apply_aberration(st, vo, got);
+            jpl_apply_aberration(s6, vo, got);
             eraAb(dirs[d], be, 1e12, bm, exp);
             for (k = 0; k < 3; ++k) assert(fabs(got[k] - exp[k]*2.5) < 1e-12);
-            for (k = 0; k < 3; ++k) assert(got[k+3] == st[k+3]);
+            for (k = 0; k < 3; ++k) assert(got[k+3] == s6[k+3]);
         }
+    }
+    /* Full variant matches eraAb including the solar term: same t_ab
+     * inputs at the true Sun distance agree to 1e-12. */
+    {
+        double vc[3] = {2.1044018893653786e-5, -8.9108923304429319e-5, -3.8633714797716569e-5};
+        double pn[3] = {-0.76321968546737951, -0.60869453983060384, -0.21676408580639883};
+        double s2[6] = {pn[0], pn[1], pn[2], 0.0, 0.0, 0.0};
+        double vo2[3] = {vc[0]*173.144632684, vc[1]*173.144632684, vc[2]*173.144632684};
+        double o2[6];
+        jpl_apply_aberration_full(s2, vo2, 0.99980921395708788, o2);
+        assert(fabs(o2[0] - (-0.7631631094219556269)) < 1e-12);
+        assert(fabs(o2[1] - (-0.6087553082505590832)) < 1e-12);
+        assert(fabs(o2[2] - (-0.2167926269368471279)) < 1e-12);
+        /* Non-positive Sun distance falls back to wrapper behavior. */
+        { double ow[6]; jpl_apply_aberration(s2, vo2, ow);
+          jpl_apply_aberration_full(s2, vo2, 0.0, o2);
+          for (int k = 0; k < 6; ++k) assert(o2[k] == ow[k]); }
+        /* NULL-safe. */
+        jpl_apply_aberration_full(NULL, vo2, 1.0, o2);
+        jpl_apply_aberration_full(s2, NULL, 1.0, o2);
+        jpl_apply_aberration_full(s2, vo2, 1.0, NULL);
     }
     puts("aberration tests passed");
     return 0;

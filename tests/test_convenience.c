@@ -4,8 +4,10 @@
 #include <math.h>
 #include <stdio.h>
 int main(void) {
+    /* 1 AU/day = AU_KM/86400 km/s ~= 1731.45683; 0.01 -> ~17.3145683,
+     * checked absolutely so constant typos fail. */
     double v[3]={0.01,0,0}, out[3]; jpl_au_per_day_to_km_per_s(v,out);
-    assert(out[0] > 17.0 && out[0] < 17.6);
+    assert(fabs(out[0]-17.3145683) < 1e-6);
     double au=0; jpl_km_to_au(JPL_TEST_AU_KM,&au); assert(au>0.999&&au<1.001);
     double st[6];
     assert(jpl_planet_position(NULL,2451545.0,1,11,st)==JPL_ERROR_ARGUMENT);
@@ -52,10 +54,15 @@ int main(void) {
         d = test_norm3(moon_earth);
         assert(fabs(d-expect_moon) < 1e-9);
         assert(fabs(moon_earth[0]-expect_moon) < 1e-9); /* x-axis invariant under Rx */
-        expect_earth = 1.0 - expect_moon/82.30056;
+        expect_earth = 1.0 - expect_moon/(1.0+JPL_TEST_MASS_RATIO);
         assert(fabs(earth_sun[0]-expect_earth) < 1e-9);
+        /* DE data is already ICRS-equatorial: the convenience output must
+         * match the raw geometric vector on the invariant x-axis (aberration
+         * is transverse, so x is untouched for this x-axis geometry). */
+        { double raw[6]; assert(jpl_get_state(e,jd,JPL_EARTH,JPL_SUN,raw)==JPL_OK);
+          assert(fabs(earth_sun[0]-raw[0]) < 1e-9); }
         /* Vector identity: moon_sun == moon_earth + earth_sun (zero
-         * velocities make light-time/aberration legs consistent). */
+         * velocities make the three legs consistent). */
         for (i=0;i<6;++i) sum[i]=moon_earth[i]+earth_sun[i];
         for (i=0;i<6;++i) assert(fabs(sum[i]-moon_sun[i]) < 1e-9);
         jpl_close(e);

@@ -186,7 +186,7 @@ int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  * @brief Interpolates a JPL target at a TDB Julian date.
  * @param ephemeris Open handle.
  * @param jd_tdb Julian date (TDB) within header coverage.
- * @param target Target body as a jpl_target value (1-15).
+ * @param target Target body as a jpl_target value (1-15, 17).
  * @param center Center body as a jpl_target value; may also be 0 for the
  *        solar-system barycenter.
  * @param state Output array of 6 slots receiving the relative state.

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <math.h>
 
 #define JPL_TEST_RECORD_BYTES 2856
@@ -49,6 +50,11 @@ static inline void test_put_f64be(unsigned char *at, double v) {
  * pseudo-slot 12 addresses the DENUM+libration words at 2840 (DENUM first),
  * and pseudo-slots 13/14 address IPT entries 14/15 at 2856/2868. */
 static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
+    /* Programming-error trap for out-of-range slots (negative idx would
+     * otherwise wrap to a huge size_t and corrupt memory). assert is
+     * deliberate here: unreachable in valid tests, and JPL_TEST_CHECK
+     * cannot signal failure from a void helper. */
+    assert(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
                  idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
     test_put_u32(rec + off, start);
@@ -69,6 +75,8 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
 
 /* BE variants to stop hand-rolled offsets. */
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
+    /* Same programming-error trap as test_put_ptr (see comment there). */
+    assert(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
                  idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
     test_put_u32be(rec + off, start);

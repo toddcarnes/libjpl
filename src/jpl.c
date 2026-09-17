@@ -217,7 +217,9 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
      * strictly validated). */
     { size_t extra = header->constant_count > JPL_MAX_CONSTANT_NAMES ?
                          (size_t)(header->constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
-      size_t tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
+      size_t tail;
+      if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH) return JPL_OK;
+      tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
       uint32_t u_t14s, u_t14c, u_t14l, u_t15s, u_t15c, u_t15l;
       const unsigned char *q;
       header->record_double_count = maximum;
@@ -243,7 +245,7 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
           need = (size_t)header->tt_tdb_pointer.coefficients_per_component * (size_t)header->tt_tdb_pointer.subintervals;
           if (need > SIZE_MAX - ((size_t)header->tt_tdb_pointer.start_index - 1)) return JPL_OK;
           need += (size_t)header->tt_tdb_pointer.start_index - 1;
-          if (need == 0 || (size_t)header->tt_tdb_pointer.start_index > (int)maximum) return JPL_OK;
+          if (need == 0 || (size_t)header->tt_tdb_pointer.start_index > maximum) return JPL_OK;
           if (need > maximum) {
               maximum = need;
               header->record_double_count = maximum;

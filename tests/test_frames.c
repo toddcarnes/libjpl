@@ -3,6 +3,7 @@
 #include "erfa.h"
 #include <math.h>
 #include <stdio.h>
+#define JPL_DJM0_TEST 2400000.5
 int main(void) {
     double st[6] = {1.0, 0.2, 0.1, 0.01, 0.002, 0.001};
     double icrs[6], back[6];
@@ -74,6 +75,36 @@ int main(void) {
     /* Round-trip error is far below the ~2ms absolute model floor of the
      * zero-observer eraDtdb approximation. */
     JPL_TEST_CHECK(fabs(jpl_tdb_to_tt(tdb) - 2451545.0) < 1e-9);
+    /* Off-J2000 independent composition (Pmat06 + Rx(obliquity)).
+     * eraEcm06 == Rxr(Rx(eps), Pmat06) by construction, so the eraPmat06-only
+     * composition agrees to roundoff (~1e-15; no bias floor since Pmat06
+     * already includes frame bias). */
+    {
+        double jd = 2460000.5;
+        double R[3][3], Rp[3][3], ecm[3][3], p[3] = {0.2, -0.5, 0.8}, a[3], b[3];
+        double eps = eraObl06(JPL_DJM0_TEST, jd - JPL_DJM0_TEST);
+        eraPmat06(JPL_DJM0_TEST, jd - JPL_DJM0_TEST, Rp);
+        eraRx(eps, Rp); /* Rp = Rx(eps) * Pmat06: ICRS -> mean ecliptic of date */
+        eraTr(Rp, ecm); /* transpose: ecliptic -> ICRS */
+        jpl_frame_rotation_matrix(jd, R);
+        eraRxp(R, p, a);
+        eraRxp(ecm, p, b);
+        for (int k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(a[k] - b[k]) < 1e-12);
+    }
+    /* Off-J2000 golden vector: pins jpl_ecliptic_to_icrs output at 2460000.5
+     * so a future wrong-routine swap fails even if the composition above
+     * were rebuilt from the same wrong call. */
+    {
+        double s[6] = {0.2, -0.5, 0.8, 0.001, -0.002, 0.0005};
+        double o[6];
+        jpl_ecliptic_to_icrs(s, 2460000.5, o);
+        JPL_TEST_CHECK(fabs(o[0] - 0.197178391766373) < 1e-12);
+        JPL_TEST_CHECK(fabs(o[1] - -0.777962617565809) < 1e-12);
+        JPL_TEST_CHECK(fabs(o[2] - 0.534691357224504) < 1e-12);
+        JPL_TEST_CHECK(fabs(o[3] - 0.000988697796185) < 1e-12);
+        JPL_TEST_CHECK(fabs(o[4] - -0.002039018049268) < 1e-12);
+        JPL_TEST_CHECK(fabs(o[5] - -0.000338942565310) < 1e-12);
+    }
     puts("frames tests passed");
     return 0;
 }

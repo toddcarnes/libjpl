@@ -86,6 +86,20 @@ int main(void) {
         jpl_apply_aberration_full(s2, NULL, 1.0, o2);
         jpl_apply_aberration_full(s2, vo2, 1.0, NULL);
     }
+    /* Differential vs eraAb at finite Sun distance (catches SRS drift). */
+    {
+        double vc[3] = {2.1044018893653786e-5, -8.9108923304429319e-5, -3.8633714797716569e-5};
+        double pn[3] = {-0.76321968546737951, -0.60869453983060384, -0.21676408580639883};
+        double s2[6] = {pn[0], pn[1], pn[2], 0.0, 0.0, 0.0};
+        double vo2[3] = {vc[0]*173.144632684, vc[1]*173.144632684, vc[2]*173.144632684};
+        double got[6], be[3], exp[3];
+        double s_au = 0.99980921395708788;
+        int k;
+        for (k = 0; k < 3; ++k) be[k] = vc[k];
+        jpl_apply_aberration_full(s2, vo2, s_au, got);
+        eraAb(pn, be, s_au, sqrt(1.0 - (be[0]*be[0]+be[1]*be[1]+be[2]*be[2])), exp);
+        for (k = 0; k < 3; ++k) assert(fabs(got[k] - exp[k]) < 1e-12);
+    }
     puts("aberration tests passed");
     return 0;
 }

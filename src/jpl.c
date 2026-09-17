@@ -2,6 +2,7 @@
 #include "jpl_private.h"
 
 #include <stdint.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,6 +133,16 @@ static int seek_to(FILE *file, size_t offset) {
     return JPL_FSEEK(file, (jpl_file_offset)offset, SEEK_SET);
 }
 
+static int checked_record_offset(size_t index, size_t record_doubles, size_t *out) {
+    size_t a, b;
+    if (record_doubles == 0 || record_doubles > SIZE_MAX / 8) return -1;
+    b = record_doubles * 8;
+    if (index > (SIZE_MAX / b) - 2) return -1;
+    a = (index + 2) * b;
+    *out = a;
+    return 0;
+}
+
 static void copy_text(char *destination, const unsigned char *source, size_t length) {
     memcpy(destination, source, length);
     while (length > 0 && (destination[length - 1] == ' ' || destination[length - 1] == '\0')) --length;
@@ -154,8 +165,7 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, j
     header->astronomical_unit_km = read_f64(p, order); p += 8;
     header->earth_moon_mass_ratio = read_f64(p, order); p += 8;
     if (!plausible_date(header->start_jd) || !plausible_date(header->end_jd) ||
-        header->end_jd <= header->start_jd || header->step_days <= 0.0 ||
-        header->constant_count < 0) return JPL_ERROR_FORMAT;
+        header->end_jd <= header->start_jd || header->step_days <= 0.0) return JPL_ERROR_FORMAT;
     for (i = 0; i < JPL_TARGET_COUNT; ++i) {
         jpl_pointer *pointer = &header->pointers[i];
         uint32_t u_start = read_u32(p, order); p += 4;
@@ -171,7 +181,10 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, j
             size_t component_count = i == JPL_TARGET_COUNT - 1 ? 2u : 3u;
             size_t cap = SIZE_MAX / component_count / (size_t)pointer->subintervals;
             if (cap == 0 || (size_t)pointer->coefficients_per_component >= cap) return JPL_ERROR_FORMAT;
-            size_t end = (size_t)pointer->start_index - 1 + component_count * (size_t)pointer->coefficients_per_component * (size_t)pointer->subintervals;
+            size_t product = component_count * (size_t)pointer->coefficients_per_component * (size_t)pointer->subintervals;
+            size_t end;
+            if (product > SIZE_MAX - ((size_t)pointer->start_index - 1)) return JPL_ERROR_FORMAT;
+            end = ((size_t)pointer->start_index - 1) + product;
             if (end > maximum) maximum = end;
         }
     }
@@ -182,7 +195,10 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, j
     if (header->libration_pointer.start_index > 0 && header->libration_pointer.coefficients_per_component > 0 && header->libration_pointer.subintervals > 0) {
         size_t lcap = SIZE_MAX / 3u / (size_t)header->libration_pointer.subintervals;
         if (lcap == 0 || (size_t)header->libration_pointer.coefficients_per_component >= lcap) return JPL_ERROR_FORMAT;
-        size_t end = (size_t)header->libration_pointer.start_index - 1 + 3u * (size_t)header->libration_pointer.coefficients_per_component * (size_t)header->libration_pointer.subintervals;
+        size_t lproduct = 3u * (size_t)header->libration_pointer.coefficients_per_component * (size_t)header->libration_pointer.subintervals;
+        size_t end;
+        if (lproduct > SIZE_MAX - ((size_t)header->libration_pointer.start_index - 1)) return JPL_ERROR_FORMAT;
+        end = ((size_t)header->libration_pointer.start_index - 1) + lproduct;
         if (end > maximum) maximum = end;
     }
     header->record_double_count = maximum;
@@ -381,7 +397,8 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     c->record_count = ephem->record_count;
     c->is_mmap = ephem->is_mmap;
     if (ephem->is_mmap) {
-        if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }        c->refcount = ephem->refcount;
+        if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
+        c->refcount = ephem->refcount;
         c->mmap_base = ephem->mmap_base;
         c->mmap_size = ephem->mmap_size;
 #if defined(_WIN32)
@@ -406,8 +423,20 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
 }
 const jpl_header *jpl_get_header(const jpl_ephemeris *e) { return e ? &e->header : NULL; }
 size_t jpl_record_count(const jpl_ephemeris *e) { return e ? e->record_count : 0; }
-jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t count) { if (!e || !values || count < (size_t)e->header.constant_count) return JPL_ERROR_ARGUMENT; return read_doubles(e, e->header.record_double_count * 8, values, (size_t)e->header.constant_count); }
-jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values, size_t count) { size_t offset; if (!e || !values || count < e->header.record_double_count) return JPL_ERROR_ARGUMENT; if (index >= e->record_count) return JPL_ERROR_RANGE; offset = (index + 2) * e->header.record_double_count * 8; return read_doubles(e, offset, values, e->header.record_double_count); }
+jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t count) {
+    size_t offset;
+    if (!e || !values || count < (size_t)e->header.constant_count) return JPL_ERROR_ARGUMENT;
+    if (e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_IO;
+    offset = e->header.record_double_count * 8;
+    return read_doubles(e, offset, values, (size_t)e->header.constant_count);
+}
+jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values, size_t count) {
+    size_t offset;
+    if (!e || !values || count < e->header.record_double_count) return JPL_ERROR_ARGUMENT;
+    if (index >= e->record_count) return JPL_ERROR_RANGE;
+    if (checked_record_offset(index, e->header.record_double_count, &offset) != 0) return JPL_ERROR_IO;
+    return read_doubles(e, offset, values, e->header.record_double_count);
+}
 
 static jpl_status interpolate(const jpl_ephemeris *e, double jd, const jpl_pointer *pointer,
                               size_t components, double state[6]) {
@@ -512,24 +541,29 @@ static double range_days(const double state[6]) {
 }
 
 jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, double jd, int target, int center, double state[6], double *out_lt) {
-    double cur[6], lt = 0.0, prev = 0.0;
+    double rel[6], tgt[6], ctr[6], lt = 0.0, prev = 0.0;
     jpl_status st;
     int i;
+    size_t k;
     if (!e || !state) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject. */
     if (target < 0 || target > JPL_EARTH || center < 0 || center > JPL_EARTH) return JPL_ERROR_ARGUMENT;
-    st = jpl_get_state(e, jd, target, center, cur);
+    /* Center evaluated once at reception jd; only the target leg iterates. */
+    if (center == 0) memset(ctr, 0, sizeof ctr);
+    else { st = barycentric_state(e, jd, center, ctr); if (st != JPL_OK) return st; }
+    st = jpl_get_state(e, jd, target, center, rel);
     if (st != JPL_OK) return st;
-    lt = range_days(cur);
+    lt = range_days(rel);
     for (i = 0; i < JPL_LIGHTTIME_MAX_ITER; ++i) {
         prev = lt;
-        st = jpl_get_state(e, jd - lt, target, center, cur);
+        st = barycentric_state(e, jd - lt, target, tgt);
         if (st != JPL_OK) return st;
-        lt = range_days(cur);
+        for (k = 0; k < 6; ++k) rel[k] = (tgt[k] - ctr[k]) / e->header.astronomical_unit_km;
+        lt = range_days(rel);
         if (fabs(lt - prev) < JPL_LIGHTTIME_TOL_DAYS) break;
     }
     if (fabs(lt - prev) >= JPL_LIGHTTIME_TOL_DAYS) return JPL_ERROR_RANGE;
-    memcpy(state, cur, sizeof cur);
+    memcpy(state, rel, sizeof rel);
     if (out_lt) *out_lt = lt;
     return JPL_OK;
 }
@@ -542,8 +576,8 @@ void jpl_apply_aberration(const double state[6], const double observer_vel[3], d
 
 void jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
                                double sun_distance_au, double out[6]) {
-    /* ERFA SRS constant (Schwarzschild radius of the Sun, AU): see erfa.h. */
-    static const double SRS = 9.870730742e-9;
+    /* Solar gravitational radius; ERFA ERFA_SRS, kept in jpl_private.h. */
+    const double SRS = JPL_SRS_AU;
     double beta[3], pnat[3], p[3];
     double r, rn, beta2 = 0.0, bm1, pdv = 0.0, w1, w2;
     int i;

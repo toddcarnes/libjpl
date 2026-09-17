@@ -12,6 +12,9 @@
 /* Two-part Julian-date split used by ERFA-style calls. */
 #define JPL_DJM0 2400000.5
 
+/* Schwarzschild radius of the Sun in AU (ERFA ERFA_SRS = 1.97412574336e-8). */
+#define JPL_SRS_AU 1.97412574336e-8
+
 /* Light-time solver: tolerance-based convergence per design spec. */
 #define JPL_LIGHTTIME_TOL_DAYS 1e-12
 #define JPL_LIGHTTIME_MAX_ITER 10
@@ -25,13 +28,6 @@
  * a cursor (p += 8/4) so the two must agree when the layout changes. */
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
-#define JPL_HDR_START_JD 2652
-#define JPL_HDR_END_JD 2660
-#define JPL_HDR_STEP 2668
-#define JPL_HDR_NCONST 2676
-#define JPL_HDR_AU_KM 2680
-#define JPL_HDR_EM_RATIO 2688
-#define JPL_HDR_IPT 2696
 
 static inline double jpl_vec_norm3(const double v[3]) {
     return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);

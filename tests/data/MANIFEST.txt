@@ -1,0 +1,12 @@
+# libjpl test-data manifest. Verified 2026-09-19.
+# Fixture (committed, always-on):
+fixture.eph=tests/data/de441_2000_2010.eph size=952848 source=DE441.eph years=2000-2010 tool="sub_eph DE441.eph <out> 2000 2010" coverage=2451536.5-2455216.5 denum=441
+fixture.testpo=tests/data/testpo_441_slice.txt lines=121 source=testpo.441 span=2451536.5-2455216.5
+# Downloads (LIBJPL_FETCH_EPHEMERIDES=ON only):
+de440.bin.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/linux_p1550p2650.440
+de440t.bin.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/linux_p1550p2650.440t
+testpo.440.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/testpo.440 sha256=45084a7f406b8e41032e7d99dd8042d4df97a9f752a68c06d1a27af16693429f size=858238
+testpo.440t.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/testpo.440t sha256=9801f019be5c335d1e22697ea9fb5888becfd0c623a50c3372fe4491c7a3f2ad size=858238
+# Binary sizes are captured from the FTP listing at implementation time
+# (see Task 2) and filled in here: de440.bin.size=102272352 de440t.bin.size=112720608.
+# Local checksums.txt hashes describe different spans and MUST NOT be used.

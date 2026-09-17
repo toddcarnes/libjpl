@@ -84,6 +84,23 @@ static void refcount_inc(atomic_int *r) { atomic_fetch_add(r, 1); }
 static int refcount_dec(atomic_int *r) { return atomic_fetch_sub(r, 1) - 1; }
 #endif
 
+/* TT-TDB span end (1-based slot count) for a parsed pointer: computes
+ * (start - 1) + coeff * sub with overflow guards. Returns 0 on success,
+ * -1 when the triple is absent (non-positive) or overflows. */
+static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
+    size_t product, end;
+    if (!pointer || !out) return -1;
+    if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
+        pointer->subintervals <= 0) return -1;
+    if ((size_t)pointer->subintervals > SIZE_MAX / (size_t)pointer->coefficients_per_component) return -1;
+    product = (size_t)pointer->coefficients_per_component * (size_t)pointer->subintervals;
+    if (product > SIZE_MAX - ((size_t)pointer->start_index - 1)) return -1;
+    end = ((size_t)pointer->start_index - 1) + product;
+    if (end == 0) return -1;
+    *out = end;
+    return 0;
+}
+
 /* Record-layout derivation shared by jpl_open and the mmap open paths
  * (header + constants + N data records, with a one-record legacy trailing
  * allowance); updates header->record_double_count. */
@@ -242,13 +259,9 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
            * normally appended after the libration span (start > maximum),
            * so only the span end (need) is validated here: the record
            * layout grows to cover it and interpolate() checks the span
-           * at use. (The span itself is checked by interpolate at use.) */
+           * at use. */
           size_t need;
-          if ((size_t)header->tt_tdb_pointer.subintervals > SIZE_MAX / (size_t)header->tt_tdb_pointer.coefficients_per_component) return JPL_OK;
-          need = (size_t)header->tt_tdb_pointer.coefficients_per_component * (size_t)header->tt_tdb_pointer.subintervals;
-          if (need > SIZE_MAX - ((size_t)header->tt_tdb_pointer.start_index - 1)) return JPL_OK;
-          need += (size_t)header->tt_tdb_pointer.start_index - 1;
-          if (need == 0 || need > JPL_TT_TDB_SPAN_LIMIT) return JPL_OK;
+          if (tt_tdb_span_end(&header->tt_tdb_pointer, &need) != 0) return JPL_OK;
           if (need > maximum) {
               maximum = need;
               header->record_double_count = maximum;
@@ -328,6 +341,14 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
      * record, so look for a compatible total within that small allowance. */
     status = derive_mmap_layout(&e->header, e->file_size, &e->record_count);
     if (status != JPL_OK) { jpl_close(e); return JPL_ERROR_FORMAT; }
+    /* Ground TT-TDB acceptance in file geometry: record_double_count now
+     * comes from the file size, so a triple claiming slots past the real
+     * record reads as absent. */
+    if (e->header.has_tt_tdb) {
+        size_t end = 0;
+        if (tt_tdb_span_end(&e->header.tt_tdb_pointer, &end) != 0 ||
+            end > e->header.record_double_count) e->header.has_tt_tdb = 0;
+    }
     *out = e; return JPL_OK;
 }
 
@@ -397,6 +418,11 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (status == JPL_OK && (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
             status = JPL_ERROR_FORMAT;
         if (status == JPL_OK) status = derive_mmap_layout(&header, file_size, &record_count);
+        if (status == JPL_OK && header.has_tt_tdb) {
+            size_t end = 0;
+            if (tt_tdb_span_end(&header.tt_tdb_pointer, &end) != 0 ||
+                end > header.record_double_count) header.has_tt_tdb = 0;
+        }
         if (status != JPL_OK) { UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return status; }
         e = calloc(1, sizeof *e);
         if (!e) { UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_MEMORY; }
@@ -442,6 +468,11 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (status == JPL_OK && (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
             status = JPL_ERROR_FORMAT;
         if (status == JPL_OK) status = derive_mmap_layout(&header, file_size, &record_count);
+        if (status == JPL_OK && header.has_tt_tdb) {
+            size_t end = 0;
+            if (tt_tdb_span_end(&header.tt_tdb_pointer, &end) != 0 ||
+                end > header.record_double_count) header.has_tt_tdb = 0;
+        }
         if (status != JPL_OK) { munmap(base, file_size); return status; }
         e = calloc(1, sizeof *e);
         if (!e) { munmap(base, file_size); return JPL_ERROR_MEMORY; }

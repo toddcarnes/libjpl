@@ -57,6 +57,7 @@ Note: adding apparent legs mixes emission epochs; approximate only (see jpl_conv
 #include <jpl_frames.h>
 #include <jpl_convenience.h>
 
+jpl_ephemeris *de; /* from jpl_open(...) */
 double jd_tt = 2451545.0, jd_tdb = jpl_tt_to_tdb(jd_tt);
 double geo[6], app[6], lt;
 if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }

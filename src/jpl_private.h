@@ -35,6 +35,12 @@
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
 
+/* Base file offset of the IPT 14/15 extension triplets when the file
+ * carries no overflow constant names (constant_count <= 400). Files with
+ * more constants store the extra 6-character names first, so the triplets
+ * start at JPL_TT_TDB_TAIL_BASE + 6 * (constant_count - 400). */
+#define JPL_TT_TDB_TAIL_BASE 2856
+
 static inline double jpl_vec_norm3(const double v[3]) {
     return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }

@@ -26,7 +26,7 @@ typedef __int64 jpl_file_offset;
 typedef off_t jpl_file_offset;
 #endif
 
-enum { HEADER_SIZE = 2856 };
+enum { HEADER_SIZE = 2880 };
 
 struct jpl_ephemeris {
     FILE *file;
@@ -150,9 +150,11 @@ static void copy_text(char *destination, const unsigned char *source, size_t len
     destination[length] = '\0';
 }
 
-static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, jpl_byte_order order) {
+static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, size_t size,
+                               jpl_byte_order order) {
     size_t i, maximum = 2;
     const unsigned char *p = bytes;
+    if (size < JPL_TT_TDB_TAIL_BASE) return JPL_ERROR_FORMAT;
     memset(header, 0, sizeof *header);
     for (i = 0; i < 3; ++i) copy_text(header->titles[i], p + i * 84, 84);
     p += JPL_HDR_TITLES_LEN;
@@ -192,7 +194,7 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, j
     { uint32_t u_denum = read_u32(p, order); p += 4; if (u_denum > INT_MAX) return JPL_ERROR_FORMAT; header->ephemeris_number = (int)u_denum; }
     { uint32_t u_lstart = read_u32(p, order); p += 4; if (u_lstart > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.start_index = (int)u_lstart; }
     { uint32_t u_lcoeff = read_u32(p, order); p += 4; if (u_lcoeff > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.coefficients_per_component = (int)u_lcoeff; }
-    { uint32_t u_lsub = read_u32(p, order); if (u_lsub > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.subintervals = (int)u_lsub; }
+    { uint32_t u_lsub = read_u32(p, order); p += 4; if (u_lsub > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.subintervals = (int)u_lsub; }
     if (header->libration_pointer.start_index > 0 && header->libration_pointer.coefficients_per_component > 0 && header->libration_pointer.subintervals > 0) {
         size_t lcap = SIZE_MAX / 3u / (size_t)header->libration_pointer.subintervals;
         if (lcap == 0 || (size_t)header->libration_pointer.coefficients_per_component >= lcap) return JPL_ERROR_FORMAT;
@@ -202,6 +204,52 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, j
         end = ((size_t)header->libration_pointer.start_index - 1) + lproduct;
         if (end > maximum) maximum = end;
     }
+    /* IPT entries 14/15 follow the overflow constant-name block: files
+     * with more than 400 numeric constants store the extra 6-character
+     * names immediately past the legacy 2856-byte cursor, and the two
+     * triplets after them. Entry 15 is the TT-TDB dataset (*t files
+     * only); entry 14 is parsed for symmetry and ignored. T#16 has no
+     * header slot and is not supported. Pre-extension files (and mocks
+     * with nconst <= 400) carry no extra names, so the triplets sit at
+     * 2856/2868; older binaries predate the extension entirely and may
+     * hold unrelated bytes there, which read as absent rather than
+     * failing the whole file (the classic 2856-byte region stays
+     * strictly validated). */
+    { size_t extra = header->constant_count > JPL_MAX_CONSTANT_NAMES ?
+                         (size_t)(header->constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
+      size_t tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
+      uint32_t u_t14s, u_t14c, u_t14l, u_t15s, u_t15c, u_t15l;
+      const unsigned char *q;
+      header->record_double_count = maximum;
+      header->byte_order = order;
+      if (tail > size || size - tail < 24) return JPL_OK;
+      q = bytes + tail;
+      u_t14s = read_u32(q, order); q += 4; u_t14c = read_u32(q, order); q += 4; u_t14l = read_u32(q, order); q += 4;
+      u_t15s = read_u32(q, order); q += 4; u_t15c = read_u32(q, order); q += 4; u_t15l = read_u32(q, order);
+      if (u_t14s > INT_MAX || u_t14c > INT_MAX || u_t14l > INT_MAX ||
+          u_t15s > INT_MAX || u_t15c > INT_MAX || u_t15l > INT_MAX) return JPL_OK;
+      header->tt_tdb_pointer.start_index = (int)u_t15s;
+      header->tt_tdb_pointer.coefficients_per_component = (int)u_t15c;
+      header->tt_tdb_pointer.subintervals = (int)u_t15l;
+      if (header->tt_tdb_pointer.start_index > 0 &&
+          header->tt_tdb_pointer.coefficients_per_component > 0 &&
+          header->tt_tdb_pointer.subintervals > 0) {
+          /* The single TT-TDB component must start inside the record
+           * derived from the classic entries; foreign bytes in
+           * pre-extension headers fail this bound and read as absent.
+           * (The span itself is checked by interpolate at use.) */
+          size_t need;
+          if ((size_t)header->tt_tdb_pointer.subintervals > SIZE_MAX / (size_t)header->tt_tdb_pointer.coefficients_per_component) return JPL_OK;
+          need = (size_t)header->tt_tdb_pointer.coefficients_per_component * (size_t)header->tt_tdb_pointer.subintervals;
+          if (need > SIZE_MAX - ((size_t)header->tt_tdb_pointer.start_index - 1)) return JPL_OK;
+          need += (size_t)header->tt_tdb_pointer.start_index - 1;
+          if (need == 0 || (size_t)header->tt_tdb_pointer.start_index > (int)maximum) return JPL_OK;
+          if (need > maximum) {
+              maximum = need;
+              header->record_double_count = maximum;
+          }
+          header->has_tt_tdb = 1;
+      } }
     header->record_double_count = maximum;
     header->byte_order = order;
     return JPL_OK;
@@ -237,6 +285,7 @@ const char *jpl_status_string(jpl_status status) { static const char *const text
 
 jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     unsigned char bytes[HEADER_SIZE]; jpl_ephemeris *e; jpl_status status;
+    unsigned char *window = NULL;
     if (!path || !out) return JPL_ERROR_ARGUMENT;
     *out = NULL;
     e = calloc(1, sizeof *e); if (!e) return JPL_ERROR_MEMORY;
@@ -247,8 +296,27 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e->file = fopen(path, "rb"); if (!e->file) { jpl_close(e); return JPL_ERROR_IO; }
     if (fread(bytes, 1, sizeof bytes, e->file) != sizeof bytes || JPL_FSEEK(e->file, 0, SEEK_END) != 0) { jpl_close(e); return JPL_ERROR_IO; }
     { jpl_file_offset end = JPL_FTELL(e->file); if (end < 0 || (uintmax_t)end > SIZE_MAX) { jpl_close(e); return JPL_ERROR_IO; } e->file_size = (size_t)end; }
-    status = parse_header(&e->header, bytes, JPL_BYTE_ORDER_LITTLE_ENDIAN);
-    if (status != JPL_OK) status = parse_header(&e->header, bytes, JPL_BYTE_ORDER_BIG_ENDIAN);
+    /* The IPT 14/15 triplets sit past the overflow constant names, whose
+     * length depends on constant_count, so the parse window grows past
+     * HEADER_SIZE when the file claims extra names (bounded by the file
+     * size so a corrupt count cannot over-allocate). */
+    status = parse_header(&e->header, bytes, sizeof bytes, JPL_BYTE_ORDER_LITTLE_ENDIAN);
+    if (status != JPL_OK) status = parse_header(&e->header, bytes, sizeof bytes, JPL_BYTE_ORDER_BIG_ENDIAN);
+    if (status == JPL_OK && e->header.constant_count > JPL_MAX_CONSTANT_NAMES) {
+        size_t extra = (size_t)(e->header.constant_count - JPL_MAX_CONSTANT_NAMES);
+        if (extra <= (SIZE_MAX - HEADER_SIZE - 24) / (size_t)JPL_CONSTANT_NAME_LENGTH) {
+            size_t need = (size_t)JPL_TT_TDB_TAIL_BASE + extra * (size_t)JPL_CONSTANT_NAME_LENGTH + 24;
+            if (need > (size_t)HEADER_SIZE && need <= e->file_size) {
+                window = malloc(need);
+                if (window == NULL) { jpl_close(e); return JPL_ERROR_MEMORY; }
+                if (JPL_FSEEK(e->file, 0, SEEK_SET) != 0 ||
+                    fread(window, 1, need, e->file) != need) { free(window); jpl_close(e); return JPL_ERROR_IO; }
+                status = parse_header(&e->header, window, need, JPL_BYTE_ORDER_LITTLE_ENDIAN);
+                if (status != JPL_OK) status = parse_header(&e->header, window, need, JPL_BYTE_ORDER_BIG_ENDIAN);
+                free(window);
+            }
+        }
+    }
     if (status != JPL_OK || e->header.record_double_count == 0 || e->header.record_double_count > SIZE_MAX / 8) { jpl_close(e); return JPL_ERROR_FORMAT; }
     /* Most files have a header, constants record, and exactly one record
      * per header interval. Some legacy DE files retain one trailing data
@@ -317,8 +385,10 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         }
         base = (unsigned char *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
         if (!base) { CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_IO; }
-        status = parse_header(&header, base, JPL_BYTE_ORDER_LITTLE_ENDIAN);
-        if (status != JPL_OK) status = parse_header(&header, base, JPL_BYTE_ORDER_BIG_ENDIAN);
+        /* Mmap keeps the whole file mapped, so the parse window extends to
+         * the end of the file and always covers the IPT 14/15 triplets. */
+        status = parse_header(&header, base, file_size, JPL_BYTE_ORDER_LITTLE_ENDIAN);
+        if (status != JPL_OK) status = parse_header(&header, base, file_size, JPL_BYTE_ORDER_BIG_ENDIAN);
         if (status == JPL_OK && (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
             status = JPL_ERROR_FORMAT;
         if (status == JPL_OK) status = derive_mmap_layout(&header, file_size, &record_count);
@@ -362,8 +432,8 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
             }
         }
         close(fd);
-        status = parse_header(&header, base, JPL_BYTE_ORDER_LITTLE_ENDIAN);
-        if (status != JPL_OK) status = parse_header(&header, base, JPL_BYTE_ORDER_BIG_ENDIAN);
+        status = parse_header(&header, base, file_size, JPL_BYTE_ORDER_LITTLE_ENDIAN);
+        if (status != JPL_OK) status = parse_header(&header, base, file_size, JPL_BYTE_ORDER_BIG_ENDIAN);
         if (status == JPL_OK && (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
             status = JPL_ERROR_FORMAT;
         if (status == JPL_OK) status = derive_mmap_layout(&header, file_size, &record_count);
@@ -422,6 +492,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
 }
 const jpl_header *jpl_get_header(const jpl_ephemeris *e) { return e ? &e->header : NULL; }
 size_t jpl_record_count(const jpl_ephemeris *e) { return e ? e->record_count : 0; }
+int jpl_has_tt_tdb(const jpl_ephemeris *e) { return e ? e->header.has_tt_tdb : 0; }
 jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t count) {
     size_t offset;
     if (!e || !values || count < (size_t)e->header.constant_count) return JPL_ERROR_ARGUMENT;

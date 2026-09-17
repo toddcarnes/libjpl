@@ -17,7 +17,7 @@ int main(void) {
      * Sun=origin, zero velocities. Record of 357 doubles. */
     {
         const char *path="jpl_test_convenience.bin";
-        unsigned char rec[JPL_TEST_RECORD_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM, MOON_KM=384400.0, jd=2451545.5;
         double moon_earth[6], earth_sun[6], moon_sun[6], sum[6];
         double expect_moon, expect_earth, d;
@@ -27,13 +27,14 @@ int main(void) {
         test_put_ptr(rec,9,9,2,1);   /* geocentric Moon */
         test_put_ptr(rec,10,15,2,1); /* Sun */
         f=fopen(path,"wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
-        memset(rec,0,sizeof rec); test_put_f64(rec,1.0); test_put_f64(rec+8,2.0);
-        JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
+        { unsigned char cc[JPL_TEST_HEADER_BYTES]={0}; test_put_f64(cc,1.0); test_put_f64(cc+8,2.0);
+          JPL_TEST_CHECK(fwrite(cc,1,sizeof cc,f)==sizeof cc); }
         memset(rec,0,sizeof rec);
         test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
         test_put_f64(rec+2*8,AU_KM);                       /* EMB x */
         test_put_f64(rec+8*8,MOON_KM);                     /* Moon x */
-        JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec); JPL_TEST_CHECK(fclose(f)==0);
+        /* Uniform 2880-byte records: data block padded with zeros. */
+        JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         /* Validation: invalid planet/center codes rejected. */
         JPL_TEST_CHECK(jpl_planet_position(e,jd,0,11,st)==JPL_ERROR_ARGUMENT);
@@ -76,7 +77,7 @@ int main(void) {
      * the stale emission-epoch composition. */
     {
         const char *path="jpl_test_convenience_epoch.bin";
-        unsigned char rec[JPL_TEST_RECORD_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM, jd=2451545.5;
         double tdb, lt, lt_state[6], vc_rec[6], vc_emi[6], expect[6], got[6];
         double vsun[6], sdist;
@@ -88,8 +89,8 @@ int main(void) {
         /* Sun (idx 10): zero coeffs at different slot; use start=12, 2 coeffs, 1 sub */
         test_put_ptr(rec,10,12,2,1);
         f=fopen(path,"wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
-        memset(rec,0,sizeof rec); test_put_f64(rec,1.0); test_put_f64(rec+8,2.0);
-        JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
+        { unsigned char cc2[JPL_TEST_HEADER_BYTES]={0}; test_put_f64(cc2,1.0); test_put_f64(cc2+8,2.0);
+          JPL_TEST_CHECK(fwrite(cc2,1,sizeof cc2,f)==sizeof cc2); }
         memset(rec,0,sizeof rec);
         test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
         /* EMB x coeffs (record doubles idx 2,3,4 -> bytes 16,24,32):
@@ -105,7 +106,8 @@ int main(void) {
         test_put_f64(rec+11*8,0.0); test_put_f64(rec+12*8,0.0);
         test_put_f64(rec+13*8,0.0); test_put_f64(rec+14*8,0.0);
         test_put_f64(rec+15*8,0.0); test_put_f64(rec+16*8,0.0);
-        JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec); JPL_TEST_CHECK(fclose(f)==0);
+        /* Uniform 2880-byte records: data block padded with zeros. */
+        JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         tdb = jpl_tt_to_tdb(jd);
         /* Convenience under test: Sun seen from EMB. */

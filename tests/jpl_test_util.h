@@ -11,6 +11,7 @@
 #include <math.h>
 
 #define JPL_TEST_RECORD_BYTES 2856
+#define JPL_TEST_HEADER_BYTES 2880
 #define JPL_TEST_AU_KM 149597870.7
 #define JPL_TEST_MASS_RATIO 81.30056
 #define JPL_TEST_C_AU_PER_DAY 173.144632684
@@ -44,11 +45,15 @@ static inline void test_put_f64be(unsigned char *at, double v) {
     for (i = 0; i < 8; ++i) at[i] = tmp[7 - i];
 }
 
-/* IPT coefficient-pointer entry: idx is the 0-based target slot. */
+/* IPT coefficient-pointer entry: idx 0-11 addresses file offset 2696+idx*12;
+ * pseudo-slot 12 addresses the DENUM+libration words at 2840 (DENUM first),
+ * and pseudo-slots 13/14 address IPT entries 14/15 at 2856/2868. */
 static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
-    test_put_u32(rec + 2696 + idx * 12, start);
-    test_put_u32(rec + 2696 + idx * 12 + 4, coeff);
-    test_put_u32(rec + 2696 + idx * 12 + 8, sub);
+    size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
+                 idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
+    test_put_u32(rec + off, start);
+    test_put_u32(rec + off + 4, coeff);
+    test_put_u32(rec + off + 8, sub);
 }
 
 /* Standard mock header prologue: coverage, step, constant count, AU, EM ratio. */
@@ -64,9 +69,11 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
 
 /* BE variants to stop hand-rolled offsets. */
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
-    test_put_u32be(rec + 2696 + idx * 12, start);
-    test_put_u32be(rec + 2696 + idx * 12 + 4, coeff);
-    test_put_u32be(rec + 2696 + idx * 12 + 8, sub);
+    size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
+                 idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
+    test_put_u32be(rec + off, start);
+    test_put_u32be(rec + off + 4, coeff);
+    test_put_u32be(rec + off + 8, sub);
 }
 
 static inline void test_mock_header_be(unsigned char *rec, double start_jd, double end_jd,

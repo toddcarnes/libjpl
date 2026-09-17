@@ -70,6 +70,7 @@ typedef enum jpl_target {
     JPL_EARTH_MOON_BARYCENTER = 13, /**< @brief Earth-Moon barycenter (13). */
     JPL_NUTATIONS,               /**< @brief Nutations (14): longitude and obliquity, radians. */
     JPL_LIBRATIONS,              /**< @brief Librations (15): three lunar libration angles, radians. */
+    JPL_TT_TDB = 17,               /**< @brief TT-TDB time correction (17): seconds, from *t files. */
     JPL_SSB = 0                  /**< @brief Center alias: 0 means the solar-system barycenter. */
 } jpl_target;
 
@@ -97,6 +98,8 @@ typedef struct jpl_header {
     jpl_pointer pointers[JPL_TARGET_COUNT]; /**< @brief Coefficient layout for targets 1-12 (nutations reuse the last entry). */
     int ephemeris_number; /**< @brief DE ephemeris number (e.g. 441 for DE441). */
     jpl_pointer libration_pointer; /**< @brief Coefficient layout for librations (target 15). */
+    jpl_pointer tt_tdb_pointer; /**< @brief Coefficient layout for TT-TDB (target 17, *t files only). */
+    int has_tt_tdb; /**< @brief Nonzero iff the file carries the TT-TDB dataset. */
     size_t record_double_count; /**< @brief Doubles per data record, including the two Julian-date bounds. */
     jpl_byte_order byte_order; /**< @brief Detected byte order of the open file. */
 } jpl_header;
@@ -169,6 +172,15 @@ jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
  * @return Number of data records; 0 if ephemeris is NULL.
  */
 size_t jpl_record_count(const jpl_ephemeris *ephemeris);
+
+/**
+ * @brief Reports whether the open file carries the TT-TDB dataset.
+ * @param ephemeris Open handle, or NULL.
+ * @return Nonzero iff the TT-TDB coefficients are present (*t files);
+ *         0 if ephemeris is NULL or the dataset is absent.
+ * @note Content-derived, never filename-derived: DENUM carries no t suffix.
+ */
+int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
 
 /**
  * @brief Interpolates a JPL target at a TDB Julian date.

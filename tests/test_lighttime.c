@@ -12,7 +12,7 @@ int main(void) {
      * Light-time must converge to range/c with velocity from Chebyshev. */
     {
         const char *path = "jpl_test_lighttime.bin";
-        unsigned char rec[JPL_TEST_RECORD_BYTES] = {0};
+        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
         const double jd = 2451545.5;
@@ -25,14 +25,15 @@ int main(void) {
         test_put_ptr(rec, 10, 9, 1, 1);  /* Sun: slots 9..11, one coeff */
         f = fopen(path, "wb"); JPL_TEST_CHECK(f);
         JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        { unsigned char lc[JPL_TEST_HEADER_BYTES] = {0};
+          test_put_f64(lc, 1.0); test_put_f64(lc + 8, 2.0);
+          JPL_TEST_CHECK(fwrite(lc, 1, sizeof lc, f) == sizeof lc); }
         memset(rec, 0, sizeof rec);
         test_put_f64(rec + 0 * 8, 2451545.0);
         test_put_f64(rec + 1 * 8, 2451546.0);
         test_put_f64(rec + 5 * 8, 1.0); /* EMB x = 1 AU at slot 6, rest zero */
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        /* Uniform 2880-byte records: data block padded with zeros. */
+        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_NUTATIONS, 0, app, &lt) == JPL_ERROR_ARGUMENT);
@@ -55,7 +56,7 @@ int main(void) {
      * Correct: target(jd-lt) - center(jd); old bug: target(jd-lt) - center(jd-lt). */
     {
         const char *path = "jpl_test_lighttime_vel.bin";
-        unsigned char rec[JPL_TEST_RECORD_BYTES] = {0};
+        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
         const double jd = 2451545.5;
@@ -67,9 +68,9 @@ int main(void) {
         test_put_ptr(rec, 10, 12, 2, 1); /* Sun: slots 12..17, two coeffs */
         f = fopen(path, "wb"); JPL_TEST_CHECK(f);
         JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        { unsigned char lc2[JPL_TEST_HEADER_BYTES] = {0};
+          test_put_f64(lc2, 1.0); test_put_f64(lc2 + 8, 2.0);
+          JPL_TEST_CHECK(fwrite(lc2, 1, sizeof lc2, f) == sizeof lc2); }
         memset(rec, 0, sizeof rec);
         test_put_f64(rec + 0 * 8, 2451545.0);
         test_put_f64(rec + 1 * 8, 2451546.0);
@@ -79,7 +80,8 @@ int main(void) {
         /* Sun x(t): linear slope 5e5 km per unit norm (~0.0067 AU/day). */
         test_put_f64(rec + 11 * 8, 0.0);
         test_put_f64(rec + 12 * 8, 500000.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        /* Uniform 2880-byte records: data block padded with zeros. */
+        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, app, &lt) == JPL_OK);

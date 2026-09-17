@@ -184,9 +184,11 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  *       rates in state[3], state[4]; state[2] and state[5] are zero.
  *       Librations (15) return three angles and three rates. Both require
  *       center 0.
- *       A single handle must not be shared across threads, on either the
- *       FILE or mmap path: reads update a per-handle record cache, so
- *       sharing is a data race. Use jpl_ephemeris_clone() per thread.
+ *       A single handle must not be shared across threads on the FILE
+ *       path: reads update a per-handle record cache, so sharing is a
+ *       data race. The mmap path performs no per-handle mutation and is
+ *       safe for concurrent reads on one handle; either way,
+ *       jpl_ephemeris_clone() per thread is always safe.
  */
 jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, double jd_tdb,
                          int target, int center, double state[6]);
@@ -252,10 +254,11 @@ void jpl_apply_aberration_full(const double state[6], const double observer_vel[
  * @return JPL_OK or JPL_ERROR_ARGUMENT/IO/FORMAT/MEMORY.
  * @note The file must not change while mapped (size is re-checked after
  *       mapping, but concurrent truncation may still fault on access).
- *       The handle itself is not shareable (per-handle record cache);
- *       clone per thread with jpl_ephemeris_clone() and close each handle.
- *       Concurrent reads on distinct handles are safe; external sync
- *       required for clone-vs-close races.
+ *       The mmap path performs no per-handle mutation, so a single mmap
+ *       handle is shareable for concurrent reads; clones (via
+ *       jpl_ephemeris_clone()) are still safe, and each handle must be
+ *       closed. Concurrent reads on distinct handles are safe; external
+ *       sync required for clone-vs-close races.
  */
 jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
 /**

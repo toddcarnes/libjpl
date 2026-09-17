@@ -19,6 +19,42 @@ int main(void){
     assert(jpl_ephemeris_clone(e,&c)==JPL_OK);
     assert(jpl_read_record(e,0,vals,357)==JPL_OK && vals[356]==356.0);
     assert(jpl_read_record(c,0,vals,357)==JPL_OK && vals[0]==0.0);
+    /* mmap handle must be shareable: interleaved state reads on one handle
+     * equal reads on a distinct clone (pins no-per-handle-mutation).
+     * NOTE: uses a dedicated mock whose record bounds match header
+     * coverage (the main mock above stores 0..356 as data, so its bounds
+     * 0..1 cannot satisfy the jd window); assert() is temporary until
+     * Task 4 lands JPL_TEST_CHECK. */
+    {
+        const char *path2 = "jpl_test_mmap_share.bin";
+        unsigned char rec2[JPL_TEST_RECORD_BYTES] = {0};
+        FILE *f2;
+        jpl_ephemeris *e2 = NULL, *c2 = NULL;
+        double a[6], b[6];
+        int k, same = 1;
+        memcpy(rec2, "mmap share", 10);
+        test_mock_header(rec2, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(rec2, 11, 2, 178, 1);
+        f2 = fopen(path2, "wb"); assert(f2);
+        assert(fwrite(rec2, 1, sizeof rec2, f2) == sizeof rec2);
+        memset(rec2, 0, sizeof rec2);
+        test_put_f64(rec2, 1.0); test_put_f64(rec2 + 8, 2.0);
+        assert(fwrite(rec2, 1, sizeof rec2, f2) == sizeof rec2);
+        memset(rec2, 0, sizeof rec2);
+        test_put_f64(rec2 + 0 * 8, 2451545.0);
+        test_put_f64(rec2 + 1 * 8, 2451546.0);
+        assert(fwrite(rec2, 1, sizeof rec2, f2) == sizeof rec2);
+        assert(fclose(f2) == 0);
+        assert(jpl_open_mmap(path2, &e2) == JPL_OK);
+        assert(jpl_ephemeris_clone(e2, &c2) == JPL_OK);
+        assert(jpl_get_state(e2, 2451545.5, JPL_NUTATIONS, 0, a) == JPL_OK);
+        assert(jpl_get_state(c2, 2451545.5, JPL_NUTATIONS, 0, b) == JPL_OK);
+        assert(jpl_get_state(e2, 2451545.5, JPL_NUTATIONS, 0, a) == JPL_OK);
+        for (k = 0; k < 6; ++k) if (a[k] != b[k]) same = 0;
+        assert(same);
+        jpl_close(c2); jpl_close(e2);
+        assert(remove(path2) == 0);
+    }
     assert(jpl_ephemeris_clone(NULL,NULL)==JPL_ERROR_ARGUMENT);
     assert(jpl_open_mmap(NULL,NULL)==JPL_ERROR_ARGUMENT);
     jpl_close(c); jpl_close(e);

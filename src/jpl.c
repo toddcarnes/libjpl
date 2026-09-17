@@ -47,9 +47,10 @@ struct jpl_ephemeris {
     int is_mmap;
     unsigned char *mmap_base;
     size_t mmap_size;
-    /* Single-record cache: last record_index + its decoded doubles. Shared
-     * by all reads on this handle; valid only when cache_valid != 0. Clones
-     * always start cold (calloc) so no cross-handle state is shared. */
+    /* Single-record cache: last record_index + its decoded doubles. Used by
+     * FILE-path reads only (mmap reads bypass it to stay lock-free); valid
+     * only when cache_valid != 0. Clones always start cold (calloc) so no
+     * cross-handle state is shared. */
     double *cache_record;
     size_t cache_index;
     int cache_valid;
@@ -442,17 +443,20 @@ static jpl_status interpolate(const jpl_ephemeris *e, double jd, const jpl_point
                               size_t components, double state[6]) {
     double *record, record_start, record_end, substep, normalized;
     size_t record_index, subinterval, component, coefficient;
-    int cached;
+    int cached, use_cache;
     jpl_status status;
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0 || jd < e->header.start_jd || jd > e->header.end_jd) return JPL_ERROR_RANGE;
     record_index = (size_t)((jd - e->header.start_jd) / e->header.step_days);
     if (record_index >= e->record_count) record_index = e->record_count - 1;
-    /* Single-record cache hit: reuse the decoded record (light-time loops
-     * almost always re-read the same record). On miss, refresh via the
-     * normal record path and remember it for the next call. */
-    cached = e->cache_valid && e->cache_record && e->cache_index == record_index;
-    ((jpl_ephemeris *)e)->cache_valid = 0;
+    /* Single-record cache is for the FILE path only: it mutates per-handle
+     * state, so the lock-free mmap path bypasses it entirely (reads on a
+     * mapped handle perform no per-handle mutation). Light-time loops
+     * almost always re-read the same record, hence the FILE-path cache.
+     * NOTE: the cache is only replaced after interpolation succeeds;
+     * failures leave the prior entry intact. */
+    use_cache = !e->is_mmap;
+    cached = use_cache && e->cache_valid && e->cache_record && e->cache_index == record_index;
     record = malloc(e->header.record_double_count * sizeof *record);
     if (!record) return JPL_ERROR_MEMORY;
     if (cached) {
@@ -491,8 +495,11 @@ static jpl_status interpolate(const jpl_ephemeris *e, double jd, const jpl_point
     }
     /* Nutations interpolate 2 components; zero the unused third slot. */
     for (; component < 3; ++component) { state[component] = 0.0; state[component + 3] = 0.0; }
-    /* Refresh the single-record cache now that interpolation succeeded.
-     * Best-effort only: a failed cache malloc must not discard good state. */
+    /* Refresh the single-record cache only on the FILE path, and only now
+     * that interpolation succeeded. Best-effort: a failed cache malloc
+     * must not discard good state. On failure paths above the function
+     * returns early, so the prior entry is never invalidated by a miss. */
+    if (!use_cache) { free(record); return JPL_OK; }
     if (!((jpl_ephemeris *)e)->cache_record) {
         ((jpl_ephemeris *)e)->cache_record = malloc(e->header.record_double_count * sizeof *record);
         if (!((jpl_ephemeris *)e)->cache_record) { free(record); return JPL_OK; }

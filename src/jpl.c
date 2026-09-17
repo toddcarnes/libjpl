@@ -237,7 +237,8 @@ const char *jpl_status_string(jpl_status status) { static const char *const text
 
 jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     unsigned char bytes[HEADER_SIZE]; jpl_ephemeris *e; jpl_status status;
-    if (!path || !out) return JPL_ERROR_ARGUMENT; *out = NULL;
+    if (!path || !out) return JPL_ERROR_ARGUMENT;
+    *out = NULL;
     e = calloc(1, sizeof *e); if (!e) return JPL_ERROR_MEMORY;
     e->refcount = malloc(sizeof *e->refcount); if (!e->refcount) { free(e); return JPL_ERROR_MEMORY; }
     refcount_init(e->refcount);

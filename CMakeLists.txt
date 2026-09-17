@@ -133,7 +133,12 @@ if(LIBJPL_BUILD_TESTS)
     # validates every data line via jpl_get_state (geometric, TDB) with
     # tolerance 5e-13 * fmax(1, |expected|). Configure-time registration:
     # re-run cmake -S/-B after adding binaries to pick up new pairs.
-    set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
+    # JPL_TESTPO env var overrides the default testpo data directory.
+    if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
+        set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
+    else()
+        set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
+    endif()
     if(NOT "$ENV{JPLEPH}" STREQUAL "")
         file(GLOB JPL_TESTPO_FILES "${JPL_TESTPO_DIR}/testpo.*")
         foreach(testpo_file IN LISTS JPL_TESTPO_FILES)

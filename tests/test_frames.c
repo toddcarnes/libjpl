@@ -22,7 +22,8 @@ int main(void) {
         rn = sqrt(eq[0]*eq[0]+eq[1]*eq[1]+eq[2]*eq[2]);
         JPL_TEST_CHECK(fabs(rn-1.0) < 1e-12);
         dot = (eq[0]*ex[0]+eq[1]*ex[1]+eq[2]*ex[2])/rn;
-        if (dot > 1.0) dot = 1.0; if (dot < -1.0) dot = -1.0;
+        if (dot > 1.0) dot = 1.0;
+        if (dot < -1.0) dot = -1.0;
         sep = acos(dot);
         JPL_TEST_CHECK(sep < 1e-6); /* frame bias/precession only at J2000 */
         tilt = acos(eq[2]/rn);

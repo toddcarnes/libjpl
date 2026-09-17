@@ -96,7 +96,6 @@ static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
     product = (size_t)pointer->coefficients_per_component * (size_t)pointer->subintervals;
     if (product > SIZE_MAX - ((size_t)pointer->start_index - 1)) return -1;
     end = ((size_t)pointer->start_index - 1) + product;
-    if (end == 0) return -1;
     *out = end;
     return 0;
 }
@@ -235,7 +234,11 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
     { size_t extra = header->constant_count > JPL_MAX_CONSTANT_NAMES ?
                          (size_t)(header->constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
       size_t tail;
-      if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH) return JPL_OK;
+      if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH) {
+          header->record_double_count = maximum;
+          header->byte_order = order;
+          return JPL_OK;
+      }
       tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
       uint32_t u_t14s, u_t14c, u_t14l, u_t15s, u_t15c, u_t15l;
       const unsigned char *q;

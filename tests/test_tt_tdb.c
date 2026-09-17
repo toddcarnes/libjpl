@@ -47,9 +47,7 @@ int main(void) {
         memcpy(rec, "TT-TDB present", 14);
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 11, 2, 178, 1);
-        test_put_u32(rec + 2868, 300);
-        test_put_u32(rec + 2872, 2);
-        test_put_u32(rec + 2876, 1);
+        test_put_ptr(rec, 14, 300, 2, 1);
         f = fopen(path, "wb"); JPL_TEST_CHECK(f != NULL);
         JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         memset(rec, 0, sizeof rec);

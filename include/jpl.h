@@ -203,7 +203,7 @@ int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  * @brief Interpolates a JPL target at a TDB Julian date.
  * @param ephemeris Open handle.
  * @param jd_tdb Julian date (TDB) within header coverage.
- * @param target Target body as a jpl_target value (1-15, 17).
+ * @param target Target body as a jpl_target value (1-15).
  * @param center Center body as a jpl_target value; may also be 0 for the
  *        solar-system barycenter.
  * @param state Output array of 6 slots receiving the relative state.
@@ -214,8 +214,8 @@ int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day).
  *       Nutations (14) return dpsi, deps in state[0], state[1] and their
  *       rates in state[3], state[4]; state[2] and state[5] are zero.
- *       Librations (15) return three angles and three rates. Both require
- *       center 0.
+  *       Librations (15) return three angles and three rates. Both require
+  *       center 0. For TT-TDB (17) use jpl_get_tt_minus_tdb().
  *       A single handle must not be shared across threads on the FILE
  *       path: reads update a per-handle record cache, so sharing is a
  *       data race. The mmap path performs no per-handle mutation and is

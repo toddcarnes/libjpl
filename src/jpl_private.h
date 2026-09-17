@@ -29,7 +29,9 @@
 #define JPL_PLAUSIBLE_JD_MIN -100000000.0
 #define JPL_PLAUSIBLE_JD_MAX 100000000.0
 
-/* Header/record layout field offsets (bytes) in the 2856-byte header.
+/* Header/record layout field offsets (bytes) in the 2880-byte base header.
+ * The IPT 14/15 tail lives past it at JPL_TT_TDB_TAIL_BASE plus 6 bytes per
+ * overflow constant name (constant_count - 400 when positive).
  * Kept next to the parser for documentation; parse_header still advances
  * a cursor (p += 8/4) so the two must agree when the layout changes. */
 #define JPL_HDR_TITLES_LEN 252

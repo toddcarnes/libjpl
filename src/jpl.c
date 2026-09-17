@@ -350,20 +350,17 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         }
         file_size = (size_t)st.st_size;
         base = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-        close(fd);
-        if (base == MAP_FAILED) return JPL_ERROR_IO;
-        /* Re-check size after mapping: the file must not change under us
-         * (truncation after mapping faults on access; growth is ignored). */
+        if (base == MAP_FAILED) { close(fd); return JPL_ERROR_IO; }
+        /* Re-check size on the SAME fd after mapping: renames/replacements
+         * of path no longer validate the wrong file. Truncation after
+         * mapping can still fault on access (documented). */
         {
             struct stat rest;
-            int rfd = open(path, O_RDONLY);
-            if (rfd >= 0) {
-                if (fstat(rfd, &rest) != 0 || rest.st_size != st.st_size) {
-                    close(rfd); munmap(base, file_size); return JPL_ERROR_IO;
-                }
-                close(rfd);
+            if (fstat(fd, &rest) != 0 || rest.st_size != st.st_size) {
+                close(fd); munmap(base, file_size); return JPL_ERROR_IO;
             }
         }
+        close(fd);
         status = parse_header(&header, base, JPL_BYTE_ORDER_LITTLE_ENDIAN);
         if (status != JPL_OK) status = parse_header(&header, base, JPL_BYTE_ORDER_BIG_ENDIAN);
         if (status == JPL_OK && (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))

@@ -103,6 +103,10 @@ if(LIBJPL_BUILD_TESTS)
     target_link_libraries(jpl_mmap_tests PRIVATE jpl)
     target_compile_features(jpl_mmap_tests PRIVATE c_std_17)
     add_test(NAME jpl_mmap COMMAND jpl_mmap_tests)
+    add_executable(jpl_tt_tdb_tests tests/test_tt_tdb.c)
+    target_link_libraries(jpl_tt_tdb_tests PRIVATE jpl)
+    target_compile_features(jpl_tt_tdb_tests PRIVATE c_std_17)
+    add_test(NAME jpl_tt_tdb COMMAND jpl_tt_tdb_tests)
 
     # test_positions.c was superseded by the testpo harness below (Task 8):
     # tests/de441_reference.txt never existed, so jpl_position_tests could
@@ -166,7 +170,7 @@ if(LIBJPL_BUILD_TESTS)
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.
-    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_tt_tdb_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()

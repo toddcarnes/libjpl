@@ -236,16 +236,19 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
       if (header->tt_tdb_pointer.start_index > 0 &&
           header->tt_tdb_pointer.coefficients_per_component > 0 &&
           header->tt_tdb_pointer.subintervals > 0) {
-          /* The single TT-TDB component must start inside the record
-           * derived from the classic entries; foreign bytes in
-           * pre-extension headers fail this bound and read as absent.
-           * (The span itself is checked by interpolate at use.) */
+          /* The single TT-TDB component must overlap the record derived
+           * from the classic entries; foreign bytes in pre-extension
+           * headers fail this bound and read as absent. The dataset is
+           * normally appended after the libration span (start > maximum),
+           * so only the span end (need) is validated here: the record
+           * layout grows to cover it and interpolate() checks the span
+           * at use. (The span itself is checked by interpolate at use.) */
           size_t need;
           if ((size_t)header->tt_tdb_pointer.subintervals > SIZE_MAX / (size_t)header->tt_tdb_pointer.coefficients_per_component) return JPL_OK;
           need = (size_t)header->tt_tdb_pointer.coefficients_per_component * (size_t)header->tt_tdb_pointer.subintervals;
           if (need > SIZE_MAX - ((size_t)header->tt_tdb_pointer.start_index - 1)) return JPL_OK;
           need += (size_t)header->tt_tdb_pointer.start_index - 1;
-          if (need == 0 || (size_t)header->tt_tdb_pointer.start_index > maximum) return JPL_OK;
+          if (need == 0 || need > JPL_TT_TDB_SPAN_LIMIT) return JPL_OK;
           if (need > maximum) {
               maximum = need;
               header->record_double_count = maximum;
@@ -647,6 +650,21 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, double jd, int target
     if (fabs(lt - prev) >= JPL_LIGHTTIME_TOL_DAYS) return JPL_ERROR_RANGE;
     memcpy(state, rel, sizeof rel);
     if (out_lt) *out_lt = lt;
+    return JPL_OK;
+}
+
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, double jd_tdb, double *seconds, double *rate_per_day) {
+    double state[6];
+    jpl_status status;
+    if (!e || !seconds) return JPL_ERROR_ARGUMENT;
+    if (!e->header.has_tt_tdb) return JPL_ERROR_RANGE;
+    /* One-component Chebyshev set: state[0] is TT-TDB in seconds and
+     * state[3] its rate in seconds/day (span is in days, so the engine
+     * derivative needs no unit conversion). Slots [1],[2],[4],[5] unused. */
+    status = interpolate(e, jd_tdb, &e->header.tt_tdb_pointer, 1, state);
+    if (status != JPL_OK) return status;
+    *seconds = state[0];
+    if (rate_per_day) *rate_per_day = state[3];
     return JPL_OK;
 }
 

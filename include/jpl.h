@@ -174,6 +174,23 @@ jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
 size_t jpl_record_count(const jpl_ephemeris *ephemeris);
 
 /**
+ * @brief Interpolates TT minus TDB at a TDB Julian date (*t files).
+ * @param ephemeris Open handle.
+ * @param jd_tdb Julian date (TDB) within header coverage.
+ * @param seconds Output TT-TDB in seconds. Must be non-NULL.
+ * @param rate_per_day Optional output rate of change in seconds/day, may be NULL.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds is NULL,
+ *         JPL_ERROR_RANGE if the file carries no TT-TDB dataset (check
+ *         jpl_has_tt_tdb()) or jd_tdb is outside coverage, JPL_ERROR_FORMAT
+ *         on corrupt records, JPL_ERROR_IO/MEMORY from the record read.
+ * @note Coefficients are stored in seconds and the record span is in days,
+ *       so no unit conversion is applied. For files without the dataset use
+ *       jpl_tt_to_tdb() (~2 ms ERFA approximation) instead.
+ */
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, double jd_tdb,
+                                double *seconds, double *rate_per_day);
+
+/**
  * @brief Reports whether the open file carries the TT-TDB dataset.
  * @param ephemeris Open handle, or NULL.
  * @return Nonzero iff the TT-TDB coefficients are present (*t files);

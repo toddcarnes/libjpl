@@ -44,6 +44,7 @@ void jpl_frame_rotation_matrix(double jd_tt, double R[3][3]);
  * @return Approximate TDB Julian date.
  * @note Calls eraDtdb with zero observer location/velocity (geocenter
  *       approximation per spec); good to ~2 ms, not for precision timing.
+ *       For exact TT-TDB from *t files see jpl_get_tt_minus_tdb().
  */
 double jpl_tt_to_tdb(double jd_tt);
 /**

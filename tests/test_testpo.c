@@ -22,8 +22,8 @@
  *   5 tokens: DE-DATE-JED T# C# X# COORD   ("441-13200.09.01-3099998.5 ...")
  * Header lines (titles, KSIZE=, "de# ...", EOT) never match these shapes and
  * are skipped. Lines outside the binary's coverage are skipped (testpo files
- * routinely span wider than a given binary). T#17 (TT-TDB) lines have no
- * jpl_get_state equivalent and are skipped with a count.
+ * routinely span wider than a given binary). T#17 (TT-TDB) lines are
+ * validated via jpl_get_tt_minus_tdb (X#1 value, X#2 rate).
  *
  * Returns 0 only if at least 100 lines were tested and all passed.
  * Uses explicit checks (fprintf + return), never assert().
@@ -119,9 +119,30 @@ int main(int argc, char **argv) {
         ++parsed;
 
         if (target == 17) {
-            /* TT-TDB lines (only in *t testpo files); jpl_get_state has no
-             * equivalent, so these cannot be validated here. */
-            ++skipped_unsupported;
+            /* TT-TDB lines (only in *t testpo files): X#1 is TT-TDB in
+             * seconds, X#2 its rate in seconds/day. */
+            double sec = 0.0, rate = 0.0, got, tol;
+            if (component != 1 && component != 2) { ++skipped_unsupported; continue; }
+            if (jd < header->start_jd || jd > header->end_jd) { ++skipped_range; continue; }
+            if (jpl_get_tt_minus_tdb(ephemeris, jd, &sec, &rate) != JPL_OK) {
+                fprintf(stderr, "tt-tdb failed for JD %.1f component %ld\n", jd, component);
+                fclose(file);
+                jpl_close(ephemeris);
+                return 1;
+            }
+            got = component == 1 ? sec : rate;
+            /* Absolute tolerance per testeph practice (values are ~1e-3 s
+             * scale); pin the exact digits during this task: start at 1e-12
+             * and only widen with a proven coefficient-rounding case. */
+            tol = 1e-12 * fmax(1.0, fabs(expected));
+            if (!isfinite(got) || fabs(got - expected) > tol) {
+                fprintf(stderr, "MISMATCH JD %.1f TT-TDB component %ld: got %.17g, expected %.17g (diff %.3g, tol %.3g)\n",
+                        jd, component, got, expected, fabs(got - expected), tol);
+                fclose(file);
+                jpl_close(ephemeris);
+                return 1;
+            }
+            ++tested;
             continue;
         }
         if (target < 1 || target > 15 || component < 1 || component > 6 ||

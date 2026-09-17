@@ -41,6 +41,12 @@
  * start at JPL_TT_TDB_TAIL_BASE + 6 * (constant_count - 400). */
 #define JPL_TT_TDB_TAIL_BASE 2856
 
+/* Upper bound on a plausible TT-TDB dataset span end (1-based slot count).
+ * Genuine *t datasets end near slot ~1000; a 1M-slot cap accepts every
+ * real file while rejecting garbage u32 triplets in pre-extension headers
+ * (lenient-absent semantics: garbage reads as absent, never FORMAT). */
+#define JPL_TT_TDB_SPAN_LIMIT 1048576
+
 static inline double jpl_vec_norm3(const double v[3]) {
     return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }

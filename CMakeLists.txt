@@ -104,9 +104,10 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_mmap_tests PRIVATE c_std_17)
     add_test(NAME jpl_mmap COMMAND jpl_mmap_tests)
 
-    add_executable(jpl_position_tests tests/test_positions.c)
-    target_link_libraries(jpl_position_tests PRIVATE jpl)
-    target_compile_features(jpl_position_tests PRIVATE c_std_17)
+    # test_positions.c was superseded by the testpo harness below (Task 8):
+    # tests/de441_reference.txt never existed, so jpl_position_tests could
+    # not be wired to it. tests/test_testpo.c validates every testpo line
+    # (including DE441 geometric states) instead.
 
     # Real ephemerides are optional local test data. When JPLEPH names a
     # directory containing DE441.eph, exercise the reader against it as an
@@ -127,10 +128,40 @@ if(LIBJPL_BUILD_TESTS)
             COMMAND jpl_all_ephemerides_tests "$ENV{JPLEPH}")
     endif()
 
+    # JPL testpo reference-data validation. Each testpo.NNN file pairs with
+    # the DENNN.eph binary in $JPLEPH; the runner (tests/test_testpo.c)
+    # validates every data line via jpl_get_state (geometric, TDB) with
+    # tolerance 5e-13 * fmax(1, |expected|). Configure-time registration:
+    # re-run cmake -S/-B after adding binaries to pick up new pairs.
+    set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
+    if(NOT "$ENV{JPLEPH}" STREQUAL "")
+        file(GLOB JPL_TESTPO_FILES "${JPL_TESTPO_DIR}/testpo.*")
+        foreach(testpo_file IN LISTS JPL_TESTPO_FILES)
+            get_filename_component(testpo_name "${testpo_file}" NAME)
+            string(REGEX REPLACE "^testpo\\." "" testpo_num "${testpo_name}")
+            if(testpo_num MATCHES "^[0-9]+$" AND EXISTS "$ENV{JPLEPH}/DE${testpo_num}.eph")
+                set(testpo_target "jpl_testpo_${testpo_num}_tests")
+                if(NOT TARGET ${testpo_target})
+                    add_executable(${testpo_target} tests/test_testpo.c)
+                    target_link_libraries(${testpo_target} PRIVATE jpl)
+                    target_compile_features(${testpo_target} PRIVATE c_std_17)
+                    if(MSVC)
+                        target_compile_definitions(${testpo_target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+                        target_compile_options(${testpo_target} PRIVATE /W4 /permissive-)
+                    else()
+                        target_compile_options(${testpo_target} PRIVATE -Wall -Wextra -Wpedantic)
+                    endif()
+                endif()
+                add_test(NAME jpl_testpo_${testpo_num}
+                    COMMAND ${testpo_target} "$ENV{JPLEPH}/DE${testpo_num}.eph" "${testpo_file}")
+            endif()
+        endforeach()
+    endif()
+
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
-    # is ever removed (e.g. jpl_position_tests, whose fate Task 8 decides).
-    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_position_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    # is ever removed.
+    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()

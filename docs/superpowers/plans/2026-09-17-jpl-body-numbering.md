@@ -99,6 +99,8 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, double jd, int targe
     if (target != JPL_EARTH && target != JPL_MOON && target != JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     status = interpolate(e, jd, &e->header.pointers[JPL_FILE_SLOT_EMB], 3, state);
     if (status != JPL_OK) return status;
+    /* EMB target is the raw interpolated leg: no Earth-Moon correction. */
+    if (target == JPL_EARTH_MOON_BARYCENTER) return JPL_OK;
     status = interpolate(e, jd, &e->header.pointers[JPL_MOON - 1], 3, moon);
     if (status != JPL_OK) return status;
     for (i = 0; i < 6; ++i) state[i] -= moon[i] / (1.0 + e->header.earth_moon_mass_ratio);

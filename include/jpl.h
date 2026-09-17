@@ -208,6 +208,9 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, double jd_tdb,
  * @note Iterates jd - light_time until delta < 1e-12 d or 10 iters.
  *       Only bodies 0-13 are accepted; nutations (14) and librations (15)
  *       have no light-time meaning and return JPL_ERROR_ARGUMENT.
+ *       State velocity is at the retarded emission epoch; aberration is
+ *       not applied (use jpl_apply_aberration_full with the observer
+ *       velocity at reception).
  */
 jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb,
                                    int target, int center, double state[6], double *out_light_time);
@@ -220,10 +223,8 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb
  * @note Special-relativistic direction transform (cf. ERFA eraAb) with
  *       distance preservation; solar gravitational term (<=0.4uas) omitted;
  *       velocity passed through unchanged. In-place safe.
- *       Known limitation, deferred by design: the effect is ~10x below
- *       the ~5uas velocity-knowledge floor, threading Sun distance through
- *       would churn the API and go singular when the observer is at the
- *       Sun (center==Sun).
+ *       For the <=0.4uas solar term use jpl_apply_aberration_full when
+ *       the Sun distance is known.
  */
 void jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
 

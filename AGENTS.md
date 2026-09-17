@@ -35,7 +35,7 @@ ctest --test-dir build -C Debug --output-on-failure
   `-Wall -Wextra -Wpedantic`.
 - MSVC is multi-config: always pass `-C Debug` (or `-C Release`) to ctest.
 - Single-config generators default to Release (set in CMakeLists).
-- `LIBJPL_BUILD_DOCS=OFF` by default; `ON` requires Doxygen (1.17+ known good).
+- `LIBJPL_BUILD_DOCS=OFF` by default; `ON` requires Doxygen (1.9+ known good).
 - `JPLEPH` env var pointing at real DE files enables integration tests
   (`jpl_real_de441`, `jpl_all_ephemerides`); without it only 6 unit tests run.
 

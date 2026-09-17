@@ -412,9 +412,9 @@ int main(void) {
 #ifdef __cplusplus
 extern "C" {
 #endif
-/** @brief Rotate ecliptic J2000 state to ICRS at jd_tt. */
+/** @brief Rotate ecliptic of date state to ICRS at jd_tt. */
 void jpl_ecliptic_to_icrs(const double state[6], double jd_tt, double out_state[6]);
-/** @brief Rotate ICRS state to ecliptic J2000 at jd_tt. */
+/** @brief Rotate ICRS state to ecliptic of date at jd_tt. */
 void jpl_icrs_to_ecliptic(const double state[6], double jd_tt, double out_state[6]);
 /** @brief Ecliptic->ICRS rotation matrix R[3][3]. */
 void jpl_frame_rotation_matrix(double jd_tt, double R[3][3]);

@@ -56,9 +56,7 @@ int main(void) {
         jpl_icrs_to_ecliptic(alias, 2451545.0, alias);
         for (i=0;i<6;++i) JPL_TEST_CHECK(fabs(alias[i]-back[i]) < 1e-15);
     }
-    /* Independent velocity check: finite-difference of the rotation at two
-     * epochs must match the rotated input velocity (rigid rotation, so
-     * v_out == R * v_in exactly for a fixed epoch). */
+    /* Fixed-epoch rigid rotation: v_out == R * v_in exactly at one epoch. */
     {
         double s2[6] = {0.5, -0.3, 0.8, 0.001, -0.002, 0.0005};
         double o2[6], R2[3][3], p[3], v[3], pr[3], vr[3];

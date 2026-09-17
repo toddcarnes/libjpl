@@ -22,7 +22,7 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb
 ### Algorithm
 1. Compute geometric state at `jd_tdb` → `state_0`
 2. `light_time = distance(state_0) / c` (c = 173.144632684 AU/day)
-3. Re-evaluate at `jd_tdb - light_time` → `state_1`
+3. Re-evaluate TARGET leg at jd_tdb - light_time; center stays at jd_tdb
 4. Iterate until `|light_time_new - light_time_old| < 1e-12` days or max 10 iterations
 5. Return converged state and light-time
 
@@ -79,7 +79,7 @@ with c = 173.144632684 AU/day.
 
 ### Functions (in `jpl_frames.h`)
 ```c
-// Ecliptic (J2000) ↔ ICRS
+// Ecliptic (of date) ↔ ICRS
 void jpl_ecliptic_to_icrs(const double state[6], double jd_tt, double out_state[6]);
 void jpl_icrs_to_ecliptic(const double state[6], double jd_tt, double out_state[6]);
 

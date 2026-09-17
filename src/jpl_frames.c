@@ -10,9 +10,12 @@ void jpl_frame_rotation_matrix(double jd_tt, double R[3][3]) {
     eraEcm06(JPL_DJM0, jd_tt-JPL_DJM0, ecm);
     eraTr(ecm, R);
 }
-static void rotate_state(double R[3][3], const double s[6], double o[6]) {
+static void rotate_state(const double R[3][3], const double s[6], double o[6]) {
+    /* Local mutable copy: eraRxp takes a non-const matrix. */
+    double m[3][3];
     double p[3]={s[0],s[1],s[2]}, v[3]={s[3],s[4],s[5]}, pr[3], vr[3];
-    eraRxp(R, p, pr); eraRxp(R, v, vr);
+    memcpy(m, R, sizeof m);
+    eraRxp(m, p, pr); eraRxp(m, v, vr);
     memcpy(o, pr, 3*sizeof(double)); memcpy(o+3, vr, 3*sizeof(double));
 }
 void jpl_ecliptic_to_icrs(const double s[6], double jd_tt, double o[6]) {

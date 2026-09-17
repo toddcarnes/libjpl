@@ -38,8 +38,11 @@ ensure they use the standard binary record layout.
 ### Moon wrt Sun
 
 ```c
+#include <jpl.h>
 #include <jpl_convenience.h>
 
+jpl_ephemeris *de; /* from jpl_open(...) */
+double jd_tt = 2451545.0;
 double moon_earth[6], earth_sun[6], moon_sun[6];
 /* jd_tt is Terrestrial Time; geometric calls take TDB (~70 s apart). */
 if (jpl_moon_position(de, jd_tt, moon_earth) != JPL_OK) { /* handle error */ }
@@ -47,10 +50,17 @@ if (jpl_planet_position(de, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) { /
 for (int i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];
 ```
 
+Note: adding apparent legs mixes emission epochs; approximate only (see jpl_convenience.h).
+
 ```c
+#include <jpl.h>
+#include <jpl_frames.h>
+#include <jpl_convenience.h>
+
+double jd_tt = 2451545.0, jd_tdb = jpl_tt_to_tdb(jd_tt);
 double geo[6], app[6], lt;
-if (jpl_get_state_lighttime(de, 2451545.0, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }
-if (jpl_planet_position(de, 2451545.0, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handle error */ }
+if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }
+if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handle error */ }
 ```
 
 ## Credits

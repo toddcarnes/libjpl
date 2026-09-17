@@ -13,6 +13,9 @@ extern "C" {
  *       combining frame bias + precession (eraPmat06) with mean obliquity
  *       (eraObl06).
  * @note Aliasing-safe: position/velocity are rotated via locals before store.
+ * @note Velocity is rotated as a direction at fixed jd_tt (R.v);
+ *       frame-rate dR/dt terms from precession are not included
+ *       (~50"/yr x 1 AU ~= 1 m/s).
  */
 void jpl_ecliptic_to_icrs(const double state[6], double jd_tt, double out_state[6]);
 /**
@@ -22,6 +25,9 @@ void jpl_ecliptic_to_icrs(const double state[6], double jd_tt, double out_state[
  * @param out_state Output state in ecliptic of date, may alias state. Must be non-NULL.
  * @note Inverse of jpl_ecliptic_to_icrs; same equinox-of-date convention.
  * @note Aliasing-safe: position/velocity are rotated via locals before store.
+ * @note Velocity is rotated as a direction at fixed jd_tt (R.v);
+ *       frame-rate dR/dt terms from precession are not included
+ *       (~50"/yr x 1 AU ~= 1 m/s).
  */
 void jpl_icrs_to_ecliptic(const double state[6], double jd_tt, double out_state[6]);
 /**
@@ -44,7 +50,8 @@ double jpl_tt_to_tdb(double jd_tt);
  * @brief TDB Julian date to TT (approximate).
  * @param jd_tdb TDB Julian date.
  * @return Approximate TT Julian date.
- * @note Inverse of jpl_tt_to_tdb with the same eraDtdb zero-args approximation.
+ * @note First-order inverse (single dtdb evaluation at jd_tdb);
+ *       round-trip <1e-9 d, far below the ~2 ms eraDtdb zero-observer floor.
  */
 double jpl_tdb_to_tt(double jd_tdb);
 #ifdef __cplusplus

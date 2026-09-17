@@ -179,17 +179,18 @@ int main(int argc, char **argv) {
              * of lunar libration psi (T#15 X#3), whose angle accumulates in
              * time; JPL scales that DEL down by (1 + 100*|ET-JDEPOC|/365.25).
              * The 5e-13 * fmax(1,|expected|) rule from the brief matches JPL
-             * for |expected| <= 1; velocity components of quantities with
-             * large-magnitude position polynomials (librations) lose a few
-             * ulps to Chebyshev summation cancellation at subinterval
-             * endpoints, so X#4/5/6 use 5e-12 * fmax(1,|expected|).
+             * for |expected| <= 1; velocity components of the lunar
+             * librations (target 15 only) lose a few ulps to Chebyshev
+             * summation cancellation at subinterval endpoints, so target-15
+             * X#4/5/6 use 5e-12 * fmax(1,|expected|). All other bodies'
+             * velocities passed at 5e-13 (full 24-DE suite green).
              * (Observed: DE414 T15 X6 at JD 2380656.5 differs by 6.5e-13;
              * the binary/ascii coefficients provably evaluate to the
              * computed value in exact arithmetic.) */
             tolerance = 5e-13 * fmax(1.0, fabs(expected));
             if (target == 15 && component == 3) {
                 tolerance *= 1.0 + 100.0 * fabs(jd - 2440400.5) / 365.25;
-            } else if (component >= 4) {
+            } else if (target == 15 && component >= 4) {
                 tolerance = 5e-12 * fmax(1.0, fabs(expected));
             }
             if (!isfinite(actual) || fabs(actual - expected) > tolerance) {

@@ -50,6 +50,10 @@ typedef enum jpl_byte_order {
 
 /**
  * @brief JPL target identifiers used by jpl_get_state().
+ * @note JPL PLEPH/testpo number 3=Earth and 13=Earth-Moon barycenter
+ *       (see testeph.f PLEPH header), while this enum uses
+ *       3=JPL_EARTH_MOON_BARYCENTER and 13=JPL_EARTH; callers porting
+ *       JPL test cases must swap 3<->13 (as tests/test_testpo.c does).
  */
 typedef enum jpl_target {
     JPL_MERCURY = 1,             /**< @brief Mercury (1). */

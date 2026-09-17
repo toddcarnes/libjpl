@@ -50,15 +50,14 @@ typedef enum jpl_byte_order {
 
 /**
  * @brief JPL target identifiers used by jpl_get_state().
- * @note JPL PLEPH/testpo number 3=Earth and 13=Earth-Moon barycenter
- *       (see testeph.f PLEPH header), while this enum uses
- *       3=JPL_EARTH_MOON_BARYCENTER and 13=JPL_EARTH; callers porting
- *       JPL test cases must swap 3<->13 (as tests/test_testpo.c does).
+ * @note Numbering follows the JPL PLEPH/testpo convention (see the
+ *       SUBROUTINE PLEPH header in JPL testeph.f): 3 is Earth and
+ *       13 is the Earth-Moon barycenter.
  */
 typedef enum jpl_target {
     JPL_MERCURY = 1,             /**< @brief Mercury (1). */
     JPL_VENUS,                   /**< @brief Venus (2). */
-    JPL_EARTH_MOON_BARYCENTER,   /**< @brief Earth-Moon barycenter (3). */
+    JPL_EARTH,                   /**< @brief Earth (3), derived from barycenter and geocentric Moon. */
     JPL_MARS,                    /**< @brief Mars (4). */
     JPL_JUPITER,                 /**< @brief Jupiter (5). */
     JPL_SATURN,                  /**< @brief Saturn (6). */
@@ -68,7 +67,7 @@ typedef enum jpl_target {
     JPL_MOON,                    /**< @brief Moon (10), derived from barycenter and geocentric Moon. */
     JPL_SUN,                     /**< @brief Sun (11). */
     JPL_SOLAR_SYSTEM_BARYCENTER, /**< @brief Solar-system barycenter (12). */
-    JPL_EARTH,                   /**< @brief Earth (13), derived from barycenter and geocentric Moon. */
+    JPL_EARTH_MOON_BARYCENTER = 13, /**< @brief Earth-Moon barycenter (13). */
     JPL_NUTATIONS,               /**< @brief Nutations (14): longitude and obliquity, radians. */
     JPL_LIBRATIONS,              /**< @brief Librations (15): three lunar libration angles, radians. */
     JPL_SSB = 0                  /**< @brief Center alias: 0 means the solar-system barycenter. */

@@ -47,5 +47,5 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, double jd_tt, int planet,
     return JPL_OK;
 }
 jpl_status jpl_moon_position(const jpl_ephemeris *e, double jd_tt, double st[6]) {
-    return jpl_planet_position(e, jd_tt, 10, 13, st);
+    return jpl_planet_position(e, jd_tt, JPL_MOON, JPL_EARTH, st);
 }

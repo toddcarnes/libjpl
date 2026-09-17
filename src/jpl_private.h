@@ -12,6 +12,12 @@
 /* Two-part Julian-date split used by ERFA-style calls. */
 #define JPL_DJM0 2400000.5
 
+/* File-slot index (0-based) of the EMB coefficients in header.pointers.
+ * File slots follow coefficient order (Mercury..Sun, EMB third), while body
+ * codes follow PLEPH (Earth 3, EMB 13): the two coincide for every body
+ * except Earth/EMB, so the EMB slot is named explicitly. */
+#define JPL_FILE_SLOT_EMB 2
+
 /* Schwarzschild radius of the Sun in AU (ERFA ERFA_SRS = 1.97412574336e-8). */
 #define JPL_SRS_AU 1.97412574336e-8
 

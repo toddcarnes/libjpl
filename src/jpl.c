@@ -512,11 +512,14 @@ static jpl_status interpolate(const jpl_ephemeris *e, double jd, const jpl_point
 static jpl_status barycentric_state(const jpl_ephemeris *e, double jd, int target, double state[6]) {
     double moon[6]; size_t i; jpl_status status;
     if (target == JPL_SOLAR_SYSTEM_BARYCENTER) { memset(state, 0, 6 * sizeof *state); return JPL_OK; }
-    if (target >= JPL_MERCURY && target <= JPL_SUN && target != JPL_MOON)
+    /* Direct file slots cover Mercury..Sun except Earth (3, derived below)
+     * and the Moon (10, needs the EMB leg too). */
+    if (target >= JPL_MERCURY && target <= JPL_SUN && target != JPL_MOON && target != JPL_EARTH)
         return interpolate(e, jd, &e->header.pointers[target - 1], 3, state);
-    if (target != JPL_EARTH && target != JPL_MOON) return JPL_ERROR_ARGUMENT;
-    status = interpolate(e, jd, &e->header.pointers[JPL_EARTH_MOON_BARYCENTER - 1], 3, state);
+    if (target != JPL_EARTH && target != JPL_MOON && target != JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
+    status = interpolate(e, jd, &e->header.pointers[JPL_FILE_SLOT_EMB], 3, state);
     if (status != JPL_OK) return status;
+    if (target == JPL_EARTH_MOON_BARYCENTER) return JPL_OK;
     status = interpolate(e, jd, &e->header.pointers[JPL_MOON - 1], 3, moon);
     if (status != JPL_OK) return status;
     for (i = 0; i < 6; ++i) state[i] -= moon[i] / (1.0 + e->header.earth_moon_mass_ratio);
@@ -552,7 +555,8 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, double jd, int target
     size_t k;
     if (!e || !state) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject. */
-    if (target < 0 || target > JPL_EARTH || center < 0 || center > JPL_EARTH) return JPL_ERROR_ARGUMENT;
+    /* Bodies 0-13; JPL_EARTH_MOON_BARYCENTER (13) is the highest body code. */
+    if (target < 0 || target > JPL_EARTH_MOON_BARYCENTER || center < 0 || center > JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     /* Center evaluated once at reception jd; only the target leg iterates. */
     if (center == 0) memset(ctr, 0, sizeof ctr);
     else { st = barycentric_state(e, jd, center, ctr); if (st != JPL_OK) return st; }

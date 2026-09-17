@@ -129,12 +129,9 @@ int main(int argc, char **argv) {
             ++skipped_unsupported;
             continue;
         }
-        /* Center/body code translation. Modern testpo files follow the JPL
-         * PLEPH convention where 3 = Earth and 13 = Earth-Moon barycenter;
-         * libjpl's jpl_target enum has them transposed (3 = barycenter,
-         * 13 = Earth), so swap 3 <-> 13 on both target and center before
-         * calling jpl_get_state. SSB (12), nutations (14), librations (15)
-         * and all other codes pass through unchanged.
+        /* Body codes match the JPL PLEPH/testpo convention directly (Earth 3,
+         * EMB 13), so target/center pass through to jpl_get_state unmapped.
+         * SSB (12), nutations (14), librations (15) likewise need no mapping.
          * Nutation lines (T#14) additionally pack rates differently: JPL's
          * PLEPH returns dpsi, deps and their rates as RRD(1..4), i.e.
          * testpo X#3/4 are the *rates* of X#1/2, while libjpl exposes them
@@ -146,9 +143,7 @@ int main(int argc, char **argv) {
             continue;
         }
         {
-            long mapped_target = target == 3 ? 13 : target == 13 ? 3 : target;
-            long mapped_center = center == 3 ? 13 : center == 13 ? 3 : center;
-            if (mapped_center < 0 || mapped_center > 15) {
+            if (center < 0 || center > 15) {
                 ++skipped_unsupported;
                 continue;
             }
@@ -156,13 +151,13 @@ int main(int argc, char **argv) {
                 ++skipped_range;
                 continue;
             }
-            status = jpl_get_state(ephemeris, jd, (int)mapped_target, (int)mapped_center, state);
+            status = jpl_get_state(ephemeris, jd, (int)target, (int)center, state);
             if (status == JPL_ERROR_RANGE) {
                 /* Out-of-coverage lines (testpo files routinely span wider
                  * than a given binary) and angle targets missing from the
                  * binary (e.g. DE432/DE102/DE406 carry no nutations) both
                  * report RANGE; neither is a validation failure. */
-                if (mapped_target == 14 || mapped_target == 15) ++skipped_unsupported;
+                if (target == 14 || target == 15) ++skipped_unsupported;
                 else ++skipped_range;
                 continue;
             }

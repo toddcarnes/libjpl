@@ -80,6 +80,12 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, double jd_tdb,
 ## Non-goals
 
 - T#16 (lunar mantle angular velocity): no testpo coverage, not parsed,
-  not exposed.
+  not exposed. Surveyed 2026-09: all 31 local binaries carry either
+  `(0, 0, 0)` or `(start, 0, 0)` at the IPT-14 slot (e.g. `(939, 0, 0)`
+  on DE430t/DE432t, `(1019, 0, 0)` on DE431+), so no file has a complete
+  triple and there is nothing interpolatable. The nonzero start values
+  reserve the slot where the dataset would begin; if JPL ever ships
+  coefficients there, only the coeff/sub counts plus a new getter are
+  needed to expose it.
 - No ERFA fallback inside the getter; no change to `jpl_tt_to_tdb()`
   semantics; no filename-based detection anywhere.

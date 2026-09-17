@@ -453,6 +453,7 @@ git commit -m "fix: explicit test checks, register position tests, libm and warn
 Add to `jpl_planet_position` notes: `state[3..5] is the retarded-epoch velocity, passed through aberration unchanged.`
 - [ ] **Step 4: `README.md` fixes.** Change second snippet (lines 50-54) to use distinct variables:
 ```c
+jpl_ephemeris *de; /* from jpl_open(...) */
 double jd_tt = 2451545.0, jd_tdb = jpl_tt_to_tdb(jd_tt);
 double geo[6], app[6], lt;
 if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }

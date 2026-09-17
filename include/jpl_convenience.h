@@ -16,10 +16,12 @@ extern "C" {
  * @param state Output array of 6 slots receiving position (AU) + velocity
  *        (AU/day) in ICRS. DE records are already ICRS-equatorial, so no
  *        frame rotation is applied.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT for invalid planet/center
- *         or NULL handle/state, otherwise the underlying light-time/state
- *         error (RANGE/FORMAT/IO/MEMORY).
- */
+  * @return JPL_OK on success, JPL_ERROR_ARGUMENT for invalid planet/center
+  *         or NULL handle/state, otherwise the underlying light-time/state
+  *         error (RANGE/FORMAT/IO/MEMORY).
+  * @note If planet == center the result is the zero vector (JPL_OK).
+  *       Planet SSB (12) is rejected here; use jpl_get_state() for SSB geometry.
+  */
 jpl_status jpl_planet_position(const jpl_ephemeris *ephem, double jd_tt, int planet, int center, double state[6]);
 /**
  * @brief Apparent Moon position, Earth-centered ICRS.

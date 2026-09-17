@@ -1,4 +1,5 @@
 #include "jpl_convenience.h"
+#include "jpl_frames.h"
 #include "jpl_test_util.h"
 #include <assert.h>
 #include <math.h>
@@ -65,6 +66,73 @@ int main(void) {
          * velocities make the three legs consistent). */
         for (i=0;i<6;++i) sum[i]=moon_earth[i]+earth_sun[i];
         for (i=0;i<6;++i) assert(fabs(sum[i]-moon_sun[i]) < 1e-9);
+        jpl_close(e);
+        assert(remove(path)==0);
+    }
+    /* Reception-vs-emission regression: EMB y(t) has a quadratic Chebyshev
+     * term so observer velocity differs between tdb and tdb-lt. Sun seen
+     * from EMB gives a transverse (-x sight line, y velocity) aberration
+     * lever; the convenience output must match the reception-epoch
+     * jpl_apply_aberration_full composition within 1e-12 and differ from
+     * the stale emission-epoch composition. */
+    {
+        const char *path="jpl_test_convenience_epoch.bin";
+        unsigned char rec[JPL_TEST_RECORD_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        const double AU_KM=JPL_TEST_AU_KM, jd=2451545.5;
+        double tdb, lt, lt_state[6], vc_rec[6], vc_emi[6], expect[6], got[6];
+        double vsun[6], sdist;
+        size_t i;
+        test_mock_header(rec,2451545.0,2451546.0,1.0,2);
+        /* EMB (idx 2): start=3 (1-based), 3 coeffs/comp, 1 subinterval:
+         * x: c0,c1,c2 ; y: c0,c1,c2 ; z: c0,c1,c2  (9 doubles at idx 2..10) */
+        test_put_ptr(rec,2,3,3,1);
+        /* Sun (idx 10): zero coeffs at different slot; use start=12, 2 coeffs, 1 sub */
+        test_put_ptr(rec,10,12,2,1);
+        f=fopen(path,"wb"); assert(f); assert(fwrite(rec,1,sizeof rec,f)==sizeof rec);
+        memset(rec,0,sizeof rec); test_put_f64(rec,1.0); test_put_f64(rec+8,2.0);
+        assert(fwrite(rec,1,sizeof rec,f)==sizeof rec);
+        memset(rec,0,sizeof rec);
+        test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
+        /* EMB x coeffs (record doubles idx 2,3,4 -> bytes 16,24,32):
+         * constant AU_KM in x, zero slope/curve. */
+        test_put_f64(rec+2*8,AU_KM); test_put_f64(rec+3*8,0.0); test_put_f64(rec+4*8,0.0);
+        /* EMB y coeffs (idx 5,6,7): c0=0, c1 = slope, c2 = curve (both km).
+         * 3 coeffs give time-varying velocity; 2 would be constant. */
+        { double slope=0.5*AU_KM; double curve=0.25*AU_KM;
+          test_put_f64(rec+5*8,0.0); test_put_f64(rec+6*8,slope); test_put_f64(rec+7*8,curve); }
+        /* EMB z coeffs (idx 8,9,10): zeros. */
+        test_put_f64(rec+8*8,0.0); test_put_f64(rec+9*8,0.0); test_put_f64(rec+10*8,0.0);
+        /* Sun coeffs (idx 11..16 for 3 comps x 2 coeffs): zeros. */
+        test_put_f64(rec+11*8,0.0); test_put_f64(rec+12*8,0.0);
+        test_put_f64(rec+13*8,0.0); test_put_f64(rec+14*8,0.0);
+        test_put_f64(rec+15*8,0.0); test_put_f64(rec+16*8,0.0);
+        assert(fwrite(rec,1,sizeof rec,f)==sizeof rec); assert(fclose(f)==0);
+        assert(jpl_open(path,&e)==JPL_OK);
+        tdb = jpl_tt_to_tdb(jd);
+        /* Convenience under test: Sun seen from EMB. */
+        assert(jpl_planet_position(e,jd,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,got)==JPL_OK);
+        /* Manual composition with reception-epoch observer velocity. */
+        assert(jpl_get_state_lighttime(e,tdb,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,lt_state,&lt)==JPL_OK);
+        assert(jpl_get_state(e,tdb,JPL_EARTH_MOON_BARYCENTER,0,vc_rec)==JPL_OK);
+        assert(jpl_get_state(e,tdb-lt,JPL_EARTH_MOON_BARYCENTER,0,vc_emi)==JPL_OK);
+        /* Observer velocities must actually differ (else test is vacuous). */
+        { double dv=0.0; for(i=3;i<6;++i){double d=vc_rec[i]-vc_emi[i]; dv+=d*d;} dv=sqrt(dv);
+          assert(dv > 1e-9); }
+        assert(jpl_get_state(e,tdb,JPL_EARTH_MOON_BARYCENTER,JPL_SUN,vsun)==JPL_OK);
+        sdist = test_norm3(vsun);
+        assert(sdist > 0.5);
+        { double vobs[3]={vc_rec[3],vc_rec[4],vc_rec[5]};
+          jpl_apply_aberration_full(lt_state,vobs,sdist,expect); }
+        for(i=0;i<6;++i) assert(fabs(got[i]-expect[i]) < 1e-12);
+        /* And it must NOT match the stale emission-epoch composition. */
+        { double stale[6], vobs_e[3]={vc_emi[3],vc_emi[4],vc_emi[5]}, mdiff=0.0;
+          jpl_apply_aberration_full(lt_state,vobs_e,sdist,stale);
+          for(i=0;i<6;++i){double d=fabs(got[i]-stale[i]); if(d>mdiff) mdiff=d;}
+          assert(mdiff > 1e-9); }
+        /* NULL converter guards: must not crash. */
+        jpl_au_per_day_to_km_per_s(NULL,got);
+        jpl_au_per_day_to_km_per_s(vc_rec,NULL);
+        jpl_km_to_au(1.0,NULL);
         jpl_close(e);
         assert(remove(path)==0);
     }

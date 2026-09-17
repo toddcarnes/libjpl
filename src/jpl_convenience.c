@@ -1,12 +1,14 @@
 #include "jpl_convenience.h"
 #include "jpl_private.h"
 #include "jpl_frames.h"
+#include <math.h>
 #include <string.h>
 /* DE coefficient records are Cartesian in the ICRS equatorial frame, so
  * jpl_get_state output is already ICRS: no rotation is applied here. The
  * frames module stays for user-side ecliptic conversion. */
 void jpl_au_per_day_to_km_per_s(const double v[3], double o[3]) {
     const double K = JPL_AU_KM/JPL_DAYSEC;
+    if (!v || !o) return;
     o[0]=v[0]*K; o[1]=v[1]*K; o[2]=v[2]*K;
 }
 void jpl_km_to_au(double km, double *au) { if(au) *au = km/JPL_AU_KM; }
@@ -22,13 +24,25 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, double jd_tt, int planet,
     tdb = jpl_tt_to_tdb(jd_tt);
     s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);
     if(s!=JPL_OK) return s;
-    /* Aberration needs the observer (center-body) velocity at the retarded
-     * emission epoch, which the light-time call above does not return, so
-     * fetch it with one extra state evaluation at tdb-lt. */
-    if(center!=0){ s=jpl_get_state(e, tdb-lt, center, 0, cst); if(s!=JPL_OK) return s;
-        vobs[0]=cst[3];vobs[1]=cst[4];vobs[2]=cst[5];
-    } else { vobs[0]=vobs[1]=vobs[2]=0.0; }
-    jpl_apply_aberration(tmp, vobs, tmp);
+    /* Aberration needs the observer (center-body) barycentric velocity at
+     * reception (tdb); stellar aberration is a reception phenomenon.
+     * Sun distance for the <=0.4uas Klioner term comes from one extra
+     * evaluation (skipped when the observer is the Sun itself). */
+    if (center != 0) {
+        s = jpl_get_state(e, tdb, center, 0, cst);
+        if (s != JPL_OK) return s;
+        vobs[0] = cst[3]; vobs[1] = cst[4]; vobs[2] = cst[5];
+    } else { vobs[0] = vobs[1] = vobs[2] = 0.0; } /* center 0 (SSB): jpl_get_state(e,tdb,0,0) is zeros; keep zeros. */
+    if (center != JPL_SUN) {
+        double sun_obs[6];
+        s = jpl_get_state(e, tdb, center, JPL_SUN, sun_obs);
+        if (s == JPL_OK) {
+            double sdist = sqrt(sun_obs[0]*sun_obs[0] + sun_obs[1]*sun_obs[1] + sun_obs[2]*sun_obs[2]);
+            jpl_apply_aberration_full(tmp, vobs, sdist, tmp);
+        } else return s;
+    } else {
+        jpl_apply_aberration(tmp, vobs, tmp);
+    }
     memcpy(st, tmp, sizeof tmp);
     return JPL_OK;
 }

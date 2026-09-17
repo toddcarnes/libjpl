@@ -16,8 +16,9 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, double jd_tt, int planet,
     double tdb, lt, tmp[6], vobs[3], cst[6];
     jpl_status s;
     if(!e||!st) return JPL_ERROR_ARGUMENT;
-    /* Planets 1-9, Moon 10, Sun 11, Earth 13. Reject SSB 12 and the
-     * nutation (14) / libration (15) sensitivities, 0, and out-of-range. */
+    /* Targets 1-11 (Mercury..Sun, incl. Earth 3) or EMB 13. Reject SSB 12
+     * and the nutation (14) / libration (15) sensitivities, 0, and
+     * out-of-range. */
     if(!((planet>=1&&planet<=11)||planet==13)) return JPL_ERROR_ARGUMENT;
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
     if(center<0||center>13) return JPL_ERROR_ARGUMENT;

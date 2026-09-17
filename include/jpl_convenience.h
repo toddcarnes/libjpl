@@ -8,8 +8,8 @@ extern "C" {
  * @brief Apparent planet position (light-time + stellar aberration, ICRS).
  * @param ephem Open handle.
  * @param jd_tt TT Julian date.
- * @param planet Target body: 1-11 or 13 (planets 1-9, EMB 3, Moon 10,
- *        Sun 11, Earth 13; rejects SSB 12, nutations 14, librations 15,
+ * @param planet Target body: 1-11 or 13 (planets incl. Earth 3, Moon 10,
+ *        Sun 11, EMB 13; rejects SSB 12, nutations 14, librations 15,
  *        and out-of-range values).
  * @param center Center body: 0 (SSB) or 1-13 (rejects negatives and
  *        anything above 13).

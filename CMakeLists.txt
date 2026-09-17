@@ -33,14 +33,13 @@ file(GLOB ERFA_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/*
 # future upstream file (e.g. t_erfa_c_foo.c) cannot slip into the library.
 list(FILTER ERFA_SOURCES EXCLUDE REGEX "/t_erfa_c(_extra)?\\.c$")
 target_sources(jpl PRIVATE ${ERFA_SOURCES})
-target_include_directories(jpl PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
+target_include_directories(jpl PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
 # NOTE: src/erfa is intentionally NOT installed with the 3 public headers
 # below. Downstream users never need erfa.h (frames API hides it), so the
 # PUBLIC include stays build-interface-only. Revisit only if a public header
 # ever includes erfa.h.
 target_sources(jpl PRIVATE src/jpl_frames.c)
 target_sources(jpl PRIVATE src/jpl_convenience.c)
-target_include_directories(jpl PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 # erfaversion.c expects version macros from generated config.h (see configure.ac
 # in the ERFA release); define them here since we build without autotools.
 target_compile_definitions(jpl PRIVATE
@@ -57,6 +56,7 @@ if(MSVC)
 else()
     target_compile_options(jpl PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+target_link_libraries(jpl PRIVATE $<$<NOT:$<C_COMPILER_ID:MSVC>>:m>)
 
 include(GNUInstallDirs)
 install(TARGETS jpl EXPORT libjplTargets
@@ -88,10 +88,12 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_aberration_tests tests/test_aberration.c)
     target_link_libraries(jpl_aberration_tests PRIVATE jpl)
     target_compile_features(jpl_aberration_tests PRIVATE c_std_17)
+    target_include_directories(jpl_aberration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
     add_test(NAME jpl_aberration COMMAND jpl_aberration_tests)
     add_executable(jpl_frames_tests tests/test_frames.c)
     target_link_libraries(jpl_frames_tests PRIVATE jpl)
     target_compile_features(jpl_frames_tests PRIVATE c_std_17)
+    target_include_directories(jpl_frames_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
     add_test(NAME jpl_frames COMMAND jpl_frames_tests)
     add_executable(jpl_convenience_tests tests/test_convenience.c)
     target_link_libraries(jpl_convenience_tests PRIVATE jpl)
@@ -110,7 +112,7 @@ if(LIBJPL_BUILD_TESTS)
     # directory containing DE441.eph, exercise the reader against it as an
     # integration test. Evaluated at configure time: re-run cmake -S/-B
     # after setting JPLEPH for newly added data to register.
-    if(DEFINED ENV{JPLEPH} AND EXISTS "$ENV{JPLEPH}/DE441.eph")
+    if(NOT "$ENV{JPLEPH}" STREQUAL "" AND EXISTS "$ENV{JPLEPH}/DE441.eph")
         add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
         target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
         target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)
@@ -124,4 +126,19 @@ if(LIBJPL_BUILD_TESTS)
         add_test(NAME jpl_all_ephemerides
             COMMAND jpl_all_ephemerides_tests "$ENV{JPLEPH}")
     endif()
+
+    # Warning flags for all unit-test executables (incl. integration ones
+    # registered above). The NOT TARGET guard keeps this safe if a target
+    # is ever removed (e.g. jpl_position_tests, whose fate Task 8 decides).
+    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_position_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+        if(NOT TARGET ${tgt})
+            continue()
+        endif()
+        if(MSVC)
+            target_compile_definitions(${tgt} PRIVATE _CRT_SECURE_NO_WARNINGS)
+            target_compile_options(${tgt} PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(${tgt} PRIVATE -Wall -Wextra -Wpedantic)
+        endif()
+    endforeach()
 endif()

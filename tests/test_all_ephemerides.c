@@ -22,7 +22,8 @@ int main(int argc, char **argv) {
         const jpl_header *header;
         jpl_status status;
         double *record;
-        if (snprintf(path, sizeof path, "%s/%s", argv[1], filenames[i]) < 0 || strlen(path) >= sizeof path) return 2;
+        int n = snprintf(path, sizeof path, "%s/%s", argv[1], filenames[i]);
+        if (n < 0 || (size_t)n >= sizeof path) return 2;
         status = jpl_open(path, &ephemeris);
         if (status != JPL_OK) {
             fprintf(stderr, "%s: %s\n", filenames[i], jpl_status_string(status));

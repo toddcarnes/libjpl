@@ -6,12 +6,20 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
 #define JPL_TEST_RECORD_BYTES 2856
 #define JPL_TEST_AU_KM 149597870.7
 #define JPL_TEST_MASS_RATIO 81.30056
+#define JPL_TEST_C_AU_PER_DAY 173.144632684
+#define JPL_TEST_CHECK(cond) do { \
+    if (!(cond)) { \
+        fprintf(stderr, "CHECK FAILED %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+        return 1; \
+    } \
+} while (0)
 
 static inline void test_put_u32(unsigned char *at, uint32_t v) {
     at[0] = (unsigned char)v;
@@ -52,6 +60,23 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
     test_put_u32(rec + 2676, nconst);
     test_put_f64(rec + 2680, JPL_TEST_AU_KM);
     test_put_f64(rec + 2688, JPL_TEST_MASS_RATIO);
+}
+
+/* BE variants to stop hand-rolled offsets. */
+static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
+    test_put_u32be(rec + 2696 + idx * 12, start);
+    test_put_u32be(rec + 2696 + idx * 12 + 4, coeff);
+    test_put_u32be(rec + 2696 + idx * 12 + 8, sub);
+}
+
+static inline void test_mock_header_be(unsigned char *rec, double start_jd, double end_jd,
+                                       double step_days, uint32_t nconst) {
+    test_put_f64be(rec + 2652, start_jd);
+    test_put_f64be(rec + 2660, end_jd);
+    test_put_f64be(rec + 2668, step_days);
+    test_put_u32be(rec + 2676, nconst);
+    test_put_f64be(rec + 2680, JPL_TEST_AU_KM);
+    test_put_f64be(rec + 2688, JPL_TEST_MASS_RATIO);
 }
 
 static inline double test_norm3(const double v[3]) {

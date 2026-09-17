@@ -22,7 +22,8 @@ int main(int argc, char **argv) {
         parsed = sscanf(line, "%79s%79s%lf%d%d%d%lf", label, date, &jd, &target, &center, &component, &expected);
         if (parsed != 7) {
             if (sscanf(line, "%79s%d%d%d%lf", label, &target, &center, &component, &expected) != 5) continue;
-            jd = strtod(strrchr(label, '-'), NULL);
+            jd = 0.0;
+            { const char *dash = strrchr(label, '-'); if (dash) jd = strtod(dash, NULL); }
         }
         if (jd < header->start_jd || jd > header->end_jd) continue;
         if ((in_range_lines++ % 32) != 0) continue;

@@ -1,14 +1,13 @@
 #include "jpl.h"
 #include "jpl_test_util.h"
-#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 
 int main(void) {
     double st[6] = {0};
-    assert(jpl_get_state_lighttime(NULL, 2451545.0, JPL_EARTH, JPL_SUN, st, NULL) == JPL_ERROR_ARGUMENT);
+    JPL_TEST_CHECK(jpl_get_state_lighttime(NULL, 2451545.0, JPL_EARTH, JPL_SUN, st, NULL) == JPL_ERROR_ARGUMENT);
     /* Nutations/librations are angles: no light-time meaning, must reject. */
-    assert(jpl_get_state_lighttime(NULL, 2451545.0, JPL_NUTATIONS, 0, st, NULL) == JPL_ERROR_ARGUMENT);
+    JPL_TEST_CHECK(jpl_get_state_lighttime(NULL, 2451545.0, JPL_NUTATIONS, 0, st, NULL) == JPL_ERROR_ARGUMENT);
     /* Mock ephemeris: EMB=(1 AU,0,0), Sun=origin, zero velocities.
      * Light-time must converge to range/c with velocity from Chebyshev. */
     {
@@ -24,31 +23,33 @@ int main(void) {
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 2, 6, 1, 1);   /* EMB: slots 6..8, one coeff */
         test_put_ptr(rec, 10, 9, 1, 1);  /* Sun: slots 9..11, one coeff */
-        f = fopen(path, "wb"); assert(f);
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        f = fopen(path, "wb"); JPL_TEST_CHECK(f);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         memset(rec, 0, sizeof rec);
         test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         memset(rec, 0, sizeof rec);
         test_put_f64(rec + 0 * 8, 2451545.0);
         test_put_f64(rec + 1 * 8, 2451546.0);
         test_put_f64(rec + 5 * 8, 1.0); /* EMB x = 1 AU at slot 6, rest zero */
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        assert(fclose(f) == 0);
-        assert(jpl_open(path, &e) == JPL_OK);
-        assert(jpl_get_state(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, geo) == JPL_OK);
-        assert(jpl_get_state_lighttime(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, app, &lt) == JPL_OK);
-        assert(lt > 0.0);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        JPL_TEST_CHECK(fclose(f) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_NUTATIONS, 0, app, &lt) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_LIBRATIONS, 0, app, &lt) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, geo) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, app, &lt) == JPL_OK);
+        JPL_TEST_CHECK(lt > 0.0);
         range = test_norm3(geo);
-        expect_lt = range / 173.144632684;
+        expect_lt = range / JPL_TEST_C_AU_PER_DAY;
         /* Converged light-time matches range/c of the geometric vector.
          * Zero test velocities make the retarded epoch coincide with the
          * geometric one, so apparent must equal geometric exactly here. */
-        assert(fabs(lt - expect_lt) < 1e-12);
-        for (i = 0; i < 6; ++i) assert(app[i] == geo[i]);
-        for (i = 0; i < 6; ++i) assert(isfinite(app[i]));
+        JPL_TEST_CHECK(fabs(lt - expect_lt) < 1e-12);
+        for (i = 0; i < 6; ++i) JPL_TEST_CHECK(app[i] == geo[i]);
+        for (i = 0; i < 6; ++i) JPL_TEST_CHECK(isfinite(app[i]));
         jpl_close(e);
-        assert(remove(path) == 0);
+        JPL_TEST_CHECK(remove(path) == 0);
     }
     /* Non-zero center velocity: apparent must hold center at reception.
      * Correct: target(jd-lt) - center(jd); old bug: target(jd-lt) - center(jd-lt). */
@@ -64,11 +65,11 @@ int main(void) {
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 2, 6, 2, 1);   /* EMB: slots 6..11, two coeffs */
         test_put_ptr(rec, 10, 12, 2, 1); /* Sun: slots 12..17, two coeffs */
-        f = fopen(path, "wb"); assert(f);
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        f = fopen(path, "wb"); JPL_TEST_CHECK(f);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         memset(rec, 0, sizeof rec);
         test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         memset(rec, 0, sizeof rec);
         test_put_f64(rec + 0 * 8, 2451545.0);
         test_put_f64(rec + 1 * 8, 2451546.0);
@@ -78,21 +79,21 @@ int main(void) {
         /* Sun x(t): linear slope 5e5 km per unit norm (~0.0067 AU/day). */
         test_put_f64(rec + 11 * 8, 0.0);
         test_put_f64(rec + 12 * 8, 500000.0);
-        assert(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        assert(fclose(f) == 0);
-        assert(jpl_open(path, &e) == JPL_OK);
-        assert(jpl_get_state_lighttime(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, app, &lt) == JPL_OK);
-        assert(lt > 0.0);
+        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
+        JPL_TEST_CHECK(fclose(f) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, app, &lt) == JPL_OK);
+        JPL_TEST_CHECK(lt > 0.0);
         /* jpl_get_state already returns AU, so no further scaling here. */
-        assert(jpl_get_state(e, jd - lt, JPL_EARTH_MOON_BARYCENTER, 0, tgt_lt) == JPL_OK);
-        assert(jpl_get_state(e, jd, JPL_SUN, 0, ctr_now) == JPL_OK);
-        assert(jpl_get_state(e, jd - lt, JPL_SUN, 0, ctr_lt) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, jd - lt, JPL_EARTH_MOON_BARYCENTER, 0, tgt_lt) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, jd, JPL_SUN, 0, ctr_now) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, jd - lt, JPL_SUN, 0, ctr_lt) == JPL_OK);
         for (i = 0; i < 6; ++i) expect[i] = tgt_lt[i] - ctr_now[i];
         for (i = 0; i < 6; ++i) wrong[i] = tgt_lt[i] - ctr_lt[i];
-        for (i = 0; i < 6; ++i) assert(fabs(app[i] - expect[i]) < 1e-9);
-        assert(fabs(app[0] - wrong[0]) > 1e-9);
+        for (i = 0; i < 6; ++i) JPL_TEST_CHECK(fabs(app[i] - expect[i]) < 1e-9);
+        JPL_TEST_CHECK(fabs(app[0] - wrong[0]) > 1e-9);
         jpl_close(e);
-        assert(remove(path) == 0);
+        JPL_TEST_CHECK(remove(path) == 0);
     }
     puts("lighttime tests passed");
     return 0;

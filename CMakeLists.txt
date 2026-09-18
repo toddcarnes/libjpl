@@ -118,6 +118,25 @@ if(LIBJPL_BUILD_TESTS)
     option(LIBJPL_FETCH_EPHEMERIDES "Download JPL DE440/DE440t validation data (approx 210 MB)" OFF)
     set(LIBJPL_EPHEMERIS_DIR "${CMAKE_CURRENT_BINARY_DIR}/ephemeris" CACHE PATH "Downloaded/located JPL test data")
 
+    # Reads one "<key>=<value>" pair from tests/data/MANIFEST.txt, which is
+    # the single authoritative source for download URLs/sizes/hashes (no
+    # such literal may live elsewhere in this file). Configure fails with
+    # FATAL_ERROR naming the missing key so a manifest regression breaks
+    # loudly instead of downloading from an empty URL.
+    function(libjpl_manifest_value out_var key)
+        string(REPLACE "." "\\." escaped_key "${key}")
+        file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt" manifest_lines)
+        foreach(manifest_line IN LISTS manifest_lines)
+            if(manifest_line MATCHES "^${escaped_key}=(.+)$")
+                set(${out_var} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+        message(FATAL_ERROR
+            "libjpl: key '${key}' missing from tests/data/MANIFEST.txt; "
+            "restore the machine-readable download block.")
+    endfunction()
+
     # Resolves one fetch-tier file to a usable path: prefers the maintainer-local
     # copy (<src_dir>/<src_name>), else downloads <url> to
     # ${LIBJPL_EPHEMERIS_DIR}/<dest_name> and verifies it per
@@ -180,18 +199,20 @@ if(LIBJPL_BUILD_TESTS)
     if(LIBJPL_FETCH_EPHEMERIDES)
         file(MAKE_DIRECTORY "${LIBJPL_EPHEMERIS_DIR}")
 
-        # Manifest-pinned values (tests/data/MANIFEST.txt, verified 2026-09-19).
+        # Download values come from tests/data/MANIFEST.txt (verified
+        # 2026-09-19); CMakeLists carries no literals for them.
         # Binaries carry sizes only: local checksums.txt hashes describe
         # different spans and MUST NOT be used (see the manifest).
-        set(LIBJPL_DE440_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/linux_p1550p2650.440")
-        set(LIBJPL_DE440_SIZE 102272352)
-        set(LIBJPL_DE440T_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/linux_p1550p2650.440t")
-        set(LIBJPL_DE440T_SIZE 112720608)
-        set(LIBJPL_TESTPO440_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/testpo.440")
-        set(LIBJPL_TESTPO440_SHA256 "45084a7f406b8e41032e7d99dd8042d4df97a9f752a68c06d1a27af16693429f")
-        set(LIBJPL_TESTPO440T_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/testpo.440t")
-        set(LIBJPL_TESTPO440T_SHA256 "9801f019be5c335d1e22697ea9fb5888becfd0c623a50c3372fe4491c7a3f2ad")
-        set(LIBJPL_TESTPO_SIZE 858238)
+        libjpl_manifest_value(LIBJPL_DE440_URL "de440.bin.url")
+        libjpl_manifest_value(LIBJPL_DE440_SIZE "de440.bin.size")
+        libjpl_manifest_value(LIBJPL_DE440T_URL "de440t.bin.url")
+        libjpl_manifest_value(LIBJPL_DE440T_SIZE "de440t.bin.size")
+        libjpl_manifest_value(LIBJPL_TESTPO440_URL "testpo.440.url")
+        libjpl_manifest_value(LIBJPL_TESTPO440_SHA256 "testpo.440.sha256")
+        libjpl_manifest_value(LIBJPL_TESTPO440T_URL "testpo.440t.url")
+        libjpl_manifest_value(LIBJPL_TESTPO440T_SHA256 "testpo.440t.sha256")
+        libjpl_manifest_value(LIBJPL_TESTPO_SIZE "testpo.440.size")
+        libjpl_manifest_value(LIBJPL_TESTPO440T_SIZE "testpo.440t.size")
 
         if(NOT "$ENV{JPLEPH}" STREQUAL "")
             set(LIBJPL_JPLEPH_SRC_DIR "$ENV{JPLEPH}")
@@ -207,37 +228,25 @@ if(LIBJPL_BUILD_TESTS)
         libjpl_resolve_fetch_file(LIBJPL_TESTPO_440_FILE "${JPL_TESTPO_DIR}" "testpo.440"
             "${LIBJPL_TESTPO440_URL}" "testpo.440" "${LIBJPL_TESTPO_SIZE}" "${LIBJPL_TESTPO440_SHA256}")
         libjpl_resolve_fetch_file(LIBJPL_TESTPO_440T_FILE "${JPL_TESTPO_DIR}" "testpo.440t"
-            "${LIBJPL_TESTPO440T_URL}" "testpo.440t" "${LIBJPL_TESTPO_SIZE}" "${LIBJPL_TESTPO440T_SHA256}")
+            "${LIBJPL_TESTPO440T_URL}" "testpo.440t" "${LIBJPL_TESTPO440T_SIZE}" "${LIBJPL_TESTPO440T_SHA256}")
 
-        # Fetch-tier reference suites (DE440/DE440t) use fixed targets/tests,
-        # so the legacy sweep below skips these numbers. Resolution above
-        # FATAL_ERROR'd unless both files of each pair exist.
-        if(NOT TARGET jpl_testpo_440_tests)
-            add_executable(jpl_testpo_440_tests tests/test_testpo.c)
-            target_link_libraries(jpl_testpo_440_tests PRIVATE jpl)
-            target_compile_features(jpl_testpo_440_tests PRIVATE c_std_17)
-            if(MSVC)
-                target_compile_definitions(jpl_testpo_440_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
-                target_compile_options(jpl_testpo_440_tests PRIVATE /W4 /permissive-)
-            else()
-                target_compile_options(jpl_testpo_440_tests PRIVATE -Wall -Wextra -Wpedantic)
-            endif()
+        # Single testpo runner: one jpl_testpo_tests binary serves every
+        # DE registration below (fixed 440/440t plus the sweep). The
+        # duplicate-name skip in the sweep loop (440/440t) guards add_test
+        # name collision, which CMake treats as FATAL_ERROR.
+        add_executable(jpl_testpo_tests tests/test_testpo.c)
+        target_link_libraries(jpl_testpo_tests PRIVATE jpl)
+        target_compile_features(jpl_testpo_tests PRIVATE c_std_17)
+        if(MSVC)
+            target_compile_definitions(jpl_testpo_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+            target_compile_options(jpl_testpo_tests PRIVATE /W4 /permissive-)
+        else()
+            target_compile_options(jpl_testpo_tests PRIVATE -Wall -Wextra -Wpedantic)
         endif()
         add_test(NAME jpl_testpo_440
-            COMMAND jpl_testpo_440_tests "${LIBJPL_DE440_EPH}" "${LIBJPL_TESTPO_440_FILE}")
-        if(NOT TARGET jpl_testpo_440t_tests)
-            add_executable(jpl_testpo_440t_tests tests/test_testpo.c)
-            target_link_libraries(jpl_testpo_440t_tests PRIVATE jpl)
-            target_compile_features(jpl_testpo_440t_tests PRIVATE c_std_17)
-            if(MSVC)
-                target_compile_definitions(jpl_testpo_440t_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
-                target_compile_options(jpl_testpo_440t_tests PRIVATE /W4 /permissive-)
-            else()
-                target_compile_options(jpl_testpo_440t_tests PRIVATE -Wall -Wextra -Wpedantic)
-            endif()
-        endif()
+            COMMAND jpl_testpo_tests "${LIBJPL_DE440_EPH}" "${LIBJPL_TESTPO_440_FILE}")
         add_test(NAME jpl_testpo_440t
-            COMMAND jpl_testpo_440t_tests "${LIBJPL_DE440T_EPH}" "${LIBJPL_TESTPO_440T_FILE}")
+            COMMAND jpl_testpo_tests "${LIBJPL_DE440T_EPH}" "${LIBJPL_TESTPO_440T_FILE}")
     endif()
 
     # test_positions.c was superseded by the testpo harness below (Task 8):
@@ -279,35 +288,26 @@ if(LIBJPL_BUILD_TESTS)
         endif()
     endif()
 
-    # Fetch-tier 31-file sweep: maintainer-local binaries in JPLEPH paired with
-    # testpo files in JPL_TESTPO_DIR (assigned once above; env override else
-    # the local default). Gated on the option so plain configures never scan;
-    # per-file EXISTS checks let a partial local dir compose with the
-    # downloads resolved above.
+    # Fetch-tier sweep over the remaining testpo files: maintainer-local
+    # binaries in JPLEPH paired with testpo files in JPL_TESTPO_DIR
+    # (assigned once above; env override else the local default). Gated on
+    # the option so plain configures never scan; per-file EXISTS checks let
+    # a partial local dir compose with the downloads resolved above. All
+    # registrations share the single jpl_testpo_tests binary built above.
     if(LIBJPL_FETCH_EPHEMERIDES)
         file(GLOB JPL_TESTPO_FILES "${JPL_TESTPO_DIR}/testpo.*")
         foreach(testpo_file IN LISTS JPL_TESTPO_FILES)
             get_filename_component(testpo_name "${testpo_file}" NAME)
             string(REGEX REPLACE "^testpo\\." "" testpo_num "${testpo_name}")
-            # 440/440t are registered by the fixed fetch-tier block above.
+            # 440/440t are registered by the fixed fetch-tier block above;
+            # skipping them here avoids an add_test name collision
+            # (duplicate add_test names are FATAL_ERROR).
             if(testpo_num STREQUAL "440" OR testpo_num STREQUAL "440t")
                 continue()
             endif()
             if(testpo_num MATCHES "^[0-9]+t?$" AND EXISTS "$ENV{JPLEPH}/DE${testpo_num}.eph")
-                set(testpo_target "jpl_testpo_${testpo_num}_tests")
-                if(NOT TARGET ${testpo_target})
-                    add_executable(${testpo_target} tests/test_testpo.c)
-                    target_link_libraries(${testpo_target} PRIVATE jpl)
-                    target_compile_features(${testpo_target} PRIVATE c_std_17)
-                    if(MSVC)
-                        target_compile_definitions(${testpo_target} PRIVATE _CRT_SECURE_NO_WARNINGS)
-                        target_compile_options(${testpo_target} PRIVATE /W4 /permissive-)
-                    else()
-                        target_compile_options(${testpo_target} PRIVATE -Wall -Wextra -Wpedantic)
-                    endif()
-                endif()
                 add_test(NAME jpl_testpo_${testpo_num}
-                    COMMAND ${testpo_target} "$ENV{JPLEPH}/DE${testpo_num}.eph" "${testpo_file}")
+                    COMMAND jpl_testpo_tests "$ENV{JPLEPH}/DE${testpo_num}.eph" "${testpo_file}")
             endif()
         endforeach()
     endif()
@@ -315,7 +315,7 @@ if(LIBJPL_BUILD_TESTS)
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.
-    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_tt_tdb_tests jpl_fixture_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_tt_tdb_tests jpl_fixture_tests jpl_testpo_tests jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()

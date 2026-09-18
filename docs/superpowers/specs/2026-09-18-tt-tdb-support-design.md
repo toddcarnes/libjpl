@@ -68,6 +68,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, double jd_tdb,
   `seconds`, X#2 vs `rate_per_day`) instead of `skipped_unsupported`;
   tolerance absolute ~1e-13 following `testeph.f` practice, pinned
   exactly during implementation against the five `*t` files.
+  Pinned at implementation as 1e-12 * fmax(1, |expected|) (see tests/test_testpo.c T#17 routing); all five *t suites validate with zero MISMATCH at this envelope.
 - New `tests/test_tt_tdb.c` (registered in CMakeLists with the same
   warning flags as other suites): absent-dataset error on a non-`t`
   mock (`JPL_ERROR_RANGE` + `jpl_has_tt_tdb() == 0`, no large binary

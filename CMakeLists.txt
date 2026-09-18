@@ -249,9 +249,9 @@ if(LIBJPL_BUILD_TESTS)
     # download-only build still validates real data. jpl_real_ephemeris is the
     # DENUM-agnostic smoke test (header sanity + record read + finite state)
     # against the resolved DE440 binary; jpl_all_ephemerides scans the
-    # resolved download dir (download-only builds: the DE440/DE440t subset —
+    # resolved download dir (download-only builds: the DE440/DE440t subset --
     # the sweep binary skips absent files, failing only when none opened;
-    # local-redirect builds leave the resolved dir empty — GLOB finds nothing
+    # local-redirect builds leave the resolved dir empty -- GLOB finds nothing
     # and only jpl_all_ephemerides_local registers); a second registration
     # scans the maintainer-local JPLEPH dir when set.
     if(LIBJPL_FETCH_EPHEMERIDES)

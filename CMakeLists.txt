@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.1.0 LANGUAGES C)
+project(libjpl VERSION 0.2.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.

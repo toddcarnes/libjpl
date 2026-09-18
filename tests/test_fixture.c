@@ -37,9 +37,14 @@
  * Uses explicit checks (fprintf + return), never assert().
  */
 
-#define FIXTURE_CHECK(cond) do { if (!(cond)) { \
-    fprintf(stderr, "CHECK FAILED %s:%d: %s\n", __FILE__, __LINE__, #cond); \
-    if (file) fclose(file); jpl_close(ephemeris); return 1; } } while (0)
+#define FIXTURE_CHECK(cond) do { \
+    if (!(cond)) { \
+        fprintf(stderr, "CHECK FAILED %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+        if (file) fclose(file); \
+        jpl_close(ephemeris); \
+        return 1; \
+    } \
+} while (0)
 
 static int parse_long(const char *text, long *out) {
     char *end = NULL;

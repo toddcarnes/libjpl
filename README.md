@@ -84,13 +84,15 @@ from JPL (`https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/` and
 `.../de440t/`, filenames `linux_p1550p2650.440[t]` plus co-located
 `testpo.440[t]`), verifies them per `tests/data/MANIFEST.txt` (exact byte
 size for binaries, SHA-256 for testpo), and registers the integration
-plus reference suites (`jpl_real_ephemeris`, `jpl_all_ephemerides`,
-`jpl_all_ephemerides_local` (only when `JPLEPH` is set),
+plus reference suites (`jpl_real_ephemeris`,
+`jpl_all_ephemerides` (download-only builds, when the resolved download
+dir is non-empty), `jpl_all_ephemerides_local` (only when `JPLEPH` is set),
 `jpl_testpo_440`, `jpl_testpo_440t`).
 
 Manifest updates on JPL re-cuts: refresh the changed URL/size/hash in
-`tests/data/MANIFEST.txt`, mirror the value in `CMakeLists.txt`, and
-re-run configure -- any mismatch fails configure naming file, expected vs
+`tests/data/MANIFEST.txt` (the single source CMake reads at configure
+time; `CMakeLists.txt` carries no download literals) and re-run
+configure -- any mismatch fails configure naming file, expected vs
 actual, and URL.
 
 Maintainer note: the 31-file local sweep stays local -- with the option ON,

@@ -19,9 +19,9 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, double jd_tt, int planet,
     /* Targets 1-11 (Mercury..Sun, incl. Earth 3) or EMB 13. Reject SSB 12
      * and the nutation (14) / libration (15) sensitivities, 0, and
      * out-of-range. */
-    if(!((planet>=1&&planet<=11)||planet==13)) return JPL_ERROR_ARGUMENT;
+    if(!((planet>=1&&planet<=11)||planet==JPL_EARTH_MOON_BARYCENTER)) return JPL_ERROR_ARGUMENT;
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
-    if(center<0||center>13) return JPL_ERROR_ARGUMENT;
+    if(center<0||center>JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     tdb = jpl_tt_to_tdb(jd_tt);
     s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);
     if(s!=JPL_OK) return s;

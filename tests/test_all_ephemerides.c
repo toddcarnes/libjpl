@@ -60,6 +60,6 @@ int main(int argc, char **argv) {
         fputs("no JPL DE binaries found in directory\n", stderr);
         return 1;
     }
-    puts("all supplied JPL DE binaries opened successfully");
+    puts("all present JPL DE binaries opened successfully (skipped absent files)");
     return 0;
 }

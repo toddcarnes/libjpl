@@ -154,7 +154,7 @@ static int checked_record_offset(size_t index, size_t record_doubles, size_t *ou
     size_t a, b;
     if (record_doubles == 0 || record_doubles > SIZE_MAX / 8) return -1;
     b = record_doubles * 8;
-    if (index > (SIZE_MAX / b) - 2) return -1;
+    if (index + 2 > SIZE_MAX / b) return -1;
     a = (index + 2) * b;
     *out = a;
     return 0;
@@ -664,8 +664,8 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, double jd, int target
     int i;
     size_t k;
     if (!e || !state) return JPL_ERROR_ARGUMENT;
-    /* Nutations/librations are angles with no light-time meaning; reject. */
-    /* Bodies 0-13; JPL_EARTH_MOON_BARYCENTER (13) is the highest body code. */
+    /* Nutations/librations are angles with no light-time meaning; reject.
+     * Bodies 0-13 only; JPL_EARTH_MOON_BARYCENTER (13) is the highest code. */
     if (target < 0 || target > JPL_EARTH_MOON_BARYCENTER || center < 0 || center > JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     /* Center evaluated once at reception jd; only the target leg iterates. */
     if (center == 0) memset(ctr, 0, sizeof ctr);

@@ -22,6 +22,25 @@ task ledger, don't stall on them).
   `tests/jpl_test_util.h` (put_u32/put_f64/put_ptr, mock header, norm3).
 - `docs/superpowers/{specs,plans}/` — design specs and implementation plans.
 
+## Review and required follow-up
+
+- [Project review at 1327b20](docs/reviews/2026-09-17-project-review.md)
+  records open findings, reproductions, verification limits, and a resolution
+  log. Consult it before follow-up work; the report itself fixes no code.
+- [Remediation design](docs/superpowers/specs/2026-09-17-review-remediation-design.md)
+  records the agreed breaking-change, two-part-date, modern-AU, legacy-frame,
+  and MIT licensing policies plus complete issue coverage. The maintainer
+  has approved the written specification.
+- [Implementation plan](docs/superpowers/plans/2026-09-17-review-remediation.md)
+  is the execution entry point. It maps every issue to ordered tasks and links
+  detailed core, validation, and distribution plans. Planning does not resolve
+  findings; record actual fix and verification evidence in the review log.
+- Maintainer requirement: all Julian dates must use arrays of two doubles,
+  preserving both parts through date arithmetic and ERFA calls. The current
+  scalar-date APIs violate this requirement; see R00 in the review. Splitting
+  an already-rounded scalar at an ERFA call does not restore precision.
+  Preserve the standard DE on-disk format when migrating in-memory dates.
+
 ## Build & test
 
 ```sh

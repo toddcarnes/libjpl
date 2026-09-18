@@ -25,11 +25,11 @@
  *
  * Parse body mirrors tests/test_testpo.c with the T#17 path removed (this
  * binary carries no TT-TDB table, so any T#17 line is a hard failure, not
- * a skip). Unlike the full testpo harness, header/blank lines are skipped;
- * every data-shaped line must parse and pass (skipped != 0 fails):
- * out-of-coverage lines, unsupported targets, and unparseable data-shaped
- * lines all fail, because parsed == tested == 121 proves the committed
- * slice is byte-verbatim what the manifest describes. Nutation rate lines
+ * a skip). Blank lines are skipped; every other non-data line increments
+ * a skip counter that fails the run: out-of-coverage lines, unsupported
+ * targets, and unparseable data-shaped lines all fail, because
+ * parsed == tested == 121 proves the committed slice is byte-verbatim
+ * what the manifest describes. Nutation rate lines
  * (T#14 X#3/4) map to state[3]/state[4] (dpsi/deps rates per day), while
  * X#1/2 map to state[0]/state[1] like every other body; T#14 X#5/6 do not
  * exist and fail. T#15 tolerances match test_testpo.c exactly.
@@ -137,14 +137,16 @@ int main(int argc, char **argv) {
             ok = parse_fused_jd(tokens[1], &jd) && parse_long(tokens[2], &target) &&
                  parse_long(tokens[3], &center) && parse_long(tokens[4], &component) &&
                  parse_double(tokens[5], &expected);
+            /* Fused labels are always "441-..." (tokens end at whitespace,
+             * so no space alternative exists); reject anything else. */
             if (ok && !(tokens[1][0] == '4' && tokens[1][1] == '4' && tokens[1][2] == '1' &&
-                        (tokens[1][3] == ' ' || tokens[1][3] == '-' || tokens[1][3] == '\0'))) ok = 0;
+                        tokens[1][3] == '-')) ok = 0;
         } else {
             ok = parse_fused_jd(tokens[0], &jd) && parse_long(tokens[1], &target) &&
                  parse_long(tokens[2], &center) && parse_long(tokens[3], &component) &&
                  parse_double(tokens[4], &expected);
             if (ok && !(tokens[0][0] == '4' && tokens[0][1] == '4' && tokens[0][2] == '1' &&
-                        (tokens[0][3] == ' ' || tokens[0][3] == '-' || tokens[0][3] == '\0'))) ok = 0;
+                        tokens[0][3] == '-')) ok = 0;
         }
         if (!ok) { ++skipped; continue; }
         ++parsed;

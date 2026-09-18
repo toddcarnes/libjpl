@@ -237,12 +237,8 @@ if(LIBJPL_BUILD_TESTS)
         add_executable(jpl_testpo_tests tests/test_testpo.c)
         target_link_libraries(jpl_testpo_tests PRIVATE jpl)
         target_compile_features(jpl_testpo_tests PRIVATE c_std_17)
-        if(MSVC)
-            target_compile_definitions(jpl_testpo_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
-            target_compile_options(jpl_testpo_tests PRIVATE /W4 /permissive-)
-        else()
-            target_compile_options(jpl_testpo_tests PRIVATE -Wall -Wextra -Wpedantic)
-        endif()
+        # Warning flags come from the generic test-flags loop below, which
+        # already lists jpl_testpo_tests.
         add_test(NAME jpl_testpo_440
             COMMAND jpl_testpo_tests "${LIBJPL_DE440_EPH}" "${LIBJPL_TESTPO_440_FILE}")
         add_test(NAME jpl_testpo_440t

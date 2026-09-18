@@ -16,6 +16,7 @@ int main(int argc, char **argv) {
     };
     char path[1024];
     size_t i;
+    size_t opened = 0;
     if (argc != 2) return 2;
     for (i = 0; i < sizeof filenames / sizeof filenames[0]; ++i) {
         jpl_ephemeris *ephemeris = NULL;
@@ -25,6 +26,13 @@ int main(int argc, char **argv) {
         int n = snprintf(path, sizeof path, "%s/%s", argv[1], filenames[i]);
         if (n < 0 || (size_t)n >= sizeof path) return 2;
         status = jpl_open(path, &ephemeris);
+        if (status == JPL_ERROR_IO) {
+            /* Fetch-tier subset scan: skip files absent from this dir
+               (the resolved download dir holds DE440/DE440t only).
+               opened == 0 at the end still fails, so an empty dir
+               never passes vacuously. */
+            continue;
+        }
         if (status != JPL_OK) {
             fprintf(stderr, "%s: %s\n", filenames[i], jpl_status_string(status));
             return 1;
@@ -46,6 +54,11 @@ int main(int argc, char **argv) {
         }
         free(record);
         jpl_close(ephemeris);
+        opened++;
+    }
+    if (opened == 0) {
+        fputs("no JPL DE binaries found in directory\n", stderr);
+        return 1;
     }
     puts("all supplied JPL DE binaries opened successfully");
     return 0;

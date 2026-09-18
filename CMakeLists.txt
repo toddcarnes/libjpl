@@ -163,6 +163,17 @@ if(LIBJPL_BUILD_TESTS)
         set(${out_var} "${dest}" PARENT_SCOPE)
     endfunction()
 
+    # JPL_TESTPO env var overrides the default testpo data directory (a
+    # maintainer-local convenience that only takes effect when
+    # LIBJPL_FETCH_EPHEMERIDES is ON; without the option ON nothing in this
+    # file touches the disk location it names). Single assignment shared by
+    # the fetch block and the sweep below.
+    if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
+        set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
+    else()
+        set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
+    endif()
+
     # Fetch tier: when ON, resolve the four validation files (local redirect
     # per file, JPL download otherwise). When OFF, none of this runs and no
     # network is touched.
@@ -182,12 +193,6 @@ if(LIBJPL_BUILD_TESTS)
         set(LIBJPL_TESTPO440T_SHA256 "9801f019be5c335d1e22697ea9fb5888becfd0c623a50c3372fe4491c7a3f2ad")
         set(LIBJPL_TESTPO_SIZE 858238)
 
-        # JPL_TESTPO env var overrides the default testpo data directory.
-        if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
-            set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
-        else()
-            set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
-        endif()
         if(NOT "$ENV{JPLEPH}" STREQUAL "")
             set(LIBJPL_JPLEPH_SRC_DIR "$ENV{JPLEPH}")
         else()
@@ -240,38 +245,45 @@ if(LIBJPL_BUILD_TESTS)
     # not be wired to it. tests/test_testpo.c validates every testpo line
     # (including DE441 geometric states) instead.
 
-    # Fetch-tier sweep suites, gated on the option. They run against JPLEPH
-    # so the 31-file sweep stays a maintainer-local activity; without JPLEPH
-    # they simply do not register (downloads provide DE440/DE440t only, and
-    # per-file EXISTS checks let partial local dirs compose with downloads).
+    # Integration suites, registered from the resolved fetch-tier files so a
+    # download-only build still validates real data. jpl_real_ephemeris is the
+    # DENUM-agnostic smoke test (header sanity + record read + finite state)
+    # against the resolved DE440 binary; jpl_all_ephemerides scans the
+    # resolved download dir (download-only builds: the DE440/DE440t subset —
+    # the sweep binary skips absent files, failing only when none opened;
+    # local-redirect builds leave the resolved dir empty — GLOB finds nothing
+    # and only jpl_all_ephemerides_local registers); a second registration
+    # scans the maintainer-local JPLEPH dir when set.
     if(LIBJPL_FETCH_EPHEMERIDES)
-        if(NOT "$ENV{JPLEPH}" STREQUAL "" AND EXISTS "$ENV{JPLEPH}/DE441.eph")
+        if(NOT TARGET jpl_real_ephemeris_tests)
             add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
             target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
             target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)
-            add_test(NAME jpl_real_de441
-                COMMAND jpl_real_ephemeris_tests "$ENV{JPLEPH}/DE441.eph")
+        endif()
+        add_test(NAME jpl_real_ephemeris
+            COMMAND jpl_real_ephemeris_tests "${LIBJPL_DE440_EPH}")
 
+        if(NOT TARGET jpl_all_ephemerides_tests)
             add_executable(jpl_all_ephemerides_tests tests/test_all_ephemerides.c)
             target_link_libraries(jpl_all_ephemerides_tests PRIVATE jpl)
             target_compile_features(jpl_all_ephemerides_tests PRIVATE c_std_17)
+        endif()
+        file(GLOB LIBJPL_RESOLVED_BINARIES "${LIBJPL_EPHEMERIS_DIR}/DE*.eph")
+        if(LIBJPL_RESOLVED_BINARIES)
             add_test(NAME jpl_all_ephemerides
+                COMMAND jpl_all_ephemerides_tests "${LIBJPL_EPHEMERIS_DIR}")
+        endif()
+        if(NOT "$ENV{JPLEPH}" STREQUAL "")
+            add_test(NAME jpl_all_ephemerides_local
                 COMMAND jpl_all_ephemerides_tests "$ENV{JPLEPH}")
         endif()
     endif()
 
     # Fetch-tier 31-file sweep: maintainer-local binaries in JPLEPH paired with
-    # testpo files in JPL_TESTPO (env override else the local default). Gated
-    # on the option so plain configures never scan; per-file EXISTS checks let
-    # a partial local dir compose with the downloads resolved above.
-    # The default JPL_TESTPO path below is a maintainer-local convenience
-    # that only takes effect when LIBJPL_FETCH_EPHEMERIDES is ON; without the
-    # option ON nothing in this file touches the disk location it names.
-    if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
-        set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
-    else()
-        set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
-    endif()
+    # testpo files in JPL_TESTPO_DIR (assigned once above; env override else
+    # the local default). Gated on the option so plain configures never scan;
+    # per-file EXISTS checks let a partial local dir compose with the
+    # downloads resolved above.
     if(LIBJPL_FETCH_EPHEMERIDES)
         file(GLOB JPL_TESTPO_FILES "${JPL_TESTPO_DIR}/testpo.*")
         foreach(testpo_file IN LISTS JPL_TESTPO_FILES)

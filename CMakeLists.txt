@@ -115,46 +115,172 @@ if(LIBJPL_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/testpo_441_slice.txt")
 
+    option(LIBJPL_FETCH_EPHEMERIDES "Download JPL DE440/DE440t validation data (approx 210 MB)" OFF)
+    set(LIBJPL_EPHEMERIS_DIR "${CMAKE_CURRENT_BINARY_DIR}/ephemeris" CACHE PATH "Downloaded/located JPL test data")
+
+    # Resolves one fetch-tier file to a usable path: prefers the maintainer-local
+    # copy (<src_dir>/<src_name>), else downloads <url> to
+    # ${LIBJPL_EPHEMERIS_DIR}/<dest_name> and verifies it per
+    # tests/data/MANIFEST.txt (exact byte size always; SHA-256 when <sha256> is
+    # non-empty, enforced by file(DOWNLOAD EXPECTED_HASH)). Any failure is
+    # FATAL_ERROR naming the file with expected vs actual plus the URL, so a JPL
+    # re-cut fails loudly at configure time instead of half-registering suites.
+    function(libjpl_resolve_fetch_file out_var src_dir src_name url dest_name expected_size sha256)
+        if(NOT "${src_dir}" STREQUAL "")
+            set(candidate "${src_dir}/${src_name}")
+        else()
+            set(candidate "")
+        endif()
+        if(NOT "${candidate}" STREQUAL "" AND EXISTS "${candidate}")
+            # Skip downloads: use the maintainer-local copy.
+            message(STATUS "libjpl: using local ${dest_name} from ${candidate}")
+            set(${out_var} "${candidate}" PARENT_SCOPE)
+            return()
+        endif()
+        message(STATUS "libjpl: downloading ${dest_name} from ${url}")
+        set(dest "${LIBJPL_EPHEMERIS_DIR}/${dest_name}")
+        if("${sha256}" STREQUAL "")
+            file(DOWNLOAD "${url}" "${dest}" STATUS dl_status SHOW_PROGRESS)
+        else()
+            file(DOWNLOAD "${url}" "${dest}" EXPECTED_HASH SHA256=${sha256} STATUS dl_status SHOW_PROGRESS)
+        endif()
+        list(GET dl_status 0 dl_code)
+        list(GET dl_status 1 dl_message)
+        if(NOT dl_code EQUAL 0)
+            message(FATAL_ERROR
+                "libjpl: failed to download ${dest_name}: ${dl_message} (URL ${url}). "
+                "If JPL re-cut the file, update tests/data/MANIFEST.txt and re-run configure.")
+        endif()
+        if(NOT "${expected_size}" STREQUAL "")
+            file(SIZE "${dest}" dl_actual_size)
+            if(NOT dl_actual_size EQUAL expected_size)
+                message(FATAL_ERROR
+                    "libjpl: size mismatch for ${dest_name}: expected ${expected_size} bytes, "
+                    "got ${dl_actual_size} bytes (URL ${url}). "
+                    "If JPL re-cut the file, update tests/data/MANIFEST.txt and re-run configure.")
+            endif()
+        endif()
+        set(${out_var} "${dest}" PARENT_SCOPE)
+    endfunction()
+
+    # Fetch tier: when ON, resolve the four validation files (local redirect
+    # per file, JPL download otherwise). When OFF, none of this runs and no
+    # network is touched.
+    if(LIBJPL_FETCH_EPHEMERIDES)
+        file(MAKE_DIRECTORY "${LIBJPL_EPHEMERIS_DIR}")
+
+        # Manifest-pinned values (tests/data/MANIFEST.txt, verified 2026-09-19).
+        # Binaries carry sizes only: local checksums.txt hashes describe
+        # different spans and MUST NOT be used (see the manifest).
+        set(LIBJPL_DE440_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/linux_p1550p2650.440")
+        set(LIBJPL_DE440_SIZE 102272352)
+        set(LIBJPL_DE440T_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/linux_p1550p2650.440t")
+        set(LIBJPL_DE440T_SIZE 112720608)
+        set(LIBJPL_TESTPO440_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/testpo.440")
+        set(LIBJPL_TESTPO440_SHA256 "45084a7f406b8e41032e7d99dd8042d4df97a9f752a68c06d1a27af16693429f")
+        set(LIBJPL_TESTPO440T_URL "https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/testpo.440t")
+        set(LIBJPL_TESTPO440T_SHA256 "9801f019be5c335d1e22697ea9fb5888becfd0c623a50c3372fe4491c7a3f2ad")
+        set(LIBJPL_TESTPO_SIZE 858238)
+
+        # JPL_TESTPO env var overrides the default testpo data directory.
+        if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
+            set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
+        else()
+            set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
+        endif()
+        if(NOT "$ENV{JPLEPH}" STREQUAL "")
+            set(LIBJPL_JPLEPH_SRC_DIR "$ENV{JPLEPH}")
+        else()
+            set(LIBJPL_JPLEPH_SRC_DIR "")
+        endif()
+
+        # Renamed on download to DE<nnn>.eph so suite pairing stays uniform.
+        libjpl_resolve_fetch_file(LIBJPL_DE440_EPH "${LIBJPL_JPLEPH_SRC_DIR}" "DE440.eph"
+            "${LIBJPL_DE440_URL}" "DE440.eph" "${LIBJPL_DE440_SIZE}" "")
+        libjpl_resolve_fetch_file(LIBJPL_DE440T_EPH "${LIBJPL_JPLEPH_SRC_DIR}" "DE440t.eph"
+            "${LIBJPL_DE440T_URL}" "DE440t.eph" "${LIBJPL_DE440T_SIZE}" "")
+        libjpl_resolve_fetch_file(LIBJPL_TESTPO_440_FILE "${JPL_TESTPO_DIR}" "testpo.440"
+            "${LIBJPL_TESTPO440_URL}" "testpo.440" "${LIBJPL_TESTPO_SIZE}" "${LIBJPL_TESTPO440_SHA256}")
+        libjpl_resolve_fetch_file(LIBJPL_TESTPO_440T_FILE "${JPL_TESTPO_DIR}" "testpo.440t"
+            "${LIBJPL_TESTPO440T_URL}" "testpo.440t" "${LIBJPL_TESTPO_SIZE}" "${LIBJPL_TESTPO440T_SHA256}")
+
+        # Fetch-tier reference suites (DE440/DE440t) use fixed targets/tests,
+        # so the legacy sweep below skips these numbers. Resolution above
+        # FATAL_ERROR'd unless both files of each pair exist.
+        if(NOT TARGET jpl_testpo_440_tests)
+            add_executable(jpl_testpo_440_tests tests/test_testpo.c)
+            target_link_libraries(jpl_testpo_440_tests PRIVATE jpl)
+            target_compile_features(jpl_testpo_440_tests PRIVATE c_std_17)
+            if(MSVC)
+                target_compile_definitions(jpl_testpo_440_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+                target_compile_options(jpl_testpo_440_tests PRIVATE /W4 /permissive-)
+            else()
+                target_compile_options(jpl_testpo_440_tests PRIVATE -Wall -Wextra -Wpedantic)
+            endif()
+        endif()
+        add_test(NAME jpl_testpo_440
+            COMMAND jpl_testpo_440_tests "${LIBJPL_DE440_EPH}" "${LIBJPL_TESTPO_440_FILE}")
+        if(NOT TARGET jpl_testpo_440t_tests)
+            add_executable(jpl_testpo_440t_tests tests/test_testpo.c)
+            target_link_libraries(jpl_testpo_440t_tests PRIVATE jpl)
+            target_compile_features(jpl_testpo_440t_tests PRIVATE c_std_17)
+            if(MSVC)
+                target_compile_definitions(jpl_testpo_440t_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+                target_compile_options(jpl_testpo_440t_tests PRIVATE /W4 /permissive-)
+            else()
+                target_compile_options(jpl_testpo_440t_tests PRIVATE -Wall -Wextra -Wpedantic)
+            endif()
+        endif()
+        add_test(NAME jpl_testpo_440t
+            COMMAND jpl_testpo_440t_tests "${LIBJPL_DE440T_EPH}" "${LIBJPL_TESTPO_440T_FILE}")
+    endif()
+
     # test_positions.c was superseded by the testpo harness below (Task 8):
     # tests/de441_reference.txt never existed, so jpl_position_tests could
     # not be wired to it. tests/test_testpo.c validates every testpo line
     # (including DE441 geometric states) instead.
 
-    # Real ephemerides are optional local test data. When JPLEPH names a
-    # directory containing DE441.eph, exercise the reader against it as an
-    # integration test. Evaluated at configure time: re-run cmake -S/-B
-    # after setting JPLEPH for newly added data to register.
-    if(NOT "$ENV{JPLEPH}" STREQUAL "" AND EXISTS "$ENV{JPLEPH}/DE441.eph")
-        add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
-        target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
-        target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)
-        add_test(NAME jpl_real_de441
-            COMMAND jpl_real_ephemeris_tests "$ENV{JPLEPH}/DE441.eph")
+    # Fetch-tier sweep suites, gated on the option. They run against JPLEPH
+    # so the 31-file sweep stays a maintainer-local activity; without JPLEPH
+    # they simply do not register (downloads provide DE440/DE440t only, and
+    # per-file EXISTS checks let partial local dirs compose with downloads).
+    if(LIBJPL_FETCH_EPHEMERIDES)
+        if(NOT "$ENV{JPLEPH}" STREQUAL "" AND EXISTS "$ENV{JPLEPH}/DE441.eph")
+            add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
+            target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
+            target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)
+            add_test(NAME jpl_real_de441
+                COMMAND jpl_real_ephemeris_tests "$ENV{JPLEPH}/DE441.eph")
 
-
-        add_executable(jpl_all_ephemerides_tests tests/test_all_ephemerides.c)
-        target_link_libraries(jpl_all_ephemerides_tests PRIVATE jpl)
-        target_compile_features(jpl_all_ephemerides_tests PRIVATE c_std_17)
-        add_test(NAME jpl_all_ephemerides
-            COMMAND jpl_all_ephemerides_tests "$ENV{JPLEPH}")
+            add_executable(jpl_all_ephemerides_tests tests/test_all_ephemerides.c)
+            target_link_libraries(jpl_all_ephemerides_tests PRIVATE jpl)
+            target_compile_features(jpl_all_ephemerides_tests PRIVATE c_std_17)
+            add_test(NAME jpl_all_ephemerides
+                COMMAND jpl_all_ephemerides_tests "$ENV{JPLEPH}")
+        endif()
     endif()
 
-    # JPL testpo reference-data validation. Each testpo.NNN file pairs with
-    # the DENNN.eph binary in $JPLEPH; the runner (tests/test_testpo.c)
-    # validates every data line via jpl_get_state (geometric, TDB) with
-    # tolerance 5e-13 * fmax(1, |expected|). Configure-time registration:
-    # re-run cmake -S/-B after adding binaries to pick up new pairs.
-    # JPL_TESTPO env var overrides the default testpo data directory.
+    # Fetch-tier 31-file sweep: maintainer-local binaries in JPLEPH paired with
+    # testpo files in JPL_TESTPO (env override else the local default). Gated
+    # on the option so plain configures never scan; per-file EXISTS checks let
+    # a partial local dir compose with the downloads resolved above.
+    # The default JPL_TESTPO path below is a maintainer-local convenience
+    # that only takes effect when LIBJPL_FETCH_EPHEMERIDES is ON; without the
+    # option ON nothing in this file touches the disk location it names.
     if(DEFINED ENV{JPL_TESTPO} AND NOT "$ENV{JPL_TESTPO}" STREQUAL "")
         set(JPL_TESTPO_DIR "$ENV{JPL_TESTPO}")
     else()
         set(JPL_TESTPO_DIR "D:/ephem/jpl/testpo")
     endif()
-    if(NOT "$ENV{JPLEPH}" STREQUAL "")
+    if(LIBJPL_FETCH_EPHEMERIDES)
         file(GLOB JPL_TESTPO_FILES "${JPL_TESTPO_DIR}/testpo.*")
         foreach(testpo_file IN LISTS JPL_TESTPO_FILES)
             get_filename_component(testpo_name "${testpo_file}" NAME)
             string(REGEX REPLACE "^testpo\\." "" testpo_num "${testpo_name}")
+            # 440/440t are registered by the fixed fetch-tier block above.
+            if(testpo_num STREQUAL "440" OR testpo_num STREQUAL "440t")
+                continue()
+            endif()
             if(testpo_num MATCHES "^[0-9]+t?$" AND EXISTS "$ENV{JPLEPH}/DE${testpo_num}.eph")
                 set(testpo_target "jpl_testpo_${testpo_num}_tests")
                 if(NOT TARGET ${testpo_target})

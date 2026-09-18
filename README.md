@@ -68,3 +68,30 @@ if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handl
 
 Frame conversions use [ERFA](https://github.com/liberfa/erfa) v2.0.1,
 Copyright (c) NumFOCUS Foundation, BSD-3-Clause. See `src/erfa/LICENSE`.
+
+## Test data
+
+Always-on fixture (no network): `tests/data/de441_2000_2010.eph` is a
+931 KB DE441 sub-ephemeris sliced with `sub_eph DE441.eph <out> 2000 2010`
+(JD 2451536.5-2455216.5), and `tests/data/testpo_441_slice.txt` holds the
+121 in-span `testpo.441` lines. The `jpl_fixture` suite asserts this
+provenance (DENUM 441, exact coverage) plus all 121 cross-checks, so a
+fresh clone is green with no downloads.
+
+Opt-in fetch tier: `-DLIBJPL_FETCH_EPHEMERIDES=ON` (default OFF, approx
+210 MB) downloads DE440/DE440t binaries plus `testpo.440`/`testpo.440t`
+from JPL (`https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/` and
+`.../de440t/`, filenames `linux_p1550p2650.440[t]` plus co-located
+`testpo.440[t]`), verifies them per `tests/data/MANIFEST.txt` (exact byte
+size for binaries, SHA-256 for testpo), and registers the integration
+plus reference suites (`jpl_real_de441`, `jpl_all_ephemerides`,
+`jpl_testpo_440`, `jpl_testpo_440t`).
+
+Manifest updates on JPL re-cuts: refresh the changed URL/size/hash in
+`tests/data/MANIFEST.txt`, mirror the value in `CMakeLists.txt`, and
+re-run configure — any mismatch fails configure naming file, expected vs
+actual, and URL.
+
+Maintainer note: the 31-file local sweep stays local — with the option ON,
+`JPLEPH`/`JPL_TESTPO` dirs redirect the download sources per file instead
+of auto-registering suites on their own.

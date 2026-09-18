@@ -25,7 +25,8 @@
  *
  * Parse body mirrors tests/test_testpo.c with the T#17 path removed (this
  * binary carries no TT-TDB table, so any T#17 line is a hard failure, not
- * a skip). Unlike the full testpo harness nothing is ever skipped here:
+ * a skip). Unlike the full testpo harness, header/blank lines are skipped;
+ * every data-shaped line must parse and pass (skipped != 0 fails):
  * out-of-coverage lines, unsupported targets, and unparseable data-shaped
  * lines all fail, because parsed == tested == 121 proves the committed
  * slice is byte-verbatim what the manifest describes. Nutation rate lines
@@ -35,6 +36,10 @@
  *
  * Uses explicit checks (fprintf + return), never assert().
  */
+
+#define FIXTURE_CHECK(cond) do { if (!(cond)) { \
+    fprintf(stderr, "CHECK FAILED %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+    if (file) fclose(file); jpl_close(ephemeris); return 1; } } while (0)
 
 static int parse_long(const char *text, long *out) {
     char *end = NULL;
@@ -67,7 +72,7 @@ int main(int argc, char **argv) {
     const jpl_header *header = NULL;
     FILE *file = NULL;
     char line[1024];
-    size_t tested = 0, parsed = 0;
+    size_t tested = 0, parsed = 0, skipped = 0;
     double first_jd = 0.0, last_jd = 0.0;
     int have_first = 0;
 
@@ -77,13 +82,22 @@ int main(int argc, char **argv) {
     }
     JPL_TEST_CHECK(jpl_open(argv[1], &ephemeris) == JPL_OK && ephemeris != NULL);
     header = jpl_get_header(ephemeris);
-    JPL_TEST_CHECK(header != NULL);
-    JPL_TEST_CHECK(header->ephemeris_number == 441);
-    JPL_TEST_CHECK(header->start_jd == 2451536.5 && header->end_jd == 2455216.5);
-    JPL_TEST_CHECK(jpl_has_tt_tdb(ephemeris) == 0);
+    FIXTURE_CHECK(header != NULL);
+    FIXTURE_CHECK(header->ephemeris_number == 441);
+    FIXTURE_CHECK(header->start_jd == 2451536.5 && header->end_jd == 2455216.5);
+    FIXTURE_CHECK(jpl_has_tt_tdb(ephemeris) == 0);
     /* "rb": CRLF-tolerant (see file comment); isspace() splits off any '\r'. */
     file = fopen(argv[2], "rb");
-    JPL_TEST_CHECK(file != NULL);
+    FIXTURE_CHECK(file != NULL);
+    { FILE *sz = fopen(argv[1], "rb");
+      long endpos;
+      int szok;
+      FIXTURE_CHECK(sz != NULL);
+      szok = fseek(sz, 0, SEEK_END);
+      endpos = szok == 0 ? ftell(sz) : -1L;
+      fclose(sz);
+      FIXTURE_CHECK(szok == 0);
+      FIXTURE_CHECK(endpos == 952848L); }
 
     while (fgets(line, sizeof line, file) != NULL) {
         char *tokens[8];
@@ -102,7 +116,7 @@ int main(int argc, char **argv) {
             while (*p != '\0' && !isspace((unsigned char)*p)) ++p;
             if (*p != '\0') *p++ = '\0';
         }
-        if (ntok != 5 && ntok != 6 && ntok != 7) continue;
+        if (ntok != 5 && ntok != 6 && ntok != 7) { if (ntok != 0) ++skipped; continue; }
 
         if (ntok == 7) {
             if (strcmp(tokens[0], "441") != 0) {
@@ -118,12 +132,16 @@ int main(int argc, char **argv) {
             ok = parse_fused_jd(tokens[1], &jd) && parse_long(tokens[2], &target) &&
                  parse_long(tokens[3], &center) && parse_long(tokens[4], &component) &&
                  parse_double(tokens[5], &expected);
+            if (ok && !(tokens[1][0] == '4' && tokens[1][1] == '4' && tokens[1][2] == '1' &&
+                        (tokens[1][3] == ' ' || tokens[1][3] == '-' || tokens[1][3] == '\0'))) ok = 0;
         } else {
             ok = parse_fused_jd(tokens[0], &jd) && parse_long(tokens[1], &target) &&
                  parse_long(tokens[2], &center) && parse_long(tokens[3], &component) &&
                  parse_double(tokens[4], &expected);
+            if (ok && !(tokens[0][0] == '4' && tokens[0][1] == '4' && tokens[0][2] == '1' &&
+                        (tokens[0][3] == ' ' || tokens[0][3] == '-' || tokens[0][3] == '\0'))) ok = 0;
         }
-        if (!ok) continue;
+        if (!ok) { ++skipped; continue; }
         ++parsed;
 
         if (target == 17) {
@@ -199,9 +217,11 @@ int main(int argc, char **argv) {
     }
 
     fclose(file);
-    JPL_TEST_CHECK(parsed == 121);
-    JPL_TEST_CHECK(tested == 121);
-    JPL_TEST_CHECK(have_first && first_jd == 2451544.5 && last_jd == 2455197.5);
+    file = NULL;
+    FIXTURE_CHECK(skipped == 0);
+    FIXTURE_CHECK(parsed == 121);
+    FIXTURE_CHECK(tested == 121);
+    FIXTURE_CHECK(have_first && first_jd == 2451544.5 && last_jd == 2455197.5);
     jpl_close(ephemeris);
     printf("fixture validated %zu lines\n", tested);
     return 0;

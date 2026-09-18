@@ -99,6 +99,22 @@ int main(void) {
         eraAb(pn, be, s_au, sqrt(1.0 - (be[0]*be[0]+be[1]*be[1]+be[2]*be[2])), exp);
         for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - exp[k]) < 1e-12);
     }
+    /* SRS-amplifying differential: at small Sun distance the solar term
+     * exceeds 1e-12, so half-SRS code fails this block (verified by
+     * stash experiment); pins JPL_SRS_AU against eraAb. */
+    {
+        double vc[3] = {2.1044018893653786e-5, -8.9108923304429319e-5, -3.8633714797716569e-5};
+        double pn[3] = {-0.76321968546737951, -0.60869453983060384, -0.21676408580639883};
+        double s2[6] = {pn[0], pn[1], pn[2], 0.0, 0.0, 0.0};
+        double vo2[3] = {vc[0]*JPL_TEST_C_AU_PER_DAY, vc[1]*JPL_TEST_C_AU_PER_DAY, vc[2]*JPL_TEST_C_AU_PER_DAY};
+        double got[6], be[3], exp[3];
+        double s_au = 0.05;
+        int k;
+        for (k = 0; k < 3; ++k) be[k] = vc[k];
+        jpl_apply_aberration_full(s2, vo2, s_au, got);
+        eraAb(pn, be, s_au, sqrt(1.0 - (be[0]*be[0]+be[1]*be[1]+be[2]*be[2])), exp);
+        for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - exp[k]) < 1e-12);
+    }
     puts("aberration tests passed");
     return 0;
 }

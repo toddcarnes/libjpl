@@ -187,7 +187,7 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  *       so no unit conversion is applied. For files without the dataset use
  *       jpl_tt_to_tdb() (~2 ms ERFA approximation) instead.
  */
-jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, double jd_tdb,
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, double jd_tdb,
                                 double *seconds, double *rate_per_day);
 
 /**

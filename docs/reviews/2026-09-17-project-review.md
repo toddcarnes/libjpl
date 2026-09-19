@@ -302,6 +302,17 @@ The modern-DE happy path has useful validation, but a green default suite overst
 
 ## Resolution log
 
+Post-checkpoint update (2026-09-19, commits `ede83c9` + `c858a7e`):
+fresh offline `build/verify` Debug 36/36 pass; all five `*t` suites pass
+(13201 lines each) after the TT-TDB boundary-equality fix; `testpo.405`
+validates 7214 lines after the padded-EOT fix; the full local sweep
+opens through DE431/DE441 after the 64-bit size fix. Local DE200/DE403
+replaced with official NASA files; suspect DE404 quarantined (no
+official source). The per-ID entries below retain their T23 evidence;
+entries citing the old 440t/DE200 failures are superseded by the
+post-checkpoint results in `docs/validation.md`. Hosted CI/sanitizer/
+platform gates remain pending.
+
 T23 acceptance (2026-09-19, uncommitted T00-T22 tree; BASE
 `4471c673295dc2a7a35e8458f5ee6b2f2d18ae3b`): fresh `build/t23-clean`
 offline Debug 36/36 and Release 36/36 pass; `build/t23-docs` focused

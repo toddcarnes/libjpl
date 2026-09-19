@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2026 Todd Carnes
+SPDX-License-Identifier: MIT
+See LICENSE in the project root for the full license text.
+-->
+
 Small, dependency-free C17 library for reading JPL Development Ephemeris
 (DE) binaries. Static lib `jpl` + three public headers.
 
@@ -55,8 +61,16 @@ ctest --test-dir build -C Debug --output-on-failure
 - MSVC is multi-config: always pass `-C Debug` (or `-C Release`) to ctest.
 - Single-config generators default to Release (set in CMakeLists).
 - `LIBJPL_BUILD_DOCS=OFF` by default; `ON` requires Doxygen (1.9+ known good).
-- `JPLEPH` env var pointing at real DE files enables integration tests
-  (`jpl_real_de441`, `jpl_all_ephemerides`); without it only 6 unit tests run.
+- `LIBJPL_FETCH_EPHEMERIDES=OFF` by default (fully offline). `ON` registers
+  the opt-in download/reference tier (`jpl_real_ephemeris`,
+  `jpl_all_ephemerides` when the resolved download dir is non-empty,
+  `jpl_all_ephemerides_local` only when `JPLEPH` is set, `jpl_testpo_440[t]`
+  plus the local `JPLEPH`/`JPL_TESTPO` sweep). `JPLEPH`/`JPL_TESTPO` env dirs
+  only redirect per-file sources inside that tier; they do not enable it on
+  their own. Default offline suites: unit/validator/fixture/license/fetch-cache/install/docs/examples tiers (see `ctest -N`).
+- Generated docs: `jpl_docs_symbols` (public-symbol XML inventory) and
+  `jpl_docs_paths` (source/build paths with spaces) exist only when docs
+  are enabled; `jpl_examples` compiles/runs the README patterns.
 
 ## Conventions
 

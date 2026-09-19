@@ -1,4 +1,9 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
 #include "jpl.h"
+#include "jpl_private.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -20,7 +25,7 @@ int main(int argc, char **argv) {
     }
     header = jpl_get_header(ephemeris);
     if (header == NULL || header->ephemeris_number <= 0 ||
-        header->start_jd >= header->end_jd || header->constant_count <= 0 ||
+        header->start_jd[0] >= header->end_jd[0] || header->constant_count <= 0 ||
         header->record_double_count <= 2 || jpl_record_count(ephemeris) == 0) {
         fputs("Unexpected real-ephemeris header values.\n", stderr);
         jpl_close(ephemeris);
@@ -32,21 +37,31 @@ int main(int argc, char **argv) {
     if (constants == NULL || record == NULL ||
         jpl_read_constants(ephemeris, constants, (size_t)header->constant_count) != JPL_OK ||
         jpl_read_record(ephemeris, 0, record, header->record_double_count) != JPL_OK ||
-        record[0] < header->start_jd || record[1] > header->end_jd || record[1] <= record[0]) {
+        jpl_date_compare((const double[2]){record[0], 0.0}, header->start_jd) < 0 ||
+        jpl_date_compare((const double[2]){record[1], 0.0}, header->end_jd) > 0 ||
+        record[1] <= record[0]) {
         fputs("Could not read valid ephemeris data.\n", stderr);
         free(record);
         free(constants);
         jpl_close(ephemeris);
         return 1;
     }
-    if (jpl_get_state(ephemeris, header->start_jd + 100.0, JPL_EARTH, JPL_SUN, state) != JPL_OK ||
-        !isfinite(state[0]) || !isfinite(state[1]) || !isfinite(state[2]) ||
-        !isfinite(state[3]) || !isfinite(state[4]) || !isfinite(state[5])) {
-        fputs("Could not interpolate an ephemeris state vector.\n", stderr);
-        free(record);
-        free(constants);
-        jpl_close(ephemeris);
-        return 1;
+    /* Query 100 days after coverage start through the compensated helper so
+     * no scalar full-JD adapter is introduced for the migration. */
+    {
+        double query[2];
+        status = jpl_date_add_days(header->start_jd, 100.0, query);
+        if (status != JPL_OK ||
+            jpl_get_state(ephemeris, query, JPL_EARTH, JPL_SUN, state) != JPL_OK ||
+            !isfinite(state[0]) || !isfinite(state[1]) || !isfinite(state[2]) ||
+            !isfinite(state[3]) || !isfinite(state[4]) || !isfinite(state[5])) {
+            fputs("Could not interpolate an ephemeris state vector.\n", stderr);
+            free(record);
+            free(constants);
+            jpl_close(ephemeris);
+            return 1;
+        }
+        (void)status;
     }
 
     free(record);

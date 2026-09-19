@@ -1,21 +1,36 @@
-# libjpl test-data manifest. Verified 2026-09-19.
+# Copyright (c) 2026 Todd Carnes
+# SPDX-License-Identifier: MIT
+# See LICENSE in the project root for the full license text.
+# libjpl test-data manifest. Verified 2026-09-18.
 # Fixture (committed, always-on):
 fixture.eph=tests/data/de441_2000_2010.eph size=952848 source=DE441.eph years=2000-2010 tool="sub_eph DE441.eph <out> 2000 2010" coverage=2451536.5-2455216.5 denum=441
 fixture.testpo=tests/data/testpo_441_slice.txt lines=121 source=testpo.441 span=2451536.5-2455216.5
+fixture.rows=tests/data/fixture_rows.txt lines=121
+fixture.binary.sha256=4478771dcf58f031c823a8a6ba721a934c1d2fbadad2020a3d446310617b7b01
+fixture.text.sha256=15b15ef811df9d2d7e054f6ebcdefae33c0c89467ef9d2fa5bd9cc386d8e93f4
+fixture.rows.sha256=540055b7352d4ef97ae67345e140cbf56b7f121fa6f8505c52a471739dd5e731
+# fixture.text.sha256 and fixture.rows.sha256 hash the canonical LF form
+# (CRLF normalized to LF only); fixture.binary.sha256 hashes exact bytes.
+# Full source/tool provenance and outstanding gaps: tests/data/PROVENANCE.md.
 # Downloads (LIBJPL_FETCH_EPHEMERIDES=ON only). Machine-readable block:
 # CMake parses these "<key>=<value>" pairs at configure time
-# (see libjpl_manifest_value in CMakeLists.txt); every download
+# (see libjpl_manifest_value in cmake/LibjplTestData.cmake); every download
 # URL/size/hash lives here and nowhere else.
 de440.bin.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/linux_p1550p2650.440
 de440.bin.size=102272352
+de440.bin.sha256=29915576d0a6555766b99485ac3056ee415e86df4fce282611c31afb329ad062
 de440t.bin.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/linux_p1550p2650.440t
 de440t.bin.size=112720608
+de440t.bin.sha256=ddd474135f5322c11e205a36cdc8c2c80b440554bc1d9f38f9b4649d85970c8b
 testpo.440.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/testpo.440
 testpo.440.sha256=45084a7f406b8e41032e7d99dd8042d4df97a9f752a68c06d1a27af16693429f
 testpo.440.size=858238
 testpo.440t.url=https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440t/testpo.440t
 testpo.440t.sha256=9801f019be5c335d1e22697ea9fb5888becfd0c623a50c3372fe4491c7a3f2ad
 testpo.440t.size=858238
-# Binary sizes captured from the JPL FTP listing 2026-09-18
-# (HTTP Content-Length: 102272352 / 112720608, matching the detail-table figures).
-# Local checksums.txt hashes describe different spans and MUST NOT be used.
+# Binary digests verified 2026-09-19: SHA-256 of the exact downloaded
+# artifacts above (102272352 / 112720608 bytes, JD 2287184.500-2688976.500,
+# years 1550.005-2650.052; identical bytes to D:/ephem/jpl/Linux/de440{,t}
+# and to the maintainer-local D:/ephem/jpl/bin/DE440{,t}.eph copies).
+# Local checksums.txt per-file blocks carry the same SHAs; the manifest's
+# earlier "different spans" note referred to other DE versions, not DE440.

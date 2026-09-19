@@ -1,0 +1,66 @@
+# Copyright (c) 2026 Todd Carnes
+# SPDX-License-Identifier: MIT
+# See LICENSE in the project root for the full license text.
+# Opt-in real-data execution (owned by T22, covers the real tier).
+# workflow_dispatch only: never runs on push/PR, never runs by default.
+# Hosted CI is not assumed to own the maintainer's local ephemerides and
+# maintainer-local files are never transmitted as artifacts. The local
+# legacy/long-span sweep runs only on a configured maintainer runner
+# (label `self-hosted`); hosted execution uses downloads plus cache only.
+name: ephemerides
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-tier:
+    name: DE440/DE440t fetch tier (${{ matrix.config }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Restore ephemeris cache (keyed by manifest hash and platform)
+        uses: actions/cache@v4
+        with:
+          path: build/eph/ephemeris
+          key: ephemeris-${{ runner.os }}-${{ hashFiles('tests/data/MANIFEST.txt') }}
+          restore-keys: |
+            ephemeris-${{ runner.os }}-
+      - name: Configure (fetch ON)
+        run: cmake -S . -B build/eph -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=ON
+      - name: Build
+        run: cmake --build build/eph --config ${{ matrix.config }} --parallel
+      - name: Verify cache after restoration (production resolver checks)
+        run: ctest --test-dir build/eph -C ${{ matrix.config }} --output-on-failure -R 'jpl_fetch_cache|jpl_fixture_integrity|jpl_fixture_integrity_negative'
+      - name: DE440/DE440t testpo (both configurations)
+        run: ctest --test-dir build/eph -C ${{ matrix.config }} --output-on-failure -R 'jpl_testpo_440|jpl_real_ephemeris|jpl_all_ephemerides$'
+      - name: Retain summary counts/hashes
+        uses: actions/upload-artifact@v4
+        with:
+          name: testpo-summary-${{ matrix.config }}
+          path: |
+            build/eph/Testing/Temporary/LastTest.log
+            tests/data/MANIFEST.txt
+
+  local-sweep:
+    name: Maintainer-local legacy/long-span sweep
+    runs-on: [self-hosted]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure (fetch ON; JPLEPH/JPL_TESTPO redirect per-file sources inside this tier only)
+        run: cmake -S . -B build/eph -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=ON
+        env:
+          JPLEPH: ${{ vars.JPLEPH }}
+          JPL_TESTPO: ${{ vars.JPL_TESTPO }}
+      - name: Build
+        run: cmake --build build/eph --config Release --parallel
+      - name: Local sweep (maintainer runner only)
+        run: ctest --test-dir build/eph -C Release --output-on-failure -R 'jpl_all_ephemerides_local|jpl_testpo_'
+        env:
+          JPLEPH: ${{ vars.JPLEPH }}
+          JPL_TESTPO: ${{ vars.JPL_TESTPO }}

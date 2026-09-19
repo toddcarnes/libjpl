@@ -1,0 +1,174 @@
+# Copyright (c) 2026 Todd Carnes
+# SPDX-License-Identifier: MIT
+# See LICENSE in the project root for the full license text.
+# Offline cross-platform CI (owned by T22, covers G09/R03/R12/R13d/R14b/G03/G10).
+# Default CI remains offline with respect to ephemeris data:
+# LIBJPL_FETCH_EPHEMERIDES=OFF everywhere here. Opt-in real-data execution
+# lives in ephemerides.yml (workflow_dispatch only). Workflow execution/push
+# is not authorized merely by writing this YAML; actual CI run results must
+# be recorded before T23 marks platform findings closed.
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-msvc:
+    name: Windows MSVC ${{ matrix.config }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  windows-clang-cl:
+    name: Windows clang-cl ${{ matrix.config }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Initialize MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure (clang-cl, Ninja)
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test including jpl_install consumer
+        # The jpl_install consumer proves there is no m.lib dependency.
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  ubuntu-gcc:
+    name: Ubuntu GCC ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  ubuntu-clang:
+    name: Ubuntu Clang ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    env:
+      CC: clang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  macos-clang:
+    name: macOS Clang ${{ matrix.config }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  linux-32bit:
+    name: Linux 32-bit GCC ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install multilib toolchain
+        run: sudo apt-get update; sudo apt-get install -y gcc-multilib g++-multilib
+      - name: Configure (-m32)
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF "-DCMAKE_C_FLAGS=-m32 -Werror=implicit-function-declaration" "-DCMAKE_EXE_LINKER_FLAGS=-m32"
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test including jpl_largefile
+        # Address-space-dependent mmap rejections are expected explicit
+        # cases, not silent omissions.
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  sanitizer-asan-ubsan:
+    name: Linux ASan/UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/asan -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_C_FLAGS=-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer" "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined,float-cast-overflow" -DLIBJPL_FETCH_EPHEMERIDES=OFF
+      - name: Build
+        run: cmake --build build/asan --parallel
+      - name: Test excluding unsanitized-consumer suites
+        # Installed-package and copied-source docs tests are excluded here:
+        # they configure an unsanitized consumer that must not be conflated
+        # with sanitizer instrumentation.
+        run: ctest --test-dir build/asan --output-on-failure -E 'jpl_install|jpl_docs_paths'
+
+  sanitizer-tsan:
+    name: Linux TSan (concurrency)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/tsan -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_C_FLAGS=-fsanitize=thread -fno-omit-frame-pointer" "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread" -DLIBJPL_FETCH_EPHEMERIDES=OFF
+      - name: Build
+        run: cmake --build build/tsan --parallel
+      - name: Test concurrency suites
+        # ASan and TSan are never combined.
+        run: ctest --test-dir build/tsan -R 'jpl_threads|jpl_mmap' --output-on-failure
+
+  docs:
+    name: Docs, licenses, fixtures (Ubuntu GCC Release)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Doxygen
+        run: sudo apt-get update; sudo apt-get install -y doxygen
+      - name: Configure
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON "-DCMAKE_C_FLAGS=-Werror=implicit-function-declaration"
+      - name: Build (includes Doxygen XML)
+        run: cmake --build build/ci --config Release --parallel
+      - name: Test docs, licenses, fixtures
+        # Symbol inventory and spaces-path checks plus license/header and
+        # fixture-integrity suites (these also run in every ordinary build).
+        run: ctest --test-dir build/ci -C Release --output-on-failure -R 'jpl_docs_symbols|jpl_docs_paths|jpl_examples|jpl_licenses|jpl_fixture_integrity|jpl_fixture_integrity_negative|jpl_fetch_cache'

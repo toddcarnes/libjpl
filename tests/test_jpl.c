@@ -1,3 +1,7 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
 #include "jpl.h"
 #include "jpl_test_util.h"
 
@@ -32,7 +36,9 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(consts, 1, sizeof consts, file) == sizeof consts);
     }
     memset(record, 0, HEADER_BYTES);
-    for (i = 0; i < RECORD_DOUBLES; ++i) test_put_f64(record + i * 8, (double)i);
+    test_put_f64(record + 0 * 8, 2451545.0);
+    test_put_f64(record + 1 * 8, 2451546.0);
+    for (i = 2; i < RECORD_DOUBLES; ++i) test_put_f64(record + i * 8, (double)i);
     JPL_TEST_CHECK(fwrite(record, 1, DATA_BYTES, file) == DATA_BYTES);
     JPL_TEST_CHECK(fclose(file) == 0);
 
@@ -44,7 +50,7 @@ int main(void) {
     JPL_TEST_CHECK(jpl_read_constants(ephemeris, constants, 2) == JPL_OK);
     JPL_TEST_CHECK(constants[0] == 1.0 && constants[1] == 2.0);
     JPL_TEST_CHECK(jpl_read_record(ephemeris, 0, coefficients, RECORD_DOUBLES) == JPL_OK);
-    JPL_TEST_CHECK(coefficients[0] == 0.0 && coefficients[356] == 356.0 && coefficients[359] == 359.0);
+    JPL_TEST_CHECK(coefficients[0] == 2451545.0 && coefficients[1] == 2451546.0 && coefficients[356] == 356.0 && coefficients[359] == 359.0);
     JPL_TEST_CHECK(jpl_read_record(ephemeris, 1, coefficients, RECORD_DOUBLES) == JPL_ERROR_RANGE);
     jpl_close(ephemeris);
     JPL_TEST_CHECK(remove(path) == 0);
@@ -68,7 +74,9 @@ int main(void) {
             JPL_TEST_CHECK(fwrite(bec, 1, sizeof bec, bf) == sizeof bec);
         }
         memset(be, 0, HEADER_BYTES);
-        for (i = 0; i < RECORD_DOUBLES; ++i) test_put_f64be(be + i * 8, (double)i);
+        test_put_f64be(be + 0 * 8, 2451545.0);
+        test_put_f64be(be + 1 * 8, 2451546.0);
+        for (i = 2; i < RECORD_DOUBLES; ++i) test_put_f64be(be + i * 8, (double)i);
         JPL_TEST_CHECK(fwrite(be, 1, DATA_BYTES, bf) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(bf) == 0);
         JPL_TEST_CHECK(jpl_open(path, &bee) == JPL_OK);
@@ -77,7 +85,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_read_constants(bee, c0, 2) == JPL_OK);
         JPL_TEST_CHECK(c0[0] == 1.0 && c0[1] == 2.0);
         JPL_TEST_CHECK(jpl_read_record(bee, 0, r0, RECORD_DOUBLES) == JPL_OK);
-        JPL_TEST_CHECK(r0[0] == 0.0 && r0[356] == 356.0);
+        JPL_TEST_CHECK(r0[0] == 2451545.0 && r0[1] == 2451546.0 && r0[356] == 356.0);
         jpl_close(bee);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -111,7 +119,9 @@ int main(void) {
             JPL_TEST_CHECK(fwrite(c2, 1, sizeof c2, f2) == sizeof c2);
         }
         memset(rec2, 0, JPL_TEST_HEADER_BYTES);
-        for (i = 0; i < RECORD_DOUBLES; ++i) test_put_f64(rec2 + i * 8, (double)i);
+        test_put_f64(rec2 + 0 * 8, 2451545.0);
+        test_put_f64(rec2 + 1 * 8, 2451546.0);
+        for (i = 2; i < RECORD_DOUBLES; ++i) test_put_f64(rec2 + i * 8, (double)i);
         JPL_TEST_CHECK(fwrite(rec2, 1, DATA_BYTES, f2) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(f2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e2) == JPL_OK);
@@ -143,7 +153,9 @@ int main(void) {
             JPL_TEST_CHECK(fwrite(c3, 1, sizeof c3, f3) == sizeof c3);
         }
         memset(rec3, 0, JPL_TEST_HEADER_BYTES);
-        for (i = 0; i < RECORD_DOUBLES; ++i) test_put_f64(rec3 + i * 8, (double)i);
+        test_put_f64(rec3 + 0 * 8, 2451545.0);
+        test_put_f64(rec3 + 1 * 8, 2451546.0);
+        for (i = 2; i < RECORD_DOUBLES; ++i) test_put_f64(rec3 + i * 8, (double)i);
         JPL_TEST_CHECK(fwrite(rec3, 1, DATA_BYTES, f3) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(f3) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e3) == JPL_OK);

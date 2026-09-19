@@ -1,8 +1,37 @@
+<!--
+Copyright (c) 2026 Todd Carnes
+SPDX-License-Identifier: MIT
+See LICENSE in the project root for the full license text.
+-->
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+### Changed
+
+- Two-part Julian dates are now required across the public API
+  (**BREAKING CHANGE**, no scalar wrapper): every date parameter is
+  `const double jd[2]`, coverage fields are `double start_jd[2]` /
+  `double end_jd[2]`, and TT/TDB/frame/aberration/unit helpers return
+  `jpl_status` with pair outputs. Build pairs directly (day plus
+  fraction); splitting an already-rounded scalar is not supported. See
+  `docs/migration-two-part-dates.md`.
+- Public body states and unit helpers use the exact modern AU
+  (`149597870.7 km`); `header.astronomical_unit_km` stays original
+  metadata. Light speed is derived from exact SI values.
+- ICRS convenience (`jpl_planet_position`, `jpl_moon_position`) requires
+  `JPL_FRAME_ICRF` (`jpl_header.reference_frame`); legacy/unknown frames
+  return `JPL_ERROR_UNSUPPORTED` with native core reads unaffected.
+- Computed outputs are transactional (unchanged on failure); raw
+  record/constant buffers may be partially written after I/O errors.
+- Generated Doxygen HTML+XML with a checked public-symbol inventory
+  (`jpl_docs_symbols`) and source/build paths-with-spaces coverage
+  (`jpl_docs_paths`); README examples compile and run as `jpl_examples`.
 
 ## [0.2.0] - 2026-09-19
 

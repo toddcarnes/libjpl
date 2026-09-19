@@ -302,4 +302,273 @@ The modern-DE happy path has useful validation, but a green default suite overst
 
 ## Resolution log
 
+T23 acceptance (2026-09-19, uncommitted T00-T22 tree; BASE
+`4471c673295dc2a7a35e8458f5ee6b2f2d18ae3b`): fresh `build/t23-clean`
+offline Debug 36/36 and Release 36/36 pass; `build/t23-docs` focused
+docs/examples/licenses 4/4 pass; Linux strict GCC 15.2 `build/t23-wsl`
+25/25 subset pass plus threads/mmap/largefile binaries pass; real tier
+`build/remediation-real` Debug+Release `jpl_testpo_440`,
+`jpl_real_ephemeris`, `jpl_testpo_441` pass. Per-task evidence and
+remaining blockers live in `docs/reviews/2026-09-17-remediation-progress.md`;
+per-configuration evidence in `docs/validation.md`. Entries below mark
+an ID verified only where T23 reproduced a pass; otherwise the ID stays
+open/blocked with the reason stated. No finding is closed by plan
+existence.
+
+### R00 - Open (blocked on platform/CI gates; core evidence passes)
+
+Fix: uncommitted (T02/T03/T07/T16/T21 tree). Tests: `jpl_dates`,
+`jpl_testpo_parser`, `jpl_numeric` (all pass `build/t23-clean`
+Debug+Release 36/36). Evidence: public decls all `[2]` pairs;
+`src/erfa` untouched; `jpl_testpo_440` passes real tier Debug+Release.
+Remaining: macOS/32-bit/sanitizer/CI runs pending; full Linux suite
+incomplete locally (timeouts) - see progress log.
+
+### R01a - Open (platform/CI gates pending; unit evidence passes)
+
+Fix: uncommitted (T04/T07/T09 tree). Tests: `jpl_tests`,
+`jpl_api_errors` (pass Debug+Release). Remaining: sanitizer/CI gates.
+
+### R01b - Open (platform/CI gates pending; unit evidence passes)
+
+Fix: uncommitted (T04/T05/T09 tree). Tests: `jpl_tests`,
+`jpl_api_errors`, `jpl_parser` (pass Debug+Release). Remaining:
+sanitizer/CI gates.
+
+### R01c - Open (32-bit gate pending; strict evidence passes)
+
+Fix: uncommitted (T01/T04/T05 tree). Tests: `jpl_largefile` binary
+`largefile tests passed` (Windows + Linux; oversize skipped on 64-bit),
+strict `-Werror=implicit-function-declaration` Linux configure/build
+OK. Remaining: 32-bit multilib run + CI.
+
+### R02 - Open (legacy-sweep blocked; mock/nominal evidence passes)
+
+Fix: uncommitted (T12/T16 tree). Tests: `jpl_convenience`,
+`jpl_numeric`, `jpl_testpo_440` (pass). Remaining: equivalent
+centers-0/12 check on real DE441 data is covered by the pass, but the
+local legacy sweep (`jpl_all_ephemerides_local`) fails on DE200 open -
+see R05-blocker note below.
+
+### R03a - Open (CI gate pending; local strict evidence passes)
+
+Fix: uncommitted (T01/T22 tree). Evidence: Linux strict configure/build
+OK with `-Werror=implicit-function-declaration` (GCC 15.2). Remaining:
+Ubuntu GCC/Clang CI runs.
+
+### R03b - Open (blocked: 32-bit gate not run)
+
+Fix: uncommitted (T01/T22 tree). Evidence: `jpl_largefile` 64-bit
+behavior verified; 32-bit addressability gate not run locally (no
+multilib) and no CI run yet.
+
+### R04 - Open (CI/docs gates pending; contract evidence passes)
+
+Fix: uncommitted (T12/T16/T21 tree). Tests: `jpl_convenience`,
+`jpl_numeric` pass; frame-source table in `docs/validation.md`.
+Remaining: macOS/CI confirmation; legacy-file sweep blocked by DE200
+open failure.
+
+### R05a - Open (CI gate pending; license evidence passes)
+
+Fix: uncommitted (T18/T21/T22 tree: `LICENSE`, `LICENSES.md`,
+inventory). Tests: `jpl_licenses` pass Windows Debug+Release.
+Remaining: Linux license run hung locally; CI required.
+
+### R05b - Open (non-Windows consumer gates pending)
+
+Fix: uncommitted (T18/T19 tree). Tests: `jpl_install` pass Windows
+Debug (~144 s) + Release (~134 s); audit: exactly 3 headers,
+config/version/targets present, no `m.lib`, no checkout-path leaks,
+no `jpl_private` in consumer. `src/erfa` unchanged. Remaining:
+clang-cl/macOS/32-bit consumers via CI.
+
+### R06a - Open (unit evidence passes; sweep blocked)
+
+Fix: uncommitted (T05 tree). Tests: `jpl_parser` pass Debug+Release
+(header-only/trailing-width regressions). Remaining: full legacy sweep
+blocked by DE200 open failure.
+
+### R06b - Open (unit evidence passes; sweep blocked)
+
+Fix: uncommitted (T05 tree). Tests: `jpl_parser` trailing-record case
+passes. Remaining: same DE200 blocker.
+
+### R07 - Open (TSan/CI gates pending; functional evidence passes)
+
+Fix: uncommitted (T13/T14 tree). Tests: `jpl_mmap`, `jpl_threads` pass
+Windows Debug+Release; Linux binaries print `mmap tests passed` /
+`threads tests passed`. Remaining: TSan + CI.
+
+### R08a - Open (unit evidence passes; sanitizer/CI pending)
+
+Fix: uncommitted (T04 tree). Tests: `jpl_tests`, `jpl_api_errors`
+pass. Remaining: sanitizer/CI gates.
+
+### R08b - Open (unit evidence passes; sanitizer/CI pending)
+
+Fix: uncommitted (T09/T11/T16 tree). Tests: `jpl_api_errors`,
+`jpl_numeric` pass. Remaining: sanitizer/CI gates.
+
+### R08c - Open (unit evidence passes; real-tier TT-TDB blocked)
+
+Fix: uncommitted (T10 tree). Tests: `jpl_lighttime` passes; validator
+negatives pass. Remaining: `jpl_testpo_440t` fails (see R10-blocker).
+
+### R09 - Open (blocked: legacy big-endian DE200 fails to open)
+
+Fix: uncommitted (T05 tree). Evidence: little-endian DE202 opens OK
+(probe denum 202); big-endian DE200 repack
+(`D:\ephem\jpl\bin\DE200.eph`, 42965216 B, BE header denum 200)
+fails `jpl_open` with `JPL_ERROR_FORMAT` on both backends: the
+trailing-record hypothesis reads last/trailing `[2513360.5,
+2513392.5]` against scheduled trail `2513392.5` (32-day mismatch) and
+the plain extra=2 hypothesis fails divisibility (`42965216 % 6501 =
+107`). Full byte-order/layout diagnosis is future work; T23 attempted
+no fix. `jpl_parser` synthetic BE regression still passes.
+
+### R10 - Open (blocked: DE440t TT-TDB reports absent)
+
+Fix: uncommitted (T06 tree; T10 runtime guard). Evidence: DE440t opens
+OK (denum 440, `record_double_count` 1122, tail triple `(1019,13,8)`);
+`jpl_get_tt_minus_tdb` at `{2451545.0, 0.5}` returns
+`JPL_ERROR_UNSUPPORTED`, so `jpl_testpo_440t` fails at line 13 in both
+configurations. Root cause: span end `(1019-1)+13*8 = 1122` equals the
+record width and is rejected by the boundary-equality guard
+(`span_end >= record_double_count`, `src/jpl.c:1801`) plus the matching
+accept-then-absent comment at `src/jpl.c:590-601`. Whether the last
+slot genuinely holds no coefficient bytes or the guard is off by one
+is undecided; T23 attempted no fix.
+
+### R11 - Open (unit evidence passes; real-tier blocked by R10)
+
+Fix: uncommitted (T10/T16 tree). Tests: `jpl_lighttime`,
+`jpl_numeric` pass. Remaining: emission-epoch coverage behavior on
+real `*t` data cannot close while TT-TDB reads fail (see R10).
+
+### R12a - Open (Windows evidence passes; other toolchains via CI)
+
+Fix: uncommitted (T19 tree). Tests: `jpl_install` Windows Debug+Release
+pass (exact-version + mismatch cases inside). Remaining: other
+platform/toolchain runs.
+
+### R12b - Open (Windows evidence passes; POSIX relocation via CI)
+
+Fix: uncommitted (T19 tree). Tests: `jpl_install` covers custom
+destinations + spaces prefix on Windows. Remaining: POSIX runs.
+
+### R12c - Open (blocked: no local clang-cl; CI required)
+
+Fix: uncommitted (T19/T22 tree). Evidence: VS-generator exports carry
+no `m.lib` (checked inside `jpl_install`, passing). Remaining:
+clang-cl + Linux/macOS consumer runs.
+
+### R13a-e - Open (synthetic-validator evidence passes; real T#17 blocked)
+
+Fix: uncommitted (T15/T03/T22 tree). Tests: all 15 `jpl_validator_*`
+plus `jpl_fixture_read_error` pass Debug+Release; `jpl_testpo_parser`
+passes. The `jpl_testpo_440t` failure is a library dataset-absent
+result (`JPL_ERROR_UNSUPPORTED`), not a runner false-pass. Remaining:
+real T#17 validation blocked by R10; CI sweep confirmation pending.
+
+### R14a/b - Open (Windows docs evidence passes; POSIX/CI pending)
+
+Fix: uncommitted (T21/T22 tree). Tests: `jpl_docs_symbols`,
+`jpl_docs_paths` pass in `build/t23-docs` (4/4 with examples/licenses).
+Remaining: POSIX docs run + CI docs job.
+
+### R15 - Open (unit evidence passes; sweep blocked by DE200)
+
+Fix: uncommitted (T12 tree). Tests: `jpl_convenience` passes.
+Remaining: identical-body coverage on the legacy sweep blocked by the
+R09 DE200 open failure.
+
+### L01 - Verified in unit scope (CI gates still pending)
+
+Fix: uncommitted (T08/T10/T11 tree). Evidence: `JPL_AU_KM`,
+`JPL_C_KM_PER_SECOND`, derived `JPL_C_AU_PER_DAY` in
+`src/jpl_private.h`; `jpl_lighttime`, `jpl_aberration`,
+`jpl_numeric` pass Debug+Release. No live stale literal (remaining
+`173.144632684` hits are historical plan docs + this log's quotation
+of the old value).
+
+### L02 - Open (mock/nominal evidence passes; real-tier blocked)
+
+Fix: uncommitted (T08/T15/T16 tree). Tests: `jpl_numeric`,
+`jpl_testpo_440` pass. Remaining: nonmodern-AU conversion on the
+blocked files (R09/R10).
+
+### L03 - Open (unit evidence passes; CI/sweep pending)
+
+Fix: uncommitted (T07/T09 tree). Tests: `jpl_api_errors`,
+`jpl_numeric` pass. Remaining: CI/sweep confirmation.
+
+### L04 - Verified in docs scope (CI gate pending)
+
+Fix: uncommitted (T07/T16/T21 tree). Evidence: `docs/validation.md`
+scientific contracts state millisecond-scale TT-TDB, +/-3 ns ERFA note,
+tolerances-as-tolerances; no live 70 s / 2 ms-floor claims (hits only
+in labeled historical quotations). `jpl_numeric` passes.
+
+### L05 - Verified in unit scope (sweep blocked by DE200)
+
+Fix: uncommitted (T07/T12/T21 tree). Tests: `jpl_convenience`,
+`jpl_api_errors` pass. Remaining: legacy sweep blocked (R09).
+
+### L06 - Verified in unit scope (network-download path via CI only)
+
+Fix: uncommitted (T20 tree). Tests: `jpl_fetch_cache` pass
+Debug+Release (offline resolver). No re-download observed (local
+per-file sources used; network downloads not exercised locally).
+
+### G01/G02/G05/G06/G11/G12/G13 - Open (unit evidence passes; blocked files/CI pending)
+
+Fix: uncommitted (T16/T02/T07/T10/T11/T12 tree). Tests: `jpl_numeric`,
+`jpl_tt_tdb`, `jpl_lighttime` pass Debug+Release. Remaining: full
+numerical/matrix closure needs R09/R10 files + platform/CI gates.
+
+### G03/G04 - Open (functional evidence passes; TSan/CI pending)
+
+Fix: uncommitted (T13/T14/T22 tree). Tests: `jpl_threads`,
+`jpl_mmap` pass (Windows + Linux binaries). Remaining: TSan + CI.
+
+### G07/G08 - Verified in unit scope (CI gates pending)
+
+Fix: uncommitted (T17/T21 tree). Tests: `jpl_fixture`,
+`jpl_fixture_integrity`, `jpl_fixture_integrity_negative` pass
+Debug+Release.
+
+### G09/G10 - Open (blocked: CI + unrun local gates)
+
+Fix: uncommitted (T22/T19 tree). Evidence: Windows MSVC Debug+Release
+full pass; Linux strict subset pass; workflows present. Missing:
+clang-cl, macOS, 32-bit, sanitizers, Linux install/licenses/fetch,
+full Linux suite, and actual CI runs. A skipped tier is never a pass.
+
+### B01-B06 - Open (unit/docs evidence passes; blocked files/CI pending)
+
+Fix: uncommitted (owning trees per map). Tests: `jpl_numeric`,
+`jpl_lighttime`, `jpl_aberration`, `jpl_convenience` pass
+Debug+Release; contracts in `docs/validation.md`. Remaining: R09/R10
+files + platform/CI gates.
+
+### S01-S03 - Verified in docs scope (POSIX/CI confirmation pending)
+
+Fix: uncommitted (T21/T22 tree). Evidence: live README/validation
+wording checked (fixture vs operational data, tier names, spaces
+paths); `jpl_docs_paths`, `jpl_examples`, `jpl_licenses` pass.
+Remaining: POSIX docs/CI confirmation.
+
+### S04 - Verified in unit scope (CI gate pending)
+
+Fix: uncommitted (T11/T16 tree). Tests: `jpl_aberration`,
+`jpl_numeric` pass.
+
+### S05-S07 - Verified in unit scope (CI gate pending)
+
+Fix: uncommitted (T03/T15 tree). Tests: `jpl_testpo_parser`, all
+`jpl_validator_*` pass Debug+Release.
+
+## Prior log
+
 No findings have been resolved by this report. Future sessions should append the finding ID, fix revision, regression test, and fresh verification result here. Do not mark an issue resolved solely because an implementation plan exists.

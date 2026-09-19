@@ -1,0 +1,99 @@
+# Copyright (c) 2026 Todd Carnes
+# SPDX-License-Identifier: MIT
+# See LICENSE in the project root for the full license text.
+# First-party license inventory (owned by T18).
+# Every path below is relative to the source root, must exist, and must
+# carry "Copyright .*Todd Carnes" plus "SPDX-License-Identifier: MIT" in
+# its native comment syntax (C block, "#" script, or HTML comment).
+# Verified first-party creation year for all entries is 2026 (sole author
+# Todd Carnes; initial commit 2026-09-15); no earlier year is claimed.
+# JPL_LICENSE_EXEMPT_FILES lists files that must exist but must NOT gain
+# a notice, each for a stated reason. The first-party count is kept in
+# one place only: the list length below (no duplicated literal counts
+# elsewhere); report counts must derive from this list.
+# Sweep-exempt directory prefixes
+# (checked in tests/cmake/check_licenses.cmake, not listed per file):
+#   src/erfa/          - vendored third-party ERFA (BSD-3, never modified)
+#   docs/superpowers/  - historical design records, preserved verbatim
+#   docs/reviews/      - saved review plus progress ledger, verbatim
+#   build/, out/, cmake-build-*/ - generated build trees, no notices
+#   .git/, .superpowers/, docs/html/, docs/latex/ - tooling/generated output
+set(JPL_LICENSE_FIRST_PARTY
+  "CMakeLists.txt"
+  "Doxyfile.in"
+  ".gitignore"
+  "README.md"
+  "LICENSES.md"
+  "CHANGELOG.md"
+  "AGENTS.md"
+  "docs/validation.md"
+  "docs/migration-two-part-dates.md"
+  "include/jpl.h"
+  "include/jpl_frames.h"
+  "include/jpl_convenience.h"
+  "src/jpl.c"
+  "src/jpl_date.c"
+  "src/jpl_frames.c"
+  "src/jpl_convenience.c"
+  "src/jpl_private.h"
+  "tests/jpl_test_util.h"
+  "tests/jpl_testpo_util.h"
+  "tests/jpl_testpo_util.c"
+  "tests/examples.c"
+  "tests/public_symbols.txt"
+  "tests/make_validator_data.c"
+  "tests/test_jpl.c"
+  "tests/test_lighttime.c"
+  "tests/test_aberration.c"
+  "tests/test_frames.c"
+  "tests/test_convenience.c"
+  "tests/test_mmap.c"
+  "tests/test_threads.c"
+  "tests/test_tt_tdb.c"
+  "tests/test_parser.c"
+  "tests/test_api_errors.c"
+  "tests/test_numeric.c"
+  "tests/test_dates.c"
+  "tests/test_largefile.c"
+  "tests/test_testpo_parser.c"
+  "tests/test_fixture.c"
+  "tests/test_testpo.c"
+  "tests/test_real_ephemeris.c"
+  "tests/test_all_ephemerides.c"
+  "tests/data/numerical_reference.h"
+  "tests/data/numerical_reference.md"
+  "tests/data/MANIFEST.txt"
+  "tests/data/PROVENANCE.md"
+  "tools/generate_numerical_reference.c"
+  "tests/license_inventory.cmake"
+  "cmake/libjplConfig.cmake.in"
+  "cmake/LibjplTestData.cmake"
+  ".github/workflows/ci.yml"
+  ".github/workflows/ephemerides.yml"
+  "tests/consumer/CMakeLists.txt"
+  "tests/consumer/main.c"
+  "tests/consumer/main.cpp"
+  "tests/cmake/check_licenses.cmake"
+  "tests/cmake/test_licenses.cmake"
+  "tests/cmake/check_fixture.cmake"
+  "tests/cmake/check_docs.cmake"
+  "tests/cmake/test_docs_paths.cmake"
+  "tests/cmake/test_fixture_integrity.cmake"
+  "tests/cmake/test_validators.cmake"
+  "tests/cmake/test_fetch_cache.cmake"
+  "tests/cmake/test_install.cmake"
+  "tests/cmake/mutate_fixture.py"
+)
+# Exempt files and why:
+#   LICENSE - the full MIT grant itself (checked separately for completeness).
+#   src/erfa/LICENSE - third-party ERFA BSD-3 grant (checked on install only).
+#   tests/data/de441_2000_2010.eph - binary fixture, non-commentable.
+#   tests/data/testpo_441_slice.txt - third-party JPL reference data, byte-pinned.
+#   tests/data/fixture_rows.txt - hashed ordered identity list, parser-read.
+set(JPL_LICENSE_EXEMPT_FILES
+  "LICENSE"
+  "src/erfa/LICENSE"
+  "tests/data/de441_2000_2010.eph"
+  "tests/data/testpo_441_slice.txt"
+  "tests/data/fixture_rows.txt"
+)

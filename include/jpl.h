@@ -1,9 +1,19 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
 #ifndef LIBJPL_JPL_H
 #define LIBJPL_JPL_H
 
 /**
  * @file jpl.h
  * @brief Portable reader for JPL Development Ephemeris (DE) binary files.
+ * @note License: first-party code is MIT, copyright (c) 2026 Todd Carnes;
+ *       see LICENSE in the project root. Frame/time routines use vendored
+ *       ERFA v2.0.1 (NumFOCUS Foundation, BSD-3-Clause); see
+ *       src/erfa/LICENSE. Both texts install under
+ *       ${CMAKE_INSTALL_DATADIR}/licenses/libjpl/. ERFA declarations are
+ *       private and never exposed through this header.
  */
 
 #include <stddef.h>
@@ -37,7 +47,10 @@ typedef enum jpl_status {
     JPL_ERROR_IO,        /**< @brief File I/O error. */
     JPL_ERROR_FORMAT,    /**< @brief Invalid JPL DE format. */
     JPL_ERROR_RANGE,     /**< @brief Index or Julian date out of range. */
-    JPL_ERROR_MEMORY     /**< @brief Out of memory. */
+    JPL_ERROR_MEMORY,    /**< @brief Out of memory. */
+    JPL_ERROR_UNSUPPORTED, /**< @brief Requested dataset absent, or convenience output frame not verified as ICRF-aligned. */
+    JPL_ERROR_CONVERGENCE, /**< @brief A valid bounded solve failed its stopping criteria within the iteration limit. */
+    JPL_ERROR_NUMERIC    /**< @brief Finite validated inputs nevertheless produced an unrepresentable numerical result. */
 } jpl_status;
 
 /**
@@ -75,6 +88,25 @@ typedef enum jpl_target {
 } jpl_target;
 
 /**
+ * @brief Orientation family of the DE coefficient frame.
+ * @note Identifies orientation families only, not a transformation engine
+ *       and not a claim of identical ICRF realizations. Unknown values
+ *       remain readable by core native-frame APIs; ICRS convenience
+ *       functions require JPL_FRAME_ICRF and return JPL_ERROR_UNSUPPORTED
+ *       otherwise. Classification follows JPL's export information
+ *       (https://ssd.jpl.nasa.gov/planets/eph_export.html): DE102 is
+ *       referred to the dynamical equator and equinox of 1950, DE200/DE202
+ *       to the dynamical equator and equinox of 2000, and the documented
+ *       modern releases below are ICRF-aligned.
+ */
+typedef enum jpl_reference_frame {
+    JPL_FRAME_UNKNOWN = 0,      /**< @brief Unverified or unlisted ephemeris number. */
+    JPL_FRAME_DYNAMICAL_1950,   /**< @brief Dynamical equator/equinox of 1950 (DE102). */
+    JPL_FRAME_DYNAMICAL_2000,   /**< @brief Dynamical equator/equinox of 2000 (DE200/DE202). */
+    JPL_FRAME_ICRF              /**< @brief ICRF-aligned modern release (explicit allowlist). */
+} jpl_reference_frame;
+
+/**
  * @brief A 1-based coefficient index and its Chebyshev-series dimensions.
  */
 typedef struct jpl_pointer {
@@ -89,14 +121,15 @@ typedef struct jpl_pointer {
 typedef struct jpl_header {
     char titles[3][JPL_TITLE_LINE_LENGTH + 1]; /**< @brief Three 84-character title lines (NUL-terminated). */
     char constant_names[JPL_MAX_CONSTANT_NAMES][JPL_CONSTANT_NAME_LENGTH + 1]; /**< @brief Up to 400 six-character constant names (NUL-terminated). */
-    double start_jd; /**< @brief Start of ephemeris coverage (Julian date). */
-    double end_jd; /**< @brief End of ephemeris coverage (Julian date). */
+    double start_jd[2]; /**< @brief Start of ephemeris coverage as a two-part Julian date (sum of both parts). */
+    double end_jd[2]; /**< @brief End of ephemeris coverage as a two-part Julian date (sum of both parts). */
     double step_days; /**< @brief Span in days covered by one data record. */
     int constant_count; /**< @brief Number of numeric constants in the constants record. */
-    double astronomical_unit_km; /**< @brief Astronomical unit in km (used to scale jpl_get_state output to AU). */
+    double astronomical_unit_km; /**< @brief Original header AU in km (metadata only; public body states use the modern AU 149597870.7 km, not this field). */
     double earth_moon_mass_ratio; /**< @brief Earth-Moon mass ratio (used to derive Earth and Moon states). */
     jpl_pointer pointers[JPL_TARGET_COUNT]; /**< @brief Coefficient layout for targets 1-12 (nutations reuse the last entry). */
     int ephemeris_number; /**< @brief DE ephemeris number (e.g. 441 for DE441). */
+    jpl_reference_frame reference_frame; /**< @brief Orientation family derived from ephemeris_number via an explicit cited allowlist (ICRF, dynamical 1950/2000, or unknown). Core readers accept every frame natively; ICRS convenience requires ICRF. */
     jpl_pointer libration_pointer; /**< @brief Coefficient layout for librations (target 15). */
     jpl_pointer tt_tdb_pointer; /**< @brief Coefficient layout for TT-TDB (target 17, *t files only). */
     int has_tt_tdb; /**< @brief Nonzero iff the file carries the TT-TDB dataset. */
@@ -121,6 +154,13 @@ const char *jpl_status_string(jpl_status status);
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if path/out is NULL,
  *         JPL_ERROR_IO on file errors, JPL_ERROR_FORMAT on bad header.
  * @note Byte order is auto-detected. Close with jpl_close().
+ * @note The path is resolved to an absolute reopen path before fopen and
+ *       that resolved path backs later clones, so changing the working
+ *       directory after open cannot redirect a clone. File identity is
+ *       captured from the open stream (POSIX device+inode, Windows
+ *       volume/file index) with its size. Ephemeris contents must stay
+ *       immutable while any reader is active: identity checks reject a
+ *       replaced file but do not snapshot-isolate in-place edits.
  */
 jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
 
@@ -150,6 +190,9 @@ const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/values is NULL
  *         or value_count is smaller than header.constant_count,
  *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
+ * @note Raw I/O: the destination buffer may be partially written after an
+ *       I/O failure (unlike computed-state outputs, which are
+ *       transactional).
  */
 jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
 
@@ -162,6 +205,9 @@ jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, si
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/values is NULL
  *         or value_count is too small, JPL_ERROR_RANGE if record_index is out
  *         of range, JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
+ * @note Raw I/O: the destination buffer carries the encoded on-disk scalar
+ *       epoch fields verbatim and may be partially written after an I/O
+ *       failure (unlike computed-state outputs, which are transactional).
  */
 jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
                            double *values, size_t value_count);
@@ -176,19 +222,27 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
 /**
  * @brief Interpolates TT minus TDB at a TDB Julian date (*t files).
  * @param ephemeris Open handle.
- * @param jd_tdb Julian date (TDB) within header coverage.
+ * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
  * @param seconds Output TT-TDB in seconds. Must be non-NULL.
  * @param rate_per_day Optional output rate of change in seconds/day, may be NULL.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds is NULL,
- *         JPL_ERROR_RANGE if the file carries no TT-TDB dataset (check
- *         jpl_has_tt_tdb()) or jd_tdb is outside coverage, JPL_ERROR_FORMAT
- *         on corrupt records, JPL_ERROR_IO/MEMORY from the record read.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds is NULL
+ *         or either part of jd_tdb is nonfinite,
+ *         JPL_ERROR_RANGE if jd_tdb is outside coverage (coverage bounds
+ *         query validity, not model accuracy),
+ *         JPL_ERROR_UNSUPPORTED if the file carries no TT-TDB dataset
+ *         (check jpl_has_tt_tdb()), JPL_ERROR_FORMAT for nonfinite file
+ *         coefficients, JPL_ERROR_NUMERIC when finite inputs produce an
+ *         unrepresentable result, JPL_ERROR_IO/MEMORY from the record read.
+ * @note Computed outputs are transactional: on failure *seconds and
+ *       *rate_per_day (when non-NULL) are left unchanged.
  * @note Coefficients are stored in seconds and the record span is in days,
  *       so no unit conversion is applied. For files without the dataset use
- *       jpl_tt_to_tdb() (~2 ms ERFA approximation) instead.
+ *       jpl_tt_to_tdb() (geocentric Fairhead & Bretagnon model, roughly
+ *       1.7 ms amplitude, +/-3 ns model accuracy over 1950-2050 per ERFA)
+ *       instead.
  */
-jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, double jd_tdb,
-                                double *seconds, double *rate_per_day);
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                 double *seconds, double *rate_per_day);
 
 /**
  * @brief Reports whether the open file carries the TT-TDB dataset.
@@ -200,75 +254,119 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, double jd_tdb,
 int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
 
 /**
- * @brief Interpolates a JPL target at a TDB Julian date.
- * @param ephemeris Open handle.
- * @param jd_tdb Julian date (TDB) within header coverage.
- * @param target Target body as a jpl_target value (1-15).
- * @param center Center body as a jpl_target value; may also be 0 for the
- *        solar-system barycenter.
- * @param state Output array of 6 slots receiving the relative state.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/state is NULL
- *         or the target/center combination is invalid, JPL_ERROR_RANGE if
- *         jd_tdb is outside coverage, JPL_ERROR_FORMAT on corrupt records,
- *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
- * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day).
- *       Nutations (14) return dpsi, deps in state[0], state[1] and their
- *       rates in state[3], state[4]; state[2] and state[5] are zero.
-  *       Librations (15) return three angles and three rates. Both require
-  *       center 0. For TT-TDB (17) use jpl_get_tt_minus_tdb().
- *       A single handle must not be shared across threads on the FILE
- *       path: reads update a per-handle record cache, so sharing is a
- *       data race. The mmap path performs no per-handle mutation and is
- *       safe for concurrent reads on one handle; either way,
- *       jpl_ephemeris_clone() per thread is always safe.
+  * @brief Interpolates a JPL target at a TDB Julian date.
+  * @param ephemeris Open handle.
+  * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
+  * @param target Target body as a jpl_target value (1-15, except TT-TDB 17
+  *        which is served by jpl_get_tt_minus_tdb()).
+  * @param center Center body as a jpl_target value; may also be 0 for the
+  *        solar-system barycenter.
+  * @param state Output array of 6 slots receiving the relative state.
+  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/state/jd_tdb is NULL,
+  *         either part of jd_tdb is nonfinite, or the target/center combination
+  *         is invalid (target 0 is always invalid; only 0 and 1-15 are
+  *         accepted here, and 17 must use jpl_get_tt_minus_tdb()),
+  *         JPL_ERROR_RANGE if jd_tdb is outside coverage (the coverage
+  *         interval is the file span, not a model-accuracy guarantee),
+  *         JPL_ERROR_UNSUPPORTED if the requested
+  *         dataset is absent (valid in-coverage query for missing data),
+  *         JPL_ERROR_FORMAT for nonfinite file coefficients,
+  *         JPL_ERROR_NUMERIC when finite validated inputs produce an
+  *         unrepresentable result,
+  *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
+  * @note Computed outputs are transactional: on failure the caller's state
+  *       array is left unchanged, and no partial component is published.
+  *       Failed interpolations never poison the FILE-path record cache.
+  *       Raw record/constant reads are the exception: jpl_read_record() and
+  *       jpl_read_constants() destination buffers may be partially written
+  *       after an I/O failure.
+   * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day)
+   *       in the modern AU (149597870.7 km), independent of the header AU.
+   *       Nutations (14) return dpsi, deps in state[0], state[1] and their
+   *       rates in state[3], state[4]; state[2] and state[5] are zero.
+   *       Librations (15) return three angles and three rates. Both require
+   *       center 0. For TT-TDB (17) use jpl_get_tt_minus_tdb().
+  *       A single handle must not be shared across threads on the FILE
+  *       path: reads update a per-handle record cache, so sharing is a
+  *       data race. The mmap path performs no per-handle mutation and is
+  *       safe for concurrent reads on one handle; either way,
+  *       jpl_ephemeris_clone() per thread is always safe.
  */
-jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, double jd_tdb,
-                         int target, int center, double state[6]);
+jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                          int target, int center, double state[6]);
 
 /**
  * @brief Interpolates apparent geometric state corrected for light-time.
  * @param ephemeris Open handle from jpl_open().
- * @param jd_tdb TDB Julian date of observation.
+ * @param jd_tdb TDB Julian date of observation as a two-part array.
  * @param target Target jpl_target (1-13).
  * @param center Center jpl_target, or 0 for SSB.
  * @param state Output array of 6 slots receiving the relative state.
  * @param out_light_time Optional output light-time in days, may be NULL.
- * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/state or target/center
- *         outside 0-13; JPL_ERROR_RANGE on out-of-coverage jd or
- *         non-convergence after 10 iters; JPL_ERROR_FORMAT/IO/MEMORY from
- *         the underlying state reads.
- * @note Iterates jd - light_time until delta < 1e-12 d or 10 iters.
+ * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/state/jd_tdb, nonfinite
+ *         jd_tdb parts, or target/center outside 0-13;
+ *         JPL_ERROR_RANGE on out-of-coverage jd or when no in-coverage
+ *         emission epoch solves the delay equation (genuinely pre-coverage
+ *         root under the subluminal-motion contract);
+ *         JPL_ERROR_CONVERGENCE when a bounded in-coverage solve exhausts
+ *         its fast/bracketed iteration budget without an accepted epoch;
+ *         JPL_ERROR_FORMAT for nonfinite file coefficients or nonphysical
+ *         (superluminal) evaluated file motion; JPL_ERROR_NUMERIC when
+ *         finite inputs produce an unrepresentable result;
+ *         JPL_ERROR_UNSUPPORTED/IO/MEMORY from the underlying state reads.
+ * @note Holds the observer barycentric state fixed at reception and solves
+ *       tau = range(target(receive - tau), observer(receive))/c with the
+ *       emission epoch as a two-part pair. Up to 10 fast fixed-point
+ *       iterations run first; on coverage crossing or stagnation a
+ *       sign-checked bisection over emission epochs in
+ *       [coverage_start, receive] (at most 128 steps) recovers valid
+ *       near-start solutions. State and delay come from one accepted
+ *       emission evaluation with residual |tau - range/c| <= 1e-12 d.
+ *       The 1e-12-day residual is a solver tolerance, not an
+ *       astronomical accuracy claim: Chebyshev interpolation and model
+ *       error dominate real ephemeris uncertainty.
  *       Only bodies 0-13 are accepted; nutations (14) and librations (15)
  *       have no light-time meaning and return JPL_ERROR_ARGUMENT.
- *       State velocity is at the retarded emission epoch; aberration is
+ *       State velocity is the mixed-epoch difference
+ *       v_target(emission) - v_center(reception); it is not the derivative
+ *       of apparent position with respect to reception time. Aberration is
  *       not applied (use jpl_apply_aberration_full with the observer
  *       velocity at reception).
  */
-jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, double jd_tdb,
-                                   int target, int center, double state[6], double *out_light_time);
+jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                    int target, int center, double state[6], double *out_light_time);
 
 /**
  * @brief Applies special-relativistic stellar aberration.
- * @param state Input geometric state, pos AU + vel AU/day. NULL is a no-op.
- * @param observer_vel Observer barycentric velocity AU/day. NULL is a no-op.
- * @param out_state Output aberrated state, may alias state. NULL is a no-op.
+ * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
+ * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
+ * @param out_state Output aberrated state, may alias state. Must be non-NULL.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
+ *         state/velocity slots, or observer speed at/above light speed,
+ *         JPL_ERROR_NUMERIC when finite inputs produce an unrepresentable result.
  * @note Special-relativistic direction transform (cf. ERFA eraAb) with
  *       distance preservation; solar gravitational term (<=0.4uas) omitted;
  *       velocity passed through unchanged. In-place safe.
  *       For the <=0.4uas solar term use jpl_apply_aberration_full when
  *       the Sun distance is known.
+ * @note Transactional: out_state is unchanged on failure. Exact
+ *       state/out_state aliasing is supported.
  */
-void jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
+jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
 
 /**
  * @brief Applies full special-relativistic stellar aberration including the
  *        solar gravitational potential term.
- * @param state Input geometric state, pos AU + vel AU/day. NULL is a no-op.
- * @param observer_vel Observer barycentric velocity AU/day. NULL is a no-op.
- * @param sun_distance_au Distance from the Sun to the observer in AU; must
- *        be positive and finite (guarded: non-positive input falls back to
- *        jpl_apply_aberration behavior).
- * @param out_state Output aberrated state, may alias state. NULL is a no-op.
+ * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
+ * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
+ * @param sun_distance_au Distance from the Sun to the observer in AU; finite
+ *        nonpositive input omits the potential term (wrapper behavior),
+ *        nonfinite input is invalid.
+ * @param out_state Output aberrated state, may alias state. Must be non-NULL.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
+ *         state/velocity slots, observer speed at/above light speed, or
+ *         nonfinite Sun distance, JPL_ERROR_NUMERIC when finite inputs
+ *         produce an unrepresentable result.
  * @note Matches ERFA eraAb (Explanatory Supplement Expr. 7.40 + Klioner
  *       2003 solar term) to ~1e-12 on unit vectors; velocity passed through
  *       unchanged. In-place safe. See also jpl_apply_aberration, the
@@ -276,8 +374,10 @@ void jpl_apply_aberration(const double state[6], const double observer_vel[3], d
  * @note Prefer this over jpl_apply_aberration when the Sun distance is
  *       known; the wrapper omits the <=0.4uas solar term (singular for
  *       Sun-centered observers).
+ * @note Transactional: out_state is unchanged on failure. Exact
+ *       state/out_state aliasing is supported.
  */
-void jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
+jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
                                double sun_distance_au, double out_state[6]);
 
 /**
@@ -291,7 +391,10 @@ void jpl_apply_aberration_full(const double state[6], const double observer_vel[
  *       handle is shareable for concurrent reads; clones (via
  *       jpl_ephemeris_clone()) are still safe, and each handle must be
  *       closed. Concurrent reads on distinct handles are safe; external
- *       sync required for clone-vs-close races.
+ *       sync required for clone-vs-close races. Contents must stay
+ *       immutable while any reader is active: identity checks reject a
+ *       replaced file for new clones but do not snapshot-isolate
+ *       in-place edits.
  */
 jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
 /**
@@ -300,8 +403,19 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
  * @param out_clone Receives new handle sharing mapped data.
  * @return JPL_OK or JPL_ERROR_ARGUMENT (NULL args, corrupt handle),
  *         JPL_ERROR_MEMORY on allocation failure, or JPL_ERROR_IO if the
- *         FILE-handle clone cannot re-open the path.
+ *         FILE-handle clone cannot re-open the path (including after the
+ *         original path was renamed or deleted: clones are not promised
+ *         to survive path disappearance).
  * @note Each clone must be closed with jpl_close(); underlying mapping unmaps at zero refcount. Concurrent reads on distinct handles are safe; external sync required for clone-vs-close races.
+ * @note FILE clones open an independent stream at the stored absolute
+ *       reopen path and verify its identity (device/inode on POSIX,
+ *       volume/file index on Windows) plus size against the still-open
+ *       source before the clone is published. A replacement file or a
+ *       missing path reports JPL_ERROR_IO with NULL output, never
+ *       replacement data. In-place content mutation is unsupported. The
+ *       source handle must stay open (externally synchronized) for the
+ *       duration of the clone call; no handle may be closed while a
+ *       reader is using it.
  */
 jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
 

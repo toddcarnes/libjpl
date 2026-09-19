@@ -46,9 +46,6 @@ enum { LF_RECORD_DOUBLES = LF_RECORD_BYTES / 8 };
 #define LF_MARK_VALUE 123456789.0
 
 static const char *LF_PATH = "jpl_test_largefile.bin";
-#if SIZE_MAX < UINT64_MAX
-static const char *LF_BIG_PATH = "jpl_test_largefile_big.bin";
-#endif
 
 static uint64_t lf_last_offset(void) {
     return (uint64_t)(LF_INTERVALS + 1) * (uint64_t)LF_RECORD_BYTES;
@@ -145,7 +142,8 @@ int main(void) {
     jpl_close(e);
     e = NULL;
 
-#if SIZE_MAX > UINT32_MAX
+    /* 64-bit only: the 3.2 GiB fixture exceeds the 32-bit address
+     * space, and 32-bit builds are unsupported. */
     {
         jpl_ephemeris *m = NULL;
         JPL_TEST_CHECK(jpl_open_mmap(LF_PATH, &m) == JPL_OK);
@@ -155,41 +153,7 @@ int main(void) {
         JPL_TEST_CHECK(vals[LF_MARK_SLOT] == LF_MARK_VALUE);
         jpl_close(m);
     }
-#else
-    printf("skip mmap of 3.2 GiB fixture on 32-bit address space\n");
-#endif
     JPL_TEST_CHECK(remove(LF_PATH) == 0);
-
-#if SIZE_MAX < UINT64_MAX
-    /* A file larger than SIZE_MAX is not addressable: open must fail
-     * cleanly with a NULL handle, and mmap need not map it. */
-    {
-        uint64_t big_size = (uint64_t)SIZE_MAX + 2u;
-        FILE *bf = fopen(LF_BIG_PATH, "wb");
-        jpl_ephemeris *b = NULL, *m2 = NULL;
-        jpl_status st;
-        JPL_TEST_CHECK(bf != NULL);
-        lf_make_sparse(bf);
-        if (LF_FSEEK(bf, (lf_offset)(big_size - 1u), SEEK_SET) != 0 ||
-            fputc(0, bf) == EOF || !lf_check_size(bf, big_size)) {
-            fclose(bf);
-            remove(LF_BIG_PATH);
-            printf("SKIP: filesystem cannot create >SIZE_MAX sparse fixture\n");
-        } else {
-            JPL_TEST_CHECK(fclose(bf) == 0);
-            st = jpl_open(LF_BIG_PATH, &b);
-            JPL_TEST_CHECK(st != JPL_OK);
-            JPL_TEST_CHECK(b == NULL);
-            if (jpl_open_mmap(LF_BIG_PATH, &m2) == JPL_OK)
-                jpl_close(m2);
-            else
-                JPL_TEST_CHECK(m2 == NULL);
-            JPL_TEST_CHECK(remove(LF_BIG_PATH) == 0);
-        }
-    }
-#else
-    printf("skip oversize fixture: SIZE_MAX == UINT64_MAX\n");
-#endif
 
     puts("largefile tests passed");
     return 0;

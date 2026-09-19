@@ -164,9 +164,15 @@ jpl_status jpl_date_add_scaled(const double date[2], double step,
     if (!pair_finite(date) || !isfinite(step)) {
         return JPL_ERROR_ARGUMENT;
     }
+    /* On 64-bit size_t the index can exceed the exactly representable
+     * range; on 32-bit size_t every value fits, so no comparison is
+     * needed (and comparing would be vacuous). The exact round-trip
+     * check below still applies on both widths. */
+#if SIZE_MAX > JPL_DATE_MAX_EXACT
     if ((uintmax_t)index > JPL_DATE_MAX_EXACT) {
         return JPL_ERROR_ARGUMENT;
     }
+#endif
     dindex = (double)index;
     if (!isfinite(dindex) || (uintmax_t)dindex != (uintmax_t)index) {
         return JPL_ERROR_ARGUMENT;
@@ -191,9 +197,17 @@ jpl_status jpl_date_partition(const double begin[2], const double end[2],
     if (!pair_finite(begin) || !pair_finite(end)) {
         return JPL_ERROR_ARGUMENT;
     }
+    /* Same width-conditional bound as jpl_date_add_scaled: vacuous on
+     * 32-bit size_t, load-bearing on 64-bit. */
+#if SIZE_MAX > JPL_DATE_MAX_EXACT
     if (count == 0 || (uintmax_t)count > JPL_DATE_MAX_EXACT || index > count) {
         return JPL_ERROR_ARGUMENT;
     }
+#else
+    if (count == 0 || index > count) {
+        return JPL_ERROR_ARGUMENT;
+    }
+#endif
     if (index == 0) {
         out[0] = begin[0];
         out[1] = begin[1];

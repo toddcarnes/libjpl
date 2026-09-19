@@ -82,12 +82,21 @@ Notes:
   exact aliasing only); raw record/constant buffers may be partially
   written after I/O failure.
 
+## Platform support
+
+64-bit only. 32-bit builds are unsupported: they cannot address the
+multi-gigabyte long-span ephemerides (DE431/DE441), and macOS offers no
+32-bit target. Size and offset guards remain in the code as defense in
+depth, but no 32-bit configuration is tested or claimed. The historical
+32-bit job, multilib instructions, and width-conditional test scaffolding
+have been removed.
+
 ## Procedures and evidence (T22)
 
 CI workflows: `.github/workflows/ci.yml` (offline gates: Windows MSVC
 Debug/Release, Windows clang-cl Debug/Release, Ubuntu GCC Debug/Release,
-Ubuntu Clang Debug/Release, macOS Clang Debug/Release, Linux 32-bit
-Debug/Release, ASan/UBSan, TSan, docs/licenses/fixtures) and
+Ubuntu Clang Debug/Release, macOS Clang Debug/Release,
+ASan/UBSan, TSan, docs/licenses/fixtures) and
 `.github/workflows/ephemerides.yml` (`workflow_dispatch` only: DE440/DE440t
 fetch tier in both configurations plus the maintainer-runner local sweep).
 Default CI remains offline with respect to ephemeris data
@@ -196,23 +205,6 @@ guest during unzip, so no local macOS build has run. Plan: publish the
 branch, clone it inside the guest, and run the commands above there.
 A macOS pass must never be inferred from Windows compilation; a hosted
 or guest run is required before T23.
-
-### Linux 32-bit (-m32, Debug and Release)
-
-Prerequisite: multilib toolchain installed explicitly
-(`gcc-multilib g++-multilib`); without it the configure fails.
-
-```sh
-cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Debug -DLIBJPL_FETCH_EPHEMERIDES=OFF "-DCMAKE_C_FLAGS=-m32 -Werror=implicit-function-declaration" "-DCMAKE_EXE_LINKER_FLAGS=-m32"
-cmake --build build/ci --config Debug --parallel
-ctest --test-dir build/ci -C Debug --output-on-failure
-```
-
-Includes the large-file tests (`jpl_largefile`, CTest timeout 600 s).
-Address-space-dependent mmap rejections are recorded as expected explicit
-cases, not silent omissions. Latest observed result: pending (WSL host
-lacks multilib: `Scrt1.o`/`crti.o` absent, `-m32` link fails; CI run
-required before T23).
 
 ### Sanitizers (Linux, separate jobs)
 

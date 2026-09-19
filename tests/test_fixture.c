@@ -292,6 +292,7 @@ int main(int argc, char **argv) {
     fclose(file);
     file = NULL;
     FIXTURE_CHECK(skipped_absent == 0);
+    FIXTURE_CHECK(skipped_t16 == 0);
     FIXTURE_CHECK(parsed == 121);
     FIXTURE_CHECK(tested == 121);
     FIXTURE_CHECK(have_first && jpl_date_compare(first_jd, (const double[2]){2451544.5, 0.0}) == 0 &&

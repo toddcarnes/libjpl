@@ -417,14 +417,14 @@ static int lighttime_t10_cases(void) {
      * lookups beyond validation). */
     {
         const char *path = "jpl_test_lighttime_nanc.bin";
-        double state[6], before[6], tau = -7.0;
+        double state[6], tau = -7.0;
         size_t k;
         static const double jd[2] = {2451545.5, 0.0};
         const double c = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
         jpl_ephemeris *e = NULL;
         JPL_TEST_CHECK(write_linear_mock(path, 2451545.0, 2451546.0, 0.01, 1.0) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        for (k = 0; k < 6; ++k) { state[k] = 11.0 + (double)k; before[k] = state[k]; }
+        for (k = 0; k < 6; ++k) { state[k] = 11.0 + (double)k; }
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_SOLAR_SYSTEM_BARYCENTER, JPL_MARS, state, &tau) == JPL_OK);
         {
             double obs[6];
@@ -432,7 +432,7 @@ static int lighttime_t10_cases(void) {
             for (k = 0; k < 6; ++k) JPL_TEST_CHECK(fabs(state[k] + obs[k]) < 1e-9);
             JPL_TEST_CHECK(fabs(tau - hypot(hypot(state[0], state[1]), state[2]) / c) < 1e-12);
         }
-        for (k = 0; k < 6; ++k) { state[k] = 11.0 + (double)k; before[k] = state[k]; }
+        for (k = 0; k < 6; ++k) { state[k] = 11.0 + (double)k; }
         tau = -7.0;
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, jd, JPL_MARS, JPL_MARS, state, &tau) == JPL_OK);
         JPL_TEST_CHECK(state[0] == 0.0 && state[1] == 0.0 && state[2] == 0.0);

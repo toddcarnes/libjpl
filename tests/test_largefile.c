@@ -46,7 +46,9 @@ enum { LF_RECORD_DOUBLES = LF_RECORD_BYTES / 8 };
 #define LF_MARK_VALUE 123456789.0
 
 static const char *LF_PATH = "jpl_test_largefile.bin";
+#if SIZE_MAX < UINT64_MAX
 static const char *LF_BIG_PATH = "jpl_test_largefile_big.bin";
+#endif
 
 static uint64_t lf_last_offset(void) {
     return (uint64_t)(LF_INTERVALS + 1) * (uint64_t)LF_RECORD_BYTES;

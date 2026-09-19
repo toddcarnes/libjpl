@@ -67,9 +67,6 @@ int main(void) {
     }
     /* Grid vs eraAb directly (s=1e12 nulls the gravity term; expect 1e-12). */
     {
-        static const double C_KM_S = JPL_TEST_C_KM_PER_SECOND;
-        static const double AU_KM = JPL_TEST_AU_KM;
-        static const double DAYSEC = JPL_TEST_DAYSEC;
         static const double C_AU_DAY = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
         double dirs[4][3] = {{1,0,0},{0,1,0},{0,0,1},{0.5773502691896258,0.5773502691896258,0.5773502691896258}};
         double vels[3][3] = {{0.01,0.002,-0.001},{-0.005,0.008,0.003},{0.0,0.0,0.0}};

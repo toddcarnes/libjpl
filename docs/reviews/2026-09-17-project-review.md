@@ -300,18 +300,52 @@ No definite defect was found in the normal-range Chebyshev recurrence and deriva
 
 The modern-DE happy path has useful validation, but a green default suite overstates robustness. The date representation, parser validation, API edge cases, portability, and installation need attention before treating this as a dependable cross-platform release.
 
-## Resolution log
+## Resolution log (current, post-checkpoint)
 
-Post-checkpoint update (2026-09-19, commits `ede83c9` + `c858a7e`):
-fresh offline `build/verify` Debug 36/36 pass; all five `*t` suites pass
-(13201 lines each) after the TT-TDB boundary-equality fix; `testpo.405`
-validates 7214 lines after the padded-EOT fix; the full local sweep
-opens through DE431/DE441 after the 64-bit size fix. Local DE200/DE403
+Branch `refactor/review-remediation` at `d183dc1` (checkpoint `ede83c9`
+plus small follow-ups). Local verification: Windows MSVC Debug 36/36;
+Linux GCC Debug/Release 36/36, Clang Debug/Release 36/36, ASan/UBSan
+35/35, TSan threads/mmap 2/2, all with zero warnings. Real-tier: all
+five `*t` suites pass (13201 lines each), `testpo.405` validates 7214
+lines, the full local sweep opens through DE431/DE441. Local DE200/DE403
 replaced with official NASA files; suspect DE404 quarantined (no
-official source). The per-ID entries below retain their T23 evidence;
-entries citing the old 440t/DE200 failures are superseded by the
-post-checkpoint results in `docs/validation.md`. Hosted CI/sanitizer/
-platform gates remain pending.
+official source). 32-bit declared unsupported (64-bit only). Remaining:
+hosted CI, macOS guest run via GitHub clone, and clang-cl.
+
+### Resolved locally
+
+- R09/R10/R11 (trailing-record and TT-TDB boundary handling): the
+  `span_end > width` fix plus official DE200/DE403 files resolve the
+  recorded failures. All `*t` suites and the full sweep pass locally.
+- R13/R15/L02/L05/G01/G02/G05/G11/G12 and related numerical/matrix
+  items insofar as they were blocked on those files: the blocking
+  reference runs now pass.
+- R01c/R03b (32-bit gates): closed by the 64-bit-only decision, not by
+  a 32-bit run. Size guards remain as defense in depth.
+- R03a/G09 (Linux strict and full-suite gates): Linux GCC/Clang
+  Debug/Release plus sanitizers pass natively; the old mount-related
+  hangs are resolved by running from the native filesystem.
+- R05a/R05b/G10 (licenses/install): Linux native runs pass alongside
+  Windows; clang-cl/macOS consumers still pending hosted runs.
+- R06a/R06b (layout validation): parser regressions plus the full
+  sweep pass; DE404 remains unsupported pending an authoritative
+  source (see `docs/validation.md`).
+- R07/G03/G04 (threads/clones): TSan passes locally; hosted
+  concurrency runs still pending.
+- R08a/R08b/R08c/R14/L01/L03/L04/L06/G07/G08/S01-S07/B01-B06: unit,
+  docs, and real-tier evidence pass locally as recorded in
+  `docs/validation.md`; hosted CI confirmation still pending where
+  noted.
+
+### Still pending (no local path)
+
+- Hosted CI across Windows, clang-cl, Linux, and macOS.
+- macOS guest run via GitHub clone (shared-folder transfer crashed
+  the guest; no local macOS build claimed).
+- clang-cl consumer proof (no `m.lib` dependency beyond the export
+  grep already passing).
+
+### Historical T23 log (superseded where noted above)
 
 T23 acceptance (2026-09-19, uncommitted T00-T22 tree; BASE
 `4471c673295dc2a7a35e8458f5ee6b2f2d18ae3b`): fresh `build/t23-clean`

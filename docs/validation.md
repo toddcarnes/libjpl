@@ -190,9 +190,12 @@ ctest --test-dir build/ci -C Debug --output-on-failure
 ```
 
 Plus the installed-consumer smoke test (`jpl_install` runs in every
-regular job). Latest observed result: pending (no local macOS host; a
-macOS pass must never be inferred from Windows compilation; CI run
-required before T23).
+regular job). Latest observed result: pending. A local macOS Tahoe VM
+is available, but direct transfer via VMware shared folders crashed the
+guest during unzip, so no local macOS build has run. Plan: publish the
+branch, clone it inside the guest, and run the commands above there.
+A macOS pass must never be inferred from Windows compilation; a hosted
+or guest run is required before T23.
 
 ### Linux 32-bit (-m32, Debug and Release)
 

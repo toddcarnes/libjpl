@@ -99,6 +99,17 @@ All commands run under PowerShell 5.1 from the worktree root
 - The strict-POSIX C17 failure noted in the plan belongs to T01; no flags
   were weakened for this baseline.
 
+## Post-checkpoint verification (2026-09-19, commit ede83c9)
+
+Fresh offline build `build/verify` from the committed checkpoint:
+Debug **36/36 pass** (~597 s including `jpl_install`). Real-tier spot
+checks from `build/verify-real`: `testpo.405` now validates 7214 lines
+(padded-EOT fix); all five `*t` suites pass after the TT-TDB
+boundary-equality fix. Local-file actions: official DE200/DE403
+installed (defective originals kept as `.defective-backup`), suspect
+DE404 quarantined as `DE404.eph.quarantined` (no official source
+available).
+
 ## T23 acceptance evidence (2026-09-19, uncommitted T00-T22 tree)
 
 All commands PowerShell 5.1 from the worktree root unless noted;

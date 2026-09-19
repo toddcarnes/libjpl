@@ -286,23 +286,15 @@ ctest --test-dir build/remediation-real -C Debug --output-on-failure
 Runs DE440/DE440t testpo in both configurations, retains summary
 counts/hashes as artifacts (CI), and runs the local legacy/long-span
 sweep only on a configured maintainer runner. Latest observed result
-(T23, 2026-09-19, `build/remediation-real` resolving per-file local
-sources `D:\ephem\jpl\bin\DE440.eph`,
-`D:\ephem\jpl\bin\DE440t.eph`, `D:/ephem/jpl/testpo/testpo.440`,
-`D:/ephem/jpl/testpo/testpo.440t`; no downloads; maintainer-local files
-unaltered): Debug `jpl_testpo_440` pass, `jpl_real_ephemeris` pass,
-`jpl_testpo_441` pass (local `JPL_TESTPO` sweep entry), Release same
-3/3 pass; `jpl_testpo_440t` FAILS in both configurations
-(`line 13: reference mismatch: tt-tdb query failed: unsupported
-dataset or frame` — DE440t TT-TDB triple `(1019,13,8)` spans slots
-1019-1122 at `record_double_count` 1122, rejected by the boundary-equality
-guard `span_end >= record_double_count` in `src/jpl.c`); local
-`JPLEPH` sweep entry `jpl_all_ephemerides_local` FAILS (big-endian
-`D:\ephem\jpl\bin\DE200.eph` opens `JPL_ERROR_FORMAT`: trailing-record
-hypothesis requires `endpoints_match(sched_trail, tfirst)` but both the
-last and trailing records carry `[2513360.5, 2513392.5]`, 32 days from
-the scheduled `[2513392.5, ...]`; the plain extra=2 hypothesis fails the
-divisibility check since `42965216 % 6501 = 107`). Source hashes:
+(post-checkpoint, 2026-09-19, `build/verify-real`): all five `*t` suites
+pass (DE430t/432t/436t/438t/440t, 13201 lines each) after the TT-TDB
+boundary-equality fix (`span_end > width`); `testpo.405` validates 7214
+lines after the padded-EOT fix; the full local sweep opens through
+DE431/DE441 after the 64-bit sweep-size fix. Supersedes the T23
+440t/DE200 failure notes below, which were recorded before those fixes.
+Local DE200/DE403 replaced with official NASA files (defective
+originals kept as `.defective-backup`); suspect DE404 quarantined as
+`DE404.eph.quarantined` (no official source available). Source hashes:
 DE440.eph `8d0dbb47...c24a9e5` (102272352 B), DE440t.eph `e2bdf430...f165331ac`
 (112720608 B), testpo.440 `45084a7f...16693429f`, testpo.440t
 `9801f019...4491c7a3f2ad` (858238 B each). CI `ephemerides.yml` is

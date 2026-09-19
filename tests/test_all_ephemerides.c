@@ -1,8 +1,36 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
+/* Directory sweep over named DE binaries (test-only, owned by T15).
+ * Usage: test_all_ephemerides <directory>
+ * ENOENT/ENOTDIR classify as absent (skip); permission/other stat errors
+ * fail; any existing path whose open/read fails fails. */
+#if !defined(_WIN32)
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
+#endif
 #include "jpl.h"
+#include "jpl_private.h"
 
+#include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <sys/stat.h>
+#else
+#include <sys/stat.h>
+#endif
+
+/* Smallest DE record width in bytes (classic header size): a shorter
+ * named file cannot be a valid DE and fails as present-but-corrupt. */
+#define DE_MIN_RECORD_BYTES 2856
 
 int main(int argc, char **argv) {
     static const char *const filenames[] = {
@@ -23,18 +51,97 @@ int main(int argc, char **argv) {
         const jpl_header *header;
         jpl_status status;
         double *record;
+        FILE *probe;
         int n = snprintf(path, sizeof path, "%s/%s", argv[1], filenames[i]);
         if (n < 0 || (size_t)n >= sizeof path) return 2;
-        status = jpl_open(path, &ephemeris);
-        if (status == JPL_ERROR_IO) {
-            /* Fetch-tier subset scan: skip files absent from this dir
-               (the resolved download dir holds DE440/DE440t only).
-               opened == 0 at the end still fails, so an empty dir
-               never passes vacuously. */
-            continue;
+        /* Classify absence before opening: only ENOENT/ENOTDIR skip.
+         * A privileged CI account reading a permission-restricted file
+         * reports that platform case separately instead of passing the
+         * permission branch. */
+        probe = fopen(path, "rb");
+        if (probe == NULL) {
+            if (errno == ENOENT
+#if defined(ENOTDIR) && ENOTDIR != ENOENT
+                || errno == ENOTDIR
+#endif
+            ) {
+                continue;
+            }
+#if defined(_WIN32)
+            /* MSVC maps Windows errors into errno; ERROR_ACCESS_DENIED
+             * arrives as EACCES. Report readability explicitly. */
+            if (errno == EACCES) {
+#else
+            /* POSIX: a privileged account may still read a mode-000 file;
+             * report that case separately instead of passing silently. */
+            if (errno == EACCES || errno == EPERM) {
+#endif
+                FILE *acc = NULL;
+#if defined(_MSC_VER)
+                if (fopen_s(&acc, path, "rb") == 0 && acc != NULL) {
+                    fclose(acc);
+                    printf("%s: readable by this account; permission branch not exercised here\n",
+                           filenames[i]);
+                    continue;
+                }
+#else
+                acc = fopen(path, "rb");
+                if (acc != NULL) {
+                    fclose(acc);
+                    printf("%s: readable by this account; permission branch not exercised here\n",
+                           filenames[i]);
+                    continue;
+                }
+#endif
+            }
+            fprintf(stderr, "%s: cannot stat/open present file: %s\n",
+                    filenames[i], strerror(errno));
+            return 1;
         }
+        fclose(probe);
+        /* The path exists (probe opened it): every later failure is a
+         * present-file failure. A directory or other non-regular path
+         * must fail rather than skip; a corrupt named DE file must fail
+         * at open or decode, never read as absence. */
+        {
+            /* 64-bit size probe: long/ftell overflow on multi-gigabyte
+             * files (e.g. DE431/DE441), so use _stat64 on Windows and
+             * stat/fstat with large-file offsets on POSIX. */
+#if defined(_WIN32)
+            struct __stat64 st;
+            if (_stat64(path, &st) != 0) {
+                fprintf(stderr, "%s: cannot stat present file: %s\n",
+                        filenames[i], strerror(errno));
+                return 1;
+            }
+            if (st.st_size < 0 ||
+                (uintmax_t)st.st_size < (uintmax_t)DE_MIN_RECORD_BYTES) {
+                fprintf(stderr, "%s: present file too short (%lld bytes)\n",
+                        filenames[i], (long long)st.st_size);
+                return 1;
+            }
+#else
+            struct stat st;
+            if (stat(path, &st) != 0) {
+                fprintf(stderr, "%s: cannot stat present file: %s\n",
+                        filenames[i], strerror(errno));
+                return 1;
+            }
+            if (st.st_size < 0 ||
+                (uintmax_t)st.st_size < (uintmax_t)DE_MIN_RECORD_BYTES) {
+                fprintf(stderr, "%s: present file too short (%lld bytes)\n",
+                        filenames[i], (long long)st.st_size);
+                return 1;
+            }
+#endif
+        }
+        status = jpl_open(path, &ephemeris);
         if (status != JPL_OK) {
-            fprintf(stderr, "%s: %s\n", filenames[i], jpl_status_string(status));
+            /* Present-but-unreadable files fail. Truncated/corrupt named
+             * files report FORMAT through the shared validator; shorter
+             * short reads report IO. Either is a present-file failure. */
+            fprintf(stderr, "%s: present file failed to open: %s\n",
+                    filenames[i], jpl_status_string(status));
             return 1;
         }
         header = jpl_get_header(ephemeris);
@@ -44,13 +151,46 @@ int main(int argc, char **argv) {
             return 1;
         }
         record = malloc(header->record_double_count * sizeof *record);
-        if (record == NULL ||
-            jpl_read_record(ephemeris, 0, record, header->record_double_count) != JPL_OK ||
-            record[0] < header->start_jd || record[1] <= record[0]) {
+        if (record == NULL) {
+            fprintf(stderr, "%s: out of memory\n", filenames[i]);
+            jpl_close(ephemeris);
+            return 1;
+        }
+        status = jpl_read_record(ephemeris, 0, record, header->record_double_count);
+        if (status != JPL_OK) {
+            fprintf(stderr, "%s: could not decode first coefficient record: %s\n",
+                    filenames[i], jpl_status_string(status));
+            free(record);
+            jpl_close(ephemeris);
+            return 1;
+        }
+        /* Geometry check: record bounds must be finite, ordered, and
+         * anchored at coverage start. A corrupt present file that passes
+         * open (e.g. NaN interior dates with clean endpoints) fails here
+         * instead of silently validating. NaN is checked via integer bit
+         * inspection so no floating-point comparison idiom is needed. */
+        {
+            uint64_t b0 = 0, b1 = 0;
+            int bad = 0;
+            memcpy(&b0, &record[0], sizeof b0);
+            memcpy(&b1, &record[1], sizeof b1);
+            /* IEEE-754 binary64 NaN: exponent all ones, nonzero mantissa. */
+            bad = ((b0 & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL &&
+                   (b0 & 0x000FFFFFFFFFFFFFULL) != 0) ||
+                  ((b1 & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL &&
+                   (b1 & 0x000FFFFFFFFFFFFFULL) != 0);
+            if (bad) {
+                fprintf(stderr, "%s: nonfinite record date bits %llx %llx\n",
+                        filenames[i], (unsigned long long)b0, (unsigned long long)b1);
+            }
+            if (bad ||
+                jpl_date_compare((const double[2]){record[0], 0.0}, header->start_jd) < 0 ||
+                !(record[1] > record[0])) {
             fprintf(stderr, "%s: could not decode first coefficient record\n", filenames[i]);
             free(record);
             jpl_close(ephemeris);
             return 1;
+            }
         }
         free(record);
         jpl_close(ephemeris);

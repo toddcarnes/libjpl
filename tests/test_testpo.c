@@ -1,69 +1,65 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
+/* Strict full-file testpo validator (test-only, owned by T15).
+ * Usage: test_testpo <eph-path> <testpo-path>
+ * Replaces the lenient runner: shared T03 row parser/tolerance, explicit
+ * header/EOT framing, DENUM validation, in-coverage errors always fail,
+ * angular skips only on header-proven absence, and counted exclusions. */
 #include "jpl.h"
+#include "jpl_private.h"
+#include "jpl_test_util.h"
+#include "jpl_testpo_util.h"
 
 #include <ctype.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Validates geometric states against a JPL testpo reference file.
- *
- * Usage: test_testpo <eph-path> <testpo-path>
- *
- * For each testpo data line the runner parses the TDB Julian date, the
- * target/center bodies, the 1-based component index into state[6], and the
- * expected coordinate, evaluates jpl_get_state(), and compares
- * state[component - 1] with tolerance 5e-13 * fmax(1, |expected|).
- *
- * Testpo data lines come in three whitespace layouts (Fortran fixed-width
- * columns fuse fields when the date is wide, e.g. negative years):
- *   7 tokens: DE DATE JED T# C# X# COORD   ("441 17191.03.01 8000002.5 ...")
- *   6 tokens: DE DATE-JED T# C# X# COORD   ("441 -9999.01.01-1931076.5 ...")
- *   5 tokens: DE-DATE-JED T# C# X# COORD   ("441-13200.09.01-3099998.5 ...")
- * Header lines (titles, KSIZE=, "de# ...", EOT) never match these shapes and
- * are skipped. Lines outside the binary's coverage are skipped (testpo files
- * routinely span wider than a given binary). T#17 (TT-TDB) lines are
- * validated via jpl_get_tt_minus_tdb (X#1 value, X#2 rate).
- *
- * Returns 0 only if at least 100 lines were tested and all passed.
- * Uses explicit checks (fprintf + return), never assert().
- */
+#define LINE_CAP 8192
 
-static int parse_long(const char *text, long *out) {
-    char *end = NULL;
-    long value = strtol(text, &end, 10);
-    if (end == text || *end != '\0') return 0;
-    *out = value;
+/* EOT framing tolerates trailing spaces/tabs (e.g. testpo.405 pads its
+ * EOT line) and CRLF, matching the whitespace-tolerant row grammar.
+ * Anything else on the line is not an EOT marker. */
+static int is_eot_line(const char *line) {
+    const unsigned char *p = (const unsigned char *)line;
+    if (p[0] != 'E' || p[1] != 'O' || p[2] != 'T') return 0;
+    p += 3;
+    for (;;) {
+        if (*p == '\0' || *p == '\n') return 1;
+        if (*p != ' ' && *p != '\t' && *p != '\r') return 0;
+        ++p;
+    }
+}
+
+/* Line-numbered diagnostic categories the CMake driver matches. */
+static int fail_row(long lineno, const char *category, const char *detail,
+                    FILE *file, jpl_ephemeris *ephemeris) {
+    fprintf(stderr, "line %ld: %s: %s\n", lineno, category, detail);
+    fclose(file);
+    jpl_close(ephemeris);
     return 1;
 }
 
-static int parse_double(const char *text, double *out) {
-    char *end = NULL;
-    double value = strtod(text, &end);
-    if (end == text || *end != '\0') return 0;
-    *out = value;
-    return 1;
-}
-
-/* Extracts the JED from a fused label such as "441-13200.09.01-3099998.5"
- * or "-9999.01.01-1931076.5": the JED starts at the last dash, which doubles
- * as its minus sign (strtod-from-dash semantics). Never passes NULL to
- * strtod (Task 4 lesson): a missing dash or empty tail fails. */
-static int parse_fused_jd(const char *label, double *out) {
-    const char *dash = strrchr(label, '-');
-    if (dash == NULL || dash[1] == '\0') return 0;
-    return parse_double(dash, out);
+static const char *status_name(jpl_status status) {
+    return jpl_status_string(status);
 }
 
 int main(int argc, char **argv) {
     jpl_ephemeris *ephemeris = NULL;
     const jpl_header *header = NULL;
     FILE *file = NULL;
-    char line[1024];
-    size_t tested = 0, skipped_range = 0, skipped_unsupported = 0, parsed = 0;
+    static char line[LINE_CAP];
+    long lineno = 0;
+    size_t tested = 0, skipped_range = 0, skipped_absent = 0, skipped_t16 = 0;
+    size_t count_body[18] = {0};
+    size_t count_comp[8] = {0};
+    int in_data = 0, saw_eot = 0;
 
     if (argc != 3) {
-        fprintf(stderr, "usage: %s <eph-path> <testpo-path>\n", argc > 0 ? argv[0] : "test_testpo");
+        fprintf(stderr, "usage: %s <eph-path> <testpo-path>\n",
+                argc > 0 ? argv[0] : "test_testpo");
         return 2;
     }
     if (jpl_open(argv[1], &ephemeris) != JPL_OK || ephemeris == NULL) {
@@ -76,154 +72,237 @@ int main(int argc, char **argv) {
         jpl_close(ephemeris);
         return 1;
     }
-    file = fopen(argv[2], "r");
+    file = fopen(argv[2], "rb");
     if (file == NULL) {
         fprintf(stderr, "could not open testpo file %s\n", argv[2]);
         jpl_close(ephemeris);
         return 1;
     }
 
+    /* "rb" keeps the open mode CRLF-tolerant (the shared parser splits
+     * off any '\r'). Header/EOT framing: full files require a header
+     * transition before data rows; content after trailing EOT is ignored. */
     while (fgets(line, sizeof line, file) != NULL) {
-        char *tokens[8];
-        int ntok = 0;
-        char *p = line;
-        double jd = 0.0, expected = 0.0, state[6], actual, tolerance;
-        long target = 0, center = 0, component = 0;
+        jpl_testpo_row row;
+        int parsed;
+        size_t linelen;
+        char detail[256];
+        int slot;
+        double tolerance, actual = 0.0;
         jpl_status status;
-        int ok;
 
-        while (*p != '\0') {
-            while (isspace((unsigned char)*p)) ++p;
-            if (*p == '\0') break;
-            if (ntok >= 8) break;
-            tokens[ntok++] = p;
-            while (*p != '\0' && !isspace((unsigned char)*p)) ++p;
-            if (*p != '\0') *p++ = '\0';
+        ++lineno;
+        linelen = strlen(line);
+        if (linelen > 0 && linelen == sizeof line - 1 && line[linelen - 1] != '\n') {
+            int c;
+            /* Overlong line: consume the tail, then fail with a category
+             * the driver can match. */
+            do {
+                c = fgetc(file);
+            } while (c != '\n' && c != EOF);
+            return fail_row(lineno, "invalid row", "overlong line", file, ephemeris);
         }
-        if (ntok != 5 && ntok != 6 && ntok != 7) continue;
-
-        if (ntok == 7) {
-            ok = parse_double(tokens[2], &jd) && parse_long(tokens[3], &target) &&
-                 parse_long(tokens[4], &center) && parse_long(tokens[5], &component) &&
-                 parse_double(tokens[6], &expected);
-        } else if (ntok == 6) {
-            ok = parse_fused_jd(tokens[1], &jd) && parse_long(tokens[2], &target) &&
-                 parse_long(tokens[3], &center) && parse_long(tokens[4], &component) &&
-                 parse_double(tokens[5], &expected);
-        } else {
-            ok = parse_fused_jd(tokens[0], &jd) && parse_long(tokens[1], &target) &&
-                 parse_long(tokens[2], &center) && parse_long(tokens[3], &component) &&
-                 parse_double(tokens[4], &expected);
-        }
-        if (!ok) continue;
-        ++parsed;
-
-        if (target == 17) {
-            /* TT-TDB lines (only in *t testpo files): X#1 is TT-TDB in
-             * seconds, X#2 its rate in seconds/day. */
-            double sec = 0.0, rate = 0.0, got, tol;
-            if (component != 1 && component != 2) { ++skipped_unsupported; continue; }
-            if (jd < header->start_jd || jd > header->end_jd) { ++skipped_range; continue; }
-            if (jpl_get_tt_minus_tdb(ephemeris, jd, &sec, &rate) != JPL_OK) {
-                fprintf(stderr, "tt-tdb failed for JD %.1f component %ld\n", jd, component);
-                fclose(file);
-                jpl_close(ephemeris);
-                return 1;
+    /* Header/EOT framing: full files require a recognized header
+     * transition; arbitrary data-shaped malformed lines after EOT fail
+     * via the strict row grammar below. Trailing EOT ends comparison;
+     * content after it is ignored. */
+        if (!in_data) {
+            if (is_eot_line(line)) {
+                in_data = 1;
+                continue;
             }
-            got = component == 1 ? sec : rate;
-            /* Absolute tolerance per testeph practice (values are ~1e-3 s
-             * scale); pin the exact digits during this task: start at 1e-12
-             * and only widen with a proven coefficient-rounding case. */
-            tol = 1e-12 * fmax(1.0, fabs(expected));
-            if (!isfinite(got) || fabs(got - expected) > tol) {
-                fprintf(stderr, "MISMATCH JD %.1f TT-TDB component %ld: got %.17g, expected %.17g (diff %.3g, tol %.3g)\n",
-                        jd, component, got, expected, fabs(got - expected), tol);
-                fclose(file);
-                jpl_close(ephemeris);
-                return 1;
+            if (jpl_testpo_parse_row(line, &row) == 1) {
+                return fail_row(lineno, "invalid row", "data row before EOT", file, ephemeris);
             }
-            ++tested;
             continue;
         }
-        if (target < 1 || target > 15 || component < 1 || component > 6 ||
-            !isfinite(jd) || !isfinite(expected)) {
-            ++skipped_unsupported;
-            continue;
-        }
-        /* Body codes match the JPL PLEPH/testpo convention directly (Earth 3,
-         * EMB 13), so target/center pass through to jpl_get_state unmapped.
-         * SSB (12), nutations (14), librations (15) likewise need no mapping.
-         * Nutation lines (T#14) additionally pack rates differently: JPL's
-         * PLEPH returns dpsi, deps and their rates as RRD(1..4), i.e.
-         * testpo X#3/4 are the *rates* of X#1/2, while libjpl exposes them
-         * as state[3]/state[4] with state[2]/state[5] zero. The rate scaling
-         * of that path is not covered by this harness, so nutation rate
-         * components are skipped; dpsi/deps (X#1/2) are validated. */
-        if (target == 14 && (component == 3 || component == 4)) {
-            ++skipped_unsupported;
+        if (saw_eot) {
             continue;
         }
         {
-            if (center < 0 || center > 15) {
-                ++skipped_unsupported;
+            if (is_eot_line(line)) {
+                saw_eot = 1;
                 continue;
             }
-            if (jd < header->start_jd || jd > header->end_jd) {
-                ++skipped_range;
-                continue;
+        }
+        parsed = jpl_testpo_parse_row(line, &row);
+        if (parsed == 0) {
+            /* Blank lines are tolerated in full-file mode. */
+            continue;
+        }
+        if (parsed < 0) {
+            return fail_row(lineno, "invalid row", "malformed data row", file, ephemeris);
+        }
+        /* DENUM validated before any coverage skip: a wrong-DE row is a
+         * hard failure even when out of coverage. The shared parser
+         * rejects T#16 rows as invalid (no header slot exists); the
+         * explicit skipped_t16 branch below stays for a future
+         * parser form that surfaces them as countable rows. */
+        if (row.denum != header->ephemeris_number) {
+            snprintf(detail, sizeof detail, "denum %d does not match ephemeris %d",
+                     row.denum, header->ephemeris_number);
+            return fail_row(lineno, "denum mismatch", detail, file, ephemeris);
+        }
+        if (row.target == 16) {
+            ++skipped_t16;
+            continue;
+        }
+        if (jpl_date_compare(row.jd, header->start_jd) < 0 ||
+            jpl_date_compare(row.jd, header->end_jd) > 0) {
+            ++skipped_range;
+            continue;
+        }
+        if (row.target == 17) {
+            double sec = 0.0, rate = 0.0, want;
+            if (row.center != 0 || (row.component != 1 && row.component != 2)) {
+                snprintf(detail, sizeof detail, "TT-TDB target 17 with center %d component %d",
+                         row.center, row.component);
+                return fail_row(lineno, "invalid row", detail, file, ephemeris);
             }
-            status = jpl_get_state(ephemeris, jd, (int)target, (int)center, state);
-            if (status == JPL_ERROR_RANGE) {
-                /* Out-of-coverage lines (testpo files routinely span wider
-                 * than a given binary) and angle targets missing from the
-                 * binary (e.g. DE432/DE102/DE406 carry no nutations) both
-                 * report RANGE; neither is a validation failure. */
-                if (target == 14 || target == 15) ++skipped_unsupported;
-                else ++skipped_range;
-                continue;
+            if (!jpl_has_tt_tdb(ephemeris)) {
+                snprintf(detail, sizeof detail, "TT-TDB row but binary has no TT-TDB dataset");
+                return fail_row(lineno, "invalid row", detail, file, ephemeris);
             }
+            status = jpl_get_tt_minus_tdb(ephemeris, row.jd, &sec, &rate);
             if (status != JPL_OK) {
-                fprintf(stderr, "jpl_get_state failed for JD %.1f target %ld center %ld: %s\n",
-                        jd, target, center, jpl_status_string(status));
-                fclose(file);
-                jpl_close(ephemeris);
-                return 1;
+                snprintf(detail, sizeof detail, "tt-tdb query failed: %s", status_name(status));
+                return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
             }
-            actual = state[(size_t)component - 1u];
-            /* Absolute tolerance: JPL's own testeph.f uses |computed -
-             * expected| < 1e-13 (not relative), with the single exception
-             * of lunar libration psi (T#15 X#3), whose angle accumulates in
-             * time; JPL scales that DEL down by (1 + 100*|ET-JDEPOC|/365.25).
-             * The 5e-13 * fmax(1,|expected|) rule from the brief matches JPL
-             * for |expected| <= 1; velocity components of the lunar
-             * librations (target 15 only) lose a few ulps to Chebyshev
-             * summation cancellation at subinterval endpoints, so target-15
-             * X#4/5/6 use 5e-12 * fmax(1,|expected|). All other bodies'
-             * velocities passed at 5e-13 (full 24-DE suite green).
-             * (Observed: DE414 T15 X6 at JD 2380656.5 differs by 6.5e-13;
-             * the binary/ascii coefficients provably evaluate to the
-             * computed value in exact arithmetic.) */
-            tolerance = 5e-13 * fmax(1.0, fabs(expected));
-            if (target == 15 && component == 3) {
-                tolerance *= 1.0 + 100.0 * fabs(jd - 2440400.5) / 365.25;
-            } else if (target == 15 && component >= 4) {
-                tolerance = 5e-12 * fmax(1.0, fabs(expected));
-            }
-            if (!isfinite(actual) || fabs(actual - expected) > tolerance) {
-                fprintf(stderr, "MISMATCH JD %.1f target %ld center %ld component %ld: got %.17g, expected %.17g (diff %.3g, tol %.3g)\n",
-                        jd, target, center, component, actual, expected, fabs(actual - expected), tolerance);
-                fclose(file);
-                jpl_close(ephemeris);
-                return 1;
+            want = row.component == 1 ? sec : rate;
+            tolerance = jpl_testpo_tolerance(&row);
+            if (want != want || row.expected != row.expected ||
+                (want - row.expected > tolerance || row.expected - want > tolerance)) {
+                snprintf(detail, sizeof detail,
+                         "TT-TDB component %d: got %.17g, expected %.17g (tol %.3g)",
+                         row.component, want, row.expected, tolerance);
+                return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
             }
             ++tested;
+            if ((size_t)row.target < sizeof count_body / sizeof count_body[0]) {
+                ++count_body[row.target];
+            }
+            if ((size_t)row.component < sizeof count_comp / sizeof count_comp[0]) {
+                ++count_comp[row.component];
+            }
+            continue;
+        }
+        if (row.target < 1 || row.target > 15 || row.center < 0 || row.center > 15 ||
+            row.component < 1 || row.component > 6) {
+            snprintf(detail, sizeof detail, "target %d center %d component %d",
+                     row.target, row.center, row.component);
+            return fail_row(lineno, "invalid row", detail, file, ephemeris);
+        }
+        if ((row.target == 14 || row.target == 15) && row.center != 0) {
+            snprintf(detail, sizeof detail, "angle target %d with nonzero center %d",
+                     row.target, row.center);
+            return fail_row(lineno, "invalid row", detail, file, ephemeris);
+        }
+        slot = jpl_testpo_state_index(&row);
+        if (slot < 0) {
+            snprintf(detail, sizeof detail, "nutation target 14 has no component %d",
+                     row.component);
+            return fail_row(lineno, "invalid row", detail, file, ephemeris);
+        }
+        if (row.target == 14 || row.target == 15) {
+            /* Angular datasets skip only after checking the absent header
+             * pointer; any present dataset must return OK below. */
+            const jpl_pointer *pointer =
+                row.target == 14 ? &header->pointers[JPL_TARGET_COUNT - 1]
+                                 : &header->libration_pointer;
+            if (pointer->start_index <= 0 ||
+                pointer->coefficients_per_component <= 0 ||
+                pointer->subintervals <= 0) {
+                ++skipped_absent;
+                continue;
+            }
+        }
+        {
+            double state[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+            status = jpl_get_state(ephemeris, row.jd, row.target, row.center, state);
+            if (status != JPL_OK) {
+                /* In-coverage body errors fail unconditionally: an
+                 * UNSUPPORTED here means a missing ordinary body (or a
+                 * boundary-unusable optional dataset), never a
+                 * legitimate coverage skip (coverage was checked
+                 * above). */
+                snprintf(detail, sizeof detail,
+                         "jpl_get_state failed for target %d center %d: %s",
+                         row.target, row.center, status_name(status));
+                return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
+            }
+            actual = state[slot];
+            tolerance = jpl_testpo_tolerance(&row);
+            /* Body-only reference conversion (T08): public output is modern
+             * AU while historical references are file AU. Convert the
+             * actual value back into reference units so the reference
+             * tolerance stays in its original units. Never rescale
+             * angular rows (T#14/15) here; only body coordinates/rates. */
+            if (row.target >= 1 && row.target <= 13) {
+                actual = actual * (JPL_TEST_AU_KM / header->astronomical_unit_km);
+            }
+            if (actual != actual ||
+                (actual - row.expected > tolerance || row.expected - actual > tolerance)) {
+                snprintf(detail, sizeof detail,
+                         "target %d center %d component %d: got %.17g, expected %.17g (tol %.3g)",
+                         row.target, row.center, row.component,
+                         actual, row.expected, tolerance);
+                return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
+            }
+            ++tested;
+            if ((size_t)row.target < sizeof count_body / sizeof count_body[0]) {
+                ++count_body[row.target];
+            }
+            if (row.component >= 1 &&
+                (size_t)row.component < sizeof count_comp / sizeof count_comp[0]) {
+                ++count_comp[row.component];
+            }
         }
     }
 
+    {
+        int read_failed = ferror(file);
+#if defined(JPL_TEST_READER_FAULT)
+        /* Test-only fault injection: force the post-read branch so the
+         * negative read-error case exercises it portably. */
+        if (!read_failed) {
+            read_failed = 1;
+        }
+#endif
+        if (read_failed) {
+            fprintf(stderr, "reference input read error\n");
+            fclose(file);
+            jpl_close(ephemeris);
+            return 1;
+        }
+    }
     fclose(file);
+    if (!in_data) {
+        fprintf(stderr, "missing EOT header in %s\n", argv[2]);
+        jpl_close(ephemeris);
+        return 1;
+    }
     jpl_close(ephemeris);
-    printf("testpo %s: validated %zu of %zu parsed lines (%zu out of coverage, %zu unsupported)\n",
-           argv[2], tested, parsed, skipped_range, skipped_unsupported);
+    printf("testpo %s: validated %zu lines (%zu out of coverage, %zu absent angular, %zu T16 excluded)\n",
+           argv[2], tested, skipped_range, skipped_absent, skipped_t16);
+    printf("by body:");
+    {
+        int b;
+        for (b = 1; b <= 17; ++b) {
+            if (count_body[b] > 0) {
+                printf(" T%d=%zu", b, count_body[b]);
+            }
+        }
+        printf("\nby component:");
+        {
+            int c;
+            for (c = 1; c <= 6; ++c) {
+                if (count_comp[c] > 0) {
+                    printf(" X%d=%zu", c, count_comp[c]);
+                }
+            }
+        }
+        printf("\n");
+    }
     if (tested < 100) {
         fprintf(stderr, "too few testpo lines validated: %zu\n", tested);
         return 1;

@@ -1,3 +1,9 @@
+<!--
+Copyright (c) 2026 Todd Carnes
+SPDX-License-Identifier: MIT
+See LICENSE in the project root for the full license text.
+-->
+
 # libjpl
 
 `libjpl` is a small, dependency-free (ERFA vendored under `src/erfa/`) C17 library for reading JPL Development
@@ -20,20 +26,32 @@ single-config Makefiles/Ninja, which default to Release.)
 
 ## Use
 
+The complete usage contract (two-part dates, status returns, error and
+output-on-error behaviour, frame gating, modern AU) lives in
+[`docs/migration-two-part-dates.md`](docs/migration-two-part-dates.md) and
+in the Doxygen API reference for `jpl.h`, `jpl_frames.h`, and
+`jpl_convenience.h`. Build dates as two-part arrays directly (a day part
+plus a fraction part): never compute a scalar full epoch first and split
+it afterward, because the already-rounded scalar cannot be repaired by
+splitting. On-disk record epochs stay scalar; only in-memory computation
+uses pairs.
+
 ```c
 #include <jpl.h>
 
 jpl_ephemeris *de;
 if (jpl_open("de440.bin", &de) == JPL_OK) {
     double earth_from_sun[6];
-    if (jpl_get_state(de, 2451545.0, JPL_EARTH, JPL_SUN, earth_from_sun) != JPL_OK) { /* handle error */ }
+    static const double jd_tdb[2] = {2451545.0, 0.0};
+    if (jpl_get_state(de, jd_tdb, JPL_EARTH, JPL_SUN, earth_from_sun) != JPL_OK) { /* handle error */ }
     /* x,y,z in AU; vx,vy,vz in AU/day */
     jpl_close(de);
 }
 ```
 
-The project does not ship ephemeris data. Obtain DE files from JPL/NASA and
-ensure they use the standard binary record layout.
+The project ships only a small validation fixture (see Test data below),
+not full operational ephemerides. Obtain operational DE files from
+JPL/NASA and ensure they use the standard binary record layout.
 
 ### Moon wrt Sun
 
@@ -42,9 +60,9 @@ ensure they use the standard binary record layout.
 #include <jpl_convenience.h>
 
 jpl_ephemeris *de; /* from jpl_open(...) */
-double jd_tt = 2451545.0;
+static const double jd_tt[2] = {2451545.0, 0.0};
 double moon_earth[6], earth_sun[6], moon_sun[6];
-/* jd_tt is Terrestrial Time; geometric calls take TDB (~70 s apart). */
+/* jd_tt is Terrestrial Time; geometric calls take TDB (millisecond-scale apart). */
 if (jpl_moon_position(de, jd_tt, moon_earth) != JPL_OK) { /* handle error */ }
 if (jpl_planet_position(de, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) { /* handle error */ }
 for (int i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];
@@ -57,25 +75,48 @@ Note: adding apparent legs mixes emission epochs; approximate only (see jpl_conv
 #include <jpl_frames.h>
 #include <jpl_convenience.h>
 
+jpl_ephemeris *ephemeris; /* from jpl_open(...) */
+const double tt[2] = {2451545.0, 0.125};
+double tdb[2], state[6];
+if (jpl_tt_to_tdb(tt, tdb) != JPL_OK) return 1;
+if (jpl_get_state(ephemeris, tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) return 1;
+```
+
+```c
+#include <jpl.h>
+#include <jpl_frames.h>
+#include <jpl_convenience.h>
+
 jpl_ephemeris *de; /* from jpl_open(...) */
-double jd_tt = 2451545.0, jd_tdb = jpl_tt_to_tdb(jd_tt);
+static const double jd_tt[2] = {2451545.0, 0.0};
+double jd_tdb[2];
 double geo[6], app[6], lt;
+if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { /* handle error */ }
 if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }
 if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handle error */ }
 ```
 
+The `jpl_examples` CTest suite compiles and runs these patterns from
+`tests/examples.c` against the committed fixture.
+
 ## Credits
 
-Frame conversions use [ERFA](https://github.com/liberfa/erfa) v2.0.1,
-Copyright (c) NumFOCUS Foundation, BSD-3-Clause. See `src/erfa/LICENSE`.
+First-party code and documentation are MIT licensed, copyright
+(c) 2026 Todd Carnes; see [`LICENSE`](LICENSE) and
+[`LICENSES.md`](LICENSES.md), which also records ERFA and JPL test-data
+provenance. Frame conversions use [ERFA](https://github.com/liberfa/erfa)
+v2.0.1, Copyright (c) NumFOCUS Foundation, BSD-3-Clause; see
+`src/erfa/LICENSE`. Both complete license texts install unconditionally
+as `LICENSE` (project MIT) and `ERFA-LICENSE` (ERFA BSD-3).
 
 ## Test data
 
 Always-on fixture (no network): `tests/data/de441_2000_2010.eph` is a
 931 KB DE441 sub-ephemeris sliced with `sub_eph DE441.eph <out> 2000 2010`
 (JD 2451536.5-2455216.5), and `tests/data/testpo_441_slice.txt` holds the
-121 in-span `testpo.441` lines. The `jpl_fixture` suite asserts this
-provenance (DENUM 441, exact coverage) plus all 121 cross-checks, so a
+in-span `testpo.441` lines listed in `tests/data/MANIFEST.txt`
+(`fixture.testpo`/`fixture.rows` keys). The `jpl_fixture` suite asserts this
+provenance (DENUM 441, exact coverage) plus all in-span cross-checks, so a
 fresh clone is green with no downloads.
 
 Opt-in fetch tier: `-DLIBJPL_FETCH_EPHEMERIDES=ON` (default OFF, approx
@@ -95,6 +136,7 @@ time; `CMakeLists.txt` carries no download literals) and re-run
 configure -- any mismatch fails configure naming file, expected vs
 actual, and URL.
 
-Maintainer note: the 31-file local sweep stays local -- with the option ON,
+Maintainer note: the maintainer-local sweep stays local -- with the option ON,
 `JPLEPH`/`JPL_TESTPO` dirs redirect the download sources per file instead
-of auto-registering suites on their own.
+of auto-registering suites on their own (see `jpl_all_ephemerides[_local]`
+in `CMakeLists.txt`).

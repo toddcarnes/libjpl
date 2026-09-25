@@ -257,6 +257,51 @@ int main(void) {
         JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, 1e-320, oo) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
     }
+    /* F05: finite tiny-Sun regression. A unit-scale nonradial state with a
+     * finite subluminal observer velocity and sun_distance_au = 1e-200
+     * must succeed with finite output, preserved distance, unchanged
+     * velocity, and exact in-place aliasing. The expected direction is an
+     * independent scale-safe normalization of the same published expression
+     * (cf. ERFA eraAb), compared within 1e-12. Before the fix, direct
+     * squaring of the large p vector returned JPL_ERROR_NUMERIC. */
+    {
+        static const double tiny_state[6] = {0.6, -0.8, 0.0, 1.0, 2.0, 3.0};
+        static const double tiny_vel[3] = {0.0, 0.01, 0.0};
+        double got[6], aliased[6], dir[3], n, ref_dir[3], ref_n;
+        double beta[3], pnat[3], p[3], bm1, pdv = 0.0, w1, w2;
+        double C_AU_DAY = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
+        double SRS = 1.97412574336e-8;
+        double r;
+        int k;
+        memcpy(aliased, tiny_state, sizeof aliased);
+        JPL_TEST_CHECK(jpl_apply_aberration_full(tiny_state, tiny_vel, 1e-200, got) == JPL_OK);
+        for (k = 0; k < 6; ++k) JPL_TEST_CHECK(isfinite(got[k]));
+        /* Independent reference: same published formula, scale-safe norm. */
+        r = hypot(hypot(tiny_state[0], tiny_state[1]), tiny_state[2]);
+        for (k = 0; k < 3; ++k) {
+            beta[k] = tiny_vel[k] / C_AU_DAY;
+            pnat[k] = tiny_state[k] / r;
+        }
+        bm1 = sqrt(1.0 - (beta[0] * beta[0] + beta[1] * beta[1] + beta[2] * beta[2]));
+        for (k = 0; k < 3; ++k) pdv += pnat[k] * beta[k];
+        w1 = 1.0 + pdv / (1.0 + bm1);
+        w2 = SRS / 1e-200;
+        for (k = 0; k < 3; ++k) p[k] = pnat[k] * bm1 + w1 * beta[k] + w2 * (beta[k] - pdv * pnat[k]);
+        ref_n = hypot(hypot(p[0], p[1]), p[2]);
+        JPL_TEST_CHECK(isfinite(ref_n) && ref_n > 0.0);
+        for (k = 0; k < 3; ++k) ref_dir[k] = p[k] / ref_n;
+        n = hypot(hypot(got[0], got[1]), got[2]);
+        JPL_TEST_CHECK(isfinite(n) && n > 0.0);
+        for (k = 0; k < 3; ++k) {
+            dir[k] = got[k] / n;
+            JPL_TEST_CHECK(isfinite(dir[k]));
+            JPL_TEST_CHECK(fabs(dir[k] - ref_dir[k]) < 1e-12);
+        }
+        JPL_TEST_CHECK(fabs(n - 1.0) < 1e-12);
+        JPL_TEST_CHECK(got[3] == 1.0 && got[4] == 2.0 && got[5] == 3.0);
+        JPL_TEST_CHECK(jpl_apply_aberration_full(aliased, tiny_vel, 1e-200, aliased) == JPL_OK);
+        for (k = 0; k < 6; ++k) JPL_TEST_CHECK(aliased[k] == got[k]);
+    }
     puts("aberration tests passed");
     return 0;
 }

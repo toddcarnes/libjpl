@@ -167,6 +167,25 @@ All commands run under PowerShell 5.1 from the worktree root
 - API, convenience, numeric, light-time, frames, TT-TDB, and examples pass
   in Debug and Release with transactional outputs.
 
+## T07 evidence
+
+- `jpl_apply_aberration_full()` final normalization uses the shared
+  scale-safe `jpl_vec_norm3(p)` instead of accumulating `p[i] * p[i]`
+  (`src/jpl.c`). Finite large intermediates with a representable direction
+  stay representable; genuine nonfinite coordinates, zero direction,
+  unrepresentable final coordinates, and the unrepresentable solar term
+  (`1e-320`) still return `JPL_ERROR_NUMERIC` transactionally.
+- Regression: unit-scale nonradial state, finite subluminal observer
+  velocity, `sun_distance_au = 1e-200`. Returns `JPL_OK` with finite output
+  (failed with NUMERIC before the fix), direction matches an independent
+  scale-safe normalization of the published expression within 1e-12,
+  distance preserved, velocity unchanged, exact in-place aliasing.
+  Note: ERFA `eraAb()` itself is not scale-safe at 1e-200 (its internal
+  normalization overflows), so the comparison uses the published formula
+  with a scale-safe norm, not `eraAb()` output.
+- `jpl_aberration`, `jpl_numeric`, `jpl_convenience`, `jpl_examples` pass in
+  Debug and Release.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -175,7 +194,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F02 | T02 | Resolved | (this commit) | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites | T17 full acceptance |
 | F03 | T03 | Resolved | (this commit) | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT | T17 real-fixture tier |
 | F04 | T06 | Resolved | (this commit) | Invalid codes combined with range/missing data | API/convenience/numeric/light-time/frames/TT-TDB/examples Debug+Release | T17 full acceptance |
-| F05 | T07 | Open | - | Finite tiny-Sun ERFA/scale-safe reference | Fix pending | - |
+| F05 | T07 | Resolved | (this commit) | Finite tiny-Sun scale-safe reference | jpl_aberration/numeric/convenience/examples Debug+Release | T17 sanitizer rerun |
 | F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
 | F07 | T10 | Open | - | Forced failure restores prior destination | Fix pending | - |
 | F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |

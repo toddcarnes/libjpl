@@ -1954,18 +1954,19 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     } else {
         w2 = 0.0;
     }
-    /* Second normalization is validated too: each accumulated square and
-     * the final root must stay finite, else NUMERIC. */
+    /* Second normalization uses the shared scale-safe norm (F05): build
+     * all three finite p[i] values first, then normalize without
+     * accumulating p[i]*p[i]. Finite large intermediates with a
+     * representable direction stay representable; a genuinely overflowing
+     * solar term above still reports NUMERIC. */
     rn = 0.0;
     for (i = 0; i < 3; ++i) {
         double term = w2 * (beta[i] - pdv * pnat[i]);
         if (!isfinite(term)) return JPL_ERROR_NUMERIC;
         p[i] = pnat[i] * bm1 + w1 * beta[i] + term;
         if (!isfinite(p[i])) return JPL_ERROR_NUMERIC;
-        rn += p[i] * p[i];
-        if (!isfinite(rn)) return JPL_ERROR_NUMERIC;
     }
-    rn = sqrt(rn);
+    rn = jpl_vec_norm3(p);
     if (!isfinite(rn) || !(rn > 0.0)) return JPL_ERROR_NUMERIC;
     /* Scale-aware restoration: (p/rn)*r cannot overflow before a
      * representable coordinate is multiplied. The r/rn quotient form is

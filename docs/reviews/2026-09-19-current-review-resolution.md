@@ -125,6 +125,25 @@ All commands run under PowerShell 5.1 from the worktree root
 - Parser matrix Debug + Release: `jpl_parser`, `jpl_largefile`, `jpl_tt_tdb`
   (overflow-name + DE440t boundary), `jpl_fixture`, big-endian suites green.
 
+## T05 evidence
+
+- `endpoints_match()` now derives its allowance from local binary64 spacing
+  via new `endpoint_ulp_tolerance()` (`src/jpl.c`): maximum finite adjacent
+  spacing around the encoded endpoint and scheduled high part (both
+  `nextafter()` directions), times four; nonfinite products return
+  `JPL_ERROR_FORMAT`. The fixed `JPL_T05_ENDPOINT_TOL_DAYS` is removed.
+- Regression: valid 3-record mock near JD 80000000 with a 1/3-day step and
+  independently binary64-encoded scheduled endpoints opens via FILE and mmap
+  (failed under the modern-epoch tolerance before the fix); perturbing one
+  endpoint by eight local ULPs fails both opens.
+- `read_doubles()` with `count == 0` returns `JPL_OK` after argument/handle
+  validation, before backend branching: no seek, mapping-base evaluation,
+  `malloc(0)`, read, or copy. Regression: valid big-endian zero-constant
+  mock reads constants with a non-NULL one-element destination via FILE and
+  mmap, sentinel unchanged.
+- Focused suites Debug + Release: `jpl_parser`, `jpl_tests`,
+  `jpl_api_errors`, `jpl_largefile` all pass.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -141,8 +160,8 @@ All commands run under PowerShell 5.1 from the worktree root
 | F10 | T08, T17 | Open | - | 120 duplicate rows fail; official files pass | Fix pending | - |
 | F11 | T09, T17 | Open | - | Interior corruption fails; complete real scan | Fix pending | - |
 | F12 | T06 | Open | - | All public date APIs return NUMERIC | Fix pending | - |
-| F13 | T05 | Open | - | Valid distant rounded endpoint and >8-ULP negative | Fix pending | - |
-| F14 | T05 | Open | - | Big-endian zero-constant FILE/mmap success | Fix pending | - |
+| F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
+| F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
 | F15 | T12, T17 | Open | - | Docs-only configure matrix | Fix pending | - |
 | F16 | T13, T17 | Open | - | Positive and mutated-copy integrity checks | Fix pending; canonical-LF hashes disagree with plan prose, will regenerate per T13-Step1, not copy mechanically | - |
 | F17 | T15, T17 | Open | - | Offline workflow policy plus hosted jobs | Fix pending | - |

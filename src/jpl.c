@@ -17,6 +17,7 @@
 #include "jpl_private.h"
 
 #include <stdint.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -346,20 +347,38 @@ static jpl_status scheduled_endpoint(const double start[2], double step, size_t 
 }
 
 /* Reconstructed endpoints are compared to encoded file endpoints with a
- * documented bound derived from their binary64 encoding ULPs, not from a
- * coverage tolerance. One encoded double near 2.4e6 carries an ULP of
- * 2^-30 (~9.3e-10 day); the scheduled endpoint adds at most one rounding
- * of similar size, so accept |scheduled - encoded| <= 4 * 2^-30 days
- * (~3.7e-9 day, ~0.3 microsecond). This allowance excuses only rounding
- * already present in the encoded file dates; public coverage queries in
- * interpolate()/jpl_get_state() use exact comparisons, never this bound. */
-#define JPL_T05_ENDPOINT_TOL_DAYS (4.0 * 9.313225746154785e-10)
+ * magnitude-aware binary64 allowance (F13): derive it from the ULPs
+ * adjacent to the encoded endpoint and the scheduled high part, not from a
+ * fixed modern-epoch bound. Take the maximum finite adjacent spacing around
+ * both values via nextafter() in both directions, multiplied by four. The
+ * allowance excuses encoding arithmetic only and never widens public
+ * coverage: interpolate()/jpl_get_state() use exact comparisons. */
+static double endpoint_ulp_tolerance(const double scheduled[2], double encoded) {
+    double hi = scheduled[0], lo, hi_up, hi_dn, enc_up, enc_dn, spacing = 0.0, candidate;
+    if (!isfinite(hi) || !isfinite(encoded)) return -1.0;
+    lo = scheduled[1];
+    if (!isfinite(lo)) return -1.0;
+    hi_up = nextafter(hi, INFINITY);
+    hi_dn = nextafter(hi, -INFINITY);
+    enc_up = nextafter(encoded, INFINITY);
+    enc_dn = nextafter(encoded, -INFINITY);
+    if (isfinite(hi_up)) { candidate = fabs(hi_up - hi); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(hi_dn)) { candidate = fabs(hi - hi_dn); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(enc_up)) { candidate = fabs(enc_up - encoded); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(enc_dn)) { candidate = fabs(encoded - enc_dn); if (candidate > spacing) spacing = candidate; }
+    if (!(spacing > 0.0) || !isfinite(spacing)) return -1.0;
+    if (spacing > DBL_MAX / 4.0) return -1.0;
+    return 4.0 * spacing;
+}
 
 static jpl_status endpoints_match(const double scheduled[2], double encoded) {
-    double error;
+    double error, tolerance;
     if (!isfinite(scheduled[0]) || !isfinite(scheduled[1]) || !isfinite(encoded)) return JPL_ERROR_FORMAT;
     error = fabs((scheduled[0] - encoded) + scheduled[1]);
-    if (!isfinite(error) || error > JPL_T05_ENDPOINT_TOL_DAYS) return JPL_ERROR_FORMAT;
+    if (!isfinite(error)) return JPL_ERROR_FORMAT;
+    tolerance = endpoint_ulp_tolerance(scheduled, encoded);
+    if (!isfinite(tolerance) || tolerance < 0.0) return JPL_ERROR_FORMAT;
+    if (error > tolerance) return JPL_ERROR_FORMAT;
     return JPL_OK;
 }
 
@@ -881,6 +900,11 @@ static jpl_byte_order native_order(void) {
 
 static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
     unsigned char *bytes; size_t i;
+    if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
+    /* Zero-count raw reads succeed without backend access (F14): no seek,
+     * mapping-base evaluation, malloc(0), read, or copy. Argument and
+     * handle validation above still applies. */
+    if (count == 0) return JPL_OK;
     if (ephemeris->is_mmap) {
         const unsigned char *base;
         if (!ephemeris->mmap_base) return JPL_ERROR_IO;

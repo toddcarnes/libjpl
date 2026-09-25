@@ -119,6 +119,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libjplConfig.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libjpl")
 
 option(LIBJPL_BUILD_DOCS "Build Doxygen docs" OFF)
+# CTest is enabled unconditionally so docs checks exist even when ordinary
+# tests are OFF (F15); ordinary executables stay inside the tests option.
+enable_testing()
 if(LIBJPL_BUILD_DOCS)
   find_package(Doxygen REQUIRED)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in" "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile" @ONLY)
@@ -152,7 +155,6 @@ install(FILES src/erfa/LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/li
 
 option(LIBJPL_BUILD_TESTS "Build libjpl tests" ON)
 if(LIBJPL_BUILD_TESTS)
-    enable_testing()
     add_executable(jpl_tests tests/test_jpl.c)
     target_link_libraries(jpl_tests PRIVATE jpl)
     target_compile_features(jpl_tests PRIVATE c_std_17)
@@ -531,6 +533,16 @@ if(LIBJPL_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_workflows.cmake")
+
+    # Docs-only configure matrix (F15): registered only in tests-enabled
+    # parent builds to avoid recursive self-registration. The nested build
+    # (docs ON, tests OFF) must still register exactly the two docs checks.
+    set(JPL_DOCS_ONLY_WORK "${CMAKE_CURRENT_BINARY_DIR}/docs_only")
+    add_test(NAME jpl_docs_only
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DWORK=${JPL_DOCS_ONLY_WORK}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_docs_only.cmake")
 
     option(LIBJPL_FETCH_EPHEMERIDES "Download JPL DE440/DE440t validation data (approx 210 MB)" OFF)
     set(LIBJPL_EPHEMERIS_DIR "${CMAKE_CURRENT_BINARY_DIR}/ephemeris" CACHE PATH "Downloaded/located JPL test data")

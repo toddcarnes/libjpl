@@ -269,6 +269,22 @@ All commands run under PowerShell 5.1 from the worktree root
 - Policy test passes locally; hosted/maintainer-runner dispatch is T17 (no
   pass claimed without execution).
 
+## T12 evidence
+
+- `enable_testing()` moved outside `if(LIBJPL_BUILD_TESTS)` and before the
+  docs block; every ordinary executable and ordinary `add_test()` stays
+  inside the option block. `LIBJPL_BUILD_TESTS=OFF` still suppresses all
+  ordinary test executables; `LIBJPL_BUILD_DOCS=ON` registers exactly
+  `jpl_docs_symbols` and `jpl_docs_paths`.
+- New configure-matrix test `jpl_docs_only`
+  (`tests/cmake/test_docs_only.cmake`, registered only in tests-enabled
+  parent builds): disposable nested build with docs ON/tests OFF, builds
+  `docs`, requires both docs test names in `ctest -N` while rejecting
+  `jpl_tests`/`jpl_parser`, then runs the nested suite (multi-config
+  `-C` forwarded). Failed pre-fix (nested `ctest -N` reported zero tests).
+- `jpl_docs_only`, `jpl_licenses` pass; AGENTS.md and inventory updated.
+  Docs symbols/paths plus install coverage rerun in T17.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -287,7 +303,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |
 | F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
 | F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
-| F15 | T12, T17 | Open | - | Docs-only configure matrix | Fix pending | - |
+| F15 | T12, T17 | Resolved | (this commit) | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install in T17 | T17 docs/install gates |
 | F16 | T13, T17 | Open | - | Positive and mutated-copy integrity checks | Fix pending; canonical-LF hashes disagree with plan prose, will regenerate per T13-Step1, not copy mechanically | - |
 | F17 | T15, T17 | Open | - | Offline workflow policy plus hosted jobs | Fix pending | - |
 | F18 | T06, T16, T17 | Open | - | Doxygen, local links, README/license audit | Fix pending | - |

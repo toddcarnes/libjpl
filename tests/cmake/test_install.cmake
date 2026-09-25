@@ -169,19 +169,24 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-default"
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
   -C "${CONFIG}" --output-on-failure)
 
-# --- Case 4: deliberately incompatible version fails for the version reason. ---
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consumer-badversion"
-    ${child_gen_args} ${child_toolchain_args}
-    "-DCMAKE_PREFIX_PATH=${default_prefix_path}" "-Dlibjpl_DIR=${default_libjpl_dir}" "-DREQUEST_VERSION=9999.0.0"
-  RESULT_VARIABLE bad_rc OUTPUT_VARIABLE bad_out ERROR_VARIABLE bad_err)
-if("${bad_rc}" STREQUAL "0")
-  message(FATAL_ERROR "incompatible version request unexpectedly configured")
-endif()
-string(REPLACE "\n" " " bad_flat "${bad_out} ${bad_err}")
-if(NOT bad_flat MATCHES "not compatible with the version requested|exactly matches requested version")
-  message(FATAL_ERROR "incompatible version failed for the wrong reason (expected a version diagnostic):\n${bad_out}\n${bad_err}")
-endif()
+# --- Case 4: deliberately incompatible versions fail for the version reason.
+# Exact 0.2.0 and 0.3.1 requests must both fail (F09: the 0.3.0 breaking API
+# is distinct from tagged 0.2.0 and from any newer version). ---
+foreach(_bad_version IN ITEMS 0.2.0 0.3.1 9999.0.0)
+  string(REPLACE "." "_" _bad_tag "${_bad_version}")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consumer-badversion-${_bad_tag}"
+      ${child_gen_args} ${child_toolchain_args}
+      "-DCMAKE_PREFIX_PATH=${default_prefix_path}" "-Dlibjpl_DIR=${default_libjpl_dir}" "-DREQUEST_VERSION=${_bad_version}"
+    RESULT_VARIABLE bad_rc OUTPUT_VARIABLE bad_out ERROR_VARIABLE bad_err)
+  if("${bad_rc}" STREQUAL "0")
+    message(FATAL_ERROR "incompatible version request ${_bad_version} unexpectedly configured")
+  endif()
+  string(REPLACE "\n" " " bad_flat "${bad_out} ${bad_err}")
+  if(NOT bad_flat MATCHES "not compatible with the version requested|exactly matches requested version")
+    message(FATAL_ERROR "incompatible version ${_bad_version} failed for the wrong reason (expected a version diagnostic):\n${bad_out}\n${bad_err}")
+  endif()
+endforeach()
 
 # --- Case 5: relocate the owned prefix to a path with spaces. ---
 set(SPACE_PREFIX "${WORK}/relocated prefix")

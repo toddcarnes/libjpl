@@ -307,6 +307,22 @@ All commands run under PowerShell 5.1 from the worktree root
   build-tree copy fails as required (verified manually).
 - Integrity, numerical, frame, aberration, light-time pass.
 
+## T14 evidence
+
+- Install version tests strengthened first: exact `0.2.0`/`0.3.1`/`9999.0.0`
+  consumer configures must fail for the version reason. Pre-change
+  `jpl_install` failed as required (exact `0.2.0` unexpectedly configured
+  against the 0.2.0 project).
+- `project(libjpl VERSION 0.3.0 LANGUAGES C)`; ERFA `PACKAGE_VERSION="2.0.1"`
+  untouched. `CHANGELOG.md`: `## [Unreleased]` kept empty at top, new
+  `## [0.3.0] - 2026-09-19` with the breaking two-part-date/modern-AU
+  changes plus F01-F18 entries, historical `0.2.0` preserved.
+- `jpl_install` passes Debug + Release (default, relocated, custom
+  include/lib, spaces, exact 0.3.0, mismatches 0.2.0/0.3.1/9999.0.0).
+- Live-file search for `0.2.0`: only the historical changelog section,
+  historical review/spec references, and the intentional mismatch test
+  remain; `docs/migration-two-part-dates.md` names no version (no-op).
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -319,7 +335,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
 | F07 | T10 | Resolved | (this commit) | Forced failure restores prior destination | jpl_fetch_cache repeated; offline reuse in T17 | T17 offline second configure |
 | F08 | T11, T17 | Resolved | (this commit) | Variable/label/registration policy and dispatch | Policy test passes locally; hosted dispatch in T17 | T17 dispatch + macOS pending |
-| F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
+| F09 | T14, T17 | Resolved | (this commit) | Exact 0.3.0 consumer and mismatch tests | jpl_install Debug+Release; 0.2.0/0.3.1/9999.0.0 rejected | T17 rerun |
 | F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |
 | F11 | T09, T17 | Resolved | (this commit) | Interior corruption fails; complete real scan | Synthetic + fixture Debug+Release; real/local rerun in T17 | T17 real/local full scan |
 | F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |

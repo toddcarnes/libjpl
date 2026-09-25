@@ -9,6 +9,9 @@ cmake-build-*/
 # Superpowers working state (ledgers, briefs, review packages)
 .superpowers/
 
+# Isolated git worktrees (implementation branches)
+.worktrees/
+
 # Doxygen output
 docs/html/
 docs/latex/

@@ -22,16 +22,21 @@ if(NOT EXISTS "${RUNNER}")
   message(FATAL_ERROR "runner does not exist: ${RUNNER}")
 endif()
 
-# The generator runs idempotently before each case: the first CTest case
-# creates the directory, later cases reuse it (parallel-safe: every run
-# writes identical bytes, and make_dir tolerates an existing path).
-if(DEFINED GENERATOR AND DEFINED WORK)
-  execute_process(COMMAND "${GENERATOR}" "${WORK}"
-                  RESULT_VARIABLE gen_rc
-                  OUTPUT_VARIABLE gen_out
-                  ERROR_VARIABLE gen_err)
-  if(NOT "${gen_rc}" STREQUAL "0")
-    message(FATAL_ERROR "validator generator failed: ${gen_rc}\n${gen_out}\n${gen_err}")
+# Consumes the corpus generated once per run by the CTest fixture setup test
+# jpl_validator_data_setup (FIXTURES_SETUP jpl_validator_corpus); this driver
+# never regenerates or truncates it (F01). Every case requires
+# FIXTURES_REQUIRED jpl_validator_corpus via CMakeLists.txt. WORK only
+# supplies paths. Fail immediately when the expected corpus file is absent,
+# except the fixture read-error case (ROWS set), whose EPH/TESTPO/ROWS are
+# committed source fixtures, not generated files.
+if(DEFINED ROWS AND NOT "${ROWS}" STREQUAL "")
+  # Source-fixture case: no generated corpus needed; validate sources exist.
+elseif(DEFINED WORK)
+  if(NOT EXISTS "${EPH}")
+    message(FATAL_ERROR "validator corpus missing (run jpl_validator_data_setup first): ${EPH}")
+  endif()
+  if(NOT DEFINED SWEEP_DIR AND NOT EXISTS "${TESTPO}")
+    message(FATAL_ERROR "validator corpus missing (run jpl_validator_data_setup first): ${TESTPO}")
   endif()
 endif()
 

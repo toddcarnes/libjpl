@@ -328,6 +328,10 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_validator_data PRIVATE c_std_17)
     target_include_directories(jpl_validator_data PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     set(JPL_VALIDATOR_WORK "${CMAKE_CURRENT_BINARY_DIR}/validator_data")
+    add_test(NAME jpl_validator_data_setup
+        COMMAND jpl_validator_data "${JPL_VALIDATOR_WORK}")
+    set_tests_properties(jpl_validator_data_setup PROPERTIES
+        FIXTURES_SETUP jpl_validator_corpus)
     add_test(NAME jpl_validator_good
         COMMAND ${CMAKE_COMMAND}
             "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
@@ -467,6 +471,16 @@ if(LIBJPL_BUILD_TESTS)
             "-DSWEEP_DIR=${JPL_VALIDATOR_WORK}/sweep"
             "-DSWEEP_GOOD_DIR=${JPL_VALIDATOR_WORK}/sweep_good"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
+    # The shared corpus is generated once by jpl_validator_data_setup; every
+    # validator case consumes it read-only (F01), including the
+    # source-fixture read-error case.
+    set_tests_properties(
+        jpl_validator_good jpl_validator_nan jpl_validator_missing_body
+        jpl_validator_angular_present jpl_validator_denum jpl_validator_malformed6
+        jpl_validator_badcomp jpl_validator_overflow_pos jpl_validator_overflow_neg
+        jpl_validator_overlong jpl_validator_farpsi jpl_validator_ttdbwrong
+        jpl_validator_read_error jpl_fixture_read_error jpl_validator_sweep
+        PROPERTIES FIXTURES_REQUIRED jpl_validator_corpus)
 
     add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
     target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)

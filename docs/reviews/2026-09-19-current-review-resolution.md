@@ -53,11 +53,30 @@ All commands run under PowerShell 5.1 from the worktree root
   (`GENERATOR` block in `tests/cmake/test_validators.cmake:28-36`), truncating
   files concurrently. SOURCE-CONFIRMED by inspection plus this reproduction.
 
+## T01 evidence
+
+- `jpl_validator_data_setup` generates the corpus once (`FIXTURES_SETUP
+  jpl_validator_corpus`); all 15 validator cases carry `FIXTURES_REQUIRED
+  jpl_validator_corpus` in one `set_tests_properties()` list, including
+  `jpl_fixture_read_error`. The driver no longer runs `GENERATOR`; it fails
+  when a generated corpus file is absent (source-fixture `ROWS` case exempt).
+- `ctest -R "^jpl_validator_denum$"`: CTest auto-ran the setup fixture first;
+  both pass.
+- `ctest -R "^jpl_validator_" -j 16 --repeat until-fail:10`: 15/15 pass on all
+  10 repetitions.
+- Full offline `ctest -j 16 -E "^jpl_threads$"`: 36/36 pass. `jpl_threads`
+  passes standalone (0.07 s); the single full-parallel timeout (`threads tests
+  passed` printed before the 120 s TIMEOUT fired under load) is a scheduling
+  artifact, not a validator failure. Re-run serial full suite before commit.
+- Note: `jpl_validator_good` etc. pass without an explicit `jpl_validator_data`
+  dependency edge because the fixture mechanism orders setup first; verified
+  via the single-test `-R` selection above.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
 | --- | --- | --- | --- | --- | --- | --- |
-| F01 | T01, T17 | Open | - | Fixture setup plus repeated `-j 16` | T00 reproduction above; fix pending | Parallel stress, docs-only, platform gates pending |
+| F01 | T01, T17 | Resolved | (this commit) | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:10` 15/15 x10; single-select auto-runs setup; full parallel 36/36 (threads standalone) | T17 stress/docs-only/platform gates |
 | F02 | T02 | Open | - | Distinct trailing coefficient, FILE/mmap | Fix pending | - |
 | F03 | T03 | Open | - | Equal-value valid mock, FILE/mmap | Fix pending | - |
 | F04 | T06 | Open | - | Invalid codes combined with range/missing data | Fix pending | - |

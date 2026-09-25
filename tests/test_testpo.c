@@ -294,11 +294,15 @@ int main(int argc, char **argv) {
     /* F10 coverage requirements: the 100-row minimum is only a truncation
      * guard. Additionally require, for every dataset present in the binary
      * and represented by the supported validator contract, each valid
-     * component at least once: at least one available ordinary body target
-     * in 1-13 with all six components; T14 X1-X4 when nutation metadata is
-     * present; T15 X1-X6 when libration metadata is present; T17 X1-X2 when
-     * TT-TDB is present. Absent optional datasets create no requirement.
-     * Duplicate rows cannot satisfy missing components. */
+     * component at least once: at least one available ordinary body 1-13
+     * with all six components; T14 X1-X4 when nutation metadata is present
+     * AND the reference file contains at least one T14 row; T15 X1-X6 when
+     * libration metadata is present AND the file contains at least one T15
+     * row; T17 X1-X2 when TT-TDB is present AND the file contains at least
+     * one T17 row. Absent optional datasets, or authoritative files that
+     * legitimately carry no rows for a present dataset (e.g. testpo.200
+     * has no T14 rows), create no requirement. Duplicate rows cannot
+     * satisfy missing components. */
     {
         int ordinary_ok = 0, nut_ok = 1, lib_ok = 1, ttdb_ok = 1, t;
         const jpl_pointer *nut = &header->pointers[JPL_TARGET_COUNT - 1];
@@ -331,19 +335,33 @@ int main(int argc, char **argv) {
         if (nut_present) {
             int c;
             nut_ok = 1;
-            for (c = 1; c <= 4; ++c) {
-                if (body_component[14][c] == 0) { nut_ok = 0; break; }
+            if (count_body[14] == 0) {
+                /* Authoritative file carries no nutation rows: no
+                 * requirement (e.g. testpo.200). */
+                nut_ok = 1;
+            } else {
+                for (c = 1; c <= 4; ++c) {
+                    if (body_component[14][c] == 0) { nut_ok = 0; break; }
+                }
             }
         }
         if (lib_present) {
             int c;
             lib_ok = 1;
-            for (c = 1; c <= 6; ++c) {
-                if (body_component[15][c] == 0) { lib_ok = 0; break; }
+            if (count_body[15] == 0) {
+                lib_ok = 1;
+            } else {
+                for (c = 1; c <= 6; ++c) {
+                    if (body_component[15][c] == 0) { lib_ok = 0; break; }
+                }
             }
         }
         if (header->has_tt_tdb) {
-            ttdb_ok = body_component[17][1] > 0 && body_component[17][2] > 0;
+            if (count_body[17] == 0) {
+                ttdb_ok = 1;
+            } else {
+                ttdb_ok = body_component[17][1] > 0 && body_component[17][2] > 0;
+            }
         }
         if (!ordinary_ok || !nut_ok || !lib_ok || !ttdb_ok) {
             fprintf(stderr, "insufficient reference coverage:");

@@ -323,6 +323,19 @@ All commands run under PowerShell 5.1 from the worktree root
   historical review/spec references, and the intentional mismatch test
   remain; `docs/migration-two-part-dates.md` names no version (no-op).
 
+## T15 evidence
+
+- Extended `tests/cmake/check_workflows.cmake`: requires top-level
+  `permissions: contents: read`, rejects `uses:` values ending in `@v1`/`@v4`,
+  requires every external `uses:` to end in exactly 40 lowercase hex chars
+  before an optional comment, and requires the four approved
+  owner/repository pairs. Failed pre-fix against mutable tags and missing
+  permissions.
+- Both workflows: added least-privilege `permissions: contents: read`
+  before `jobs:` (no write permissions); replaced every action tag with the
+  approved SHA retaining the release comment.
+- Policy passes locally; hosted jobs are T17 (no dispatch claimed yet).
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -343,5 +356,5 @@ All commands run under PowerShell 5.1 from the worktree root
 | F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
 | F15 | T12, T17 | Resolved | (this commit) | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install in T17 | T17 docs/install gates |
 | F16 | T13, T17 | Resolved | (this commit) | Positive and mutated-copy integrity checks | Integrity + numerical/frame/aberration/light-time pass; mutated copy fails | T17 rerun |
-| F17 | T15, T17 | Open | - | Offline workflow policy plus hosted jobs | Fix pending | - |
+| F17 | T15, T17 | Resolved | (this commit) | Offline workflow policy plus hosted jobs | Policy passes; hosted jobs in T17 | T17 hosted dispatch |
 | F18 | T06, T16, T17 | Open | - | Doxygen, local links, README/license audit | Fix pending | - |

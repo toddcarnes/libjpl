@@ -99,6 +99,9 @@ Ubuntu Clang Debug/Release, macOS Clang Debug/Release,
 ASan/UBSan, TSan, docs/licenses/fixtures) and
 `.github/workflows/ephemerides.yml` (`workflow_dispatch` only: DE440/DE440t
 fetch tier in both configurations plus the maintainer-runner local sweep).
+Both workflows declare top-level `permissions: contents: read` and pin
+third-party actions to reviewed full commit SHAs (checkout/cache/
+upload-artifact/msvc-dev-cmd, release line kept in a trailing comment).
 The local sweep requires the dedicated `[self-hosted, libjpl-ephemerides]`
 runner label plus nonempty `JPLEPH` and `JPL_TESTPO` repository variables
 (preflight fails when either is empty or names a missing directory), proves

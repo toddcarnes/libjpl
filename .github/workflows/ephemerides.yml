@@ -9,6 +9,9 @@
 # (label `self-hosted`); hosted execution uses downloads plus cache only.
 name: ephemerides
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
 
@@ -22,9 +25,9 @@ jobs:
         config: [Debug, Release]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Restore ephemeris cache (keyed by manifest hash and platform)
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/eph/ephemeris
           key: ephemeris-${{ runner.os }}-${{ hashFiles('tests/data/MANIFEST.txt') }}
@@ -39,7 +42,7 @@ jobs:
       - name: DE440/DE440t testpo (both configurations)
         run: ctest --test-dir build/eph -C ${{ matrix.config }} --output-on-failure -R 'jpl_testpo_440|jpl_real_ephemeris|jpl_all_ephemerides$'
       - name: Retain summary counts/hashes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: testpo-summary-${{ matrix.config }}
           path: |
@@ -51,7 +54,7 @@ jobs:
     runs-on: [self-hosted, libjpl-ephemerides]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Preflight (dedicated runner data required)
         shell: powershell
         run: |

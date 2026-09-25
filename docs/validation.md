@@ -99,6 +99,13 @@ Ubuntu Clang Debug/Release, macOS Clang Debug/Release,
 ASan/UBSan, TSan, docs/licenses/fixtures) and
 `.github/workflows/ephemerides.yml` (`workflow_dispatch` only: DE440/DE440t
 fetch tier in both configurations plus the maintainer-runner local sweep).
+The local sweep requires the dedicated `[self-hosted, libjpl-ephemerides]`
+runner label plus nonempty `JPLEPH` and `JPL_TESTPO` repository variables
+(preflight fails when either is empty or names a missing directory), proves
+via `ctest -N` that `jpl_all_ephemerides_local` and at least one local
+non-440 `jpl_testpo_` suite are registered (parser-only tests cannot
+satisfy it), then runs only `jpl_all_ephemerides_local` and
+`jpl_testpo_[0-9]` local registrations.
 Default CI remains offline with respect to ephemeris data
 (`LIBJPL_FETCH_EPHEMERIDES=OFF`); workflow files alone authorize no runs.
 Actual CI run results are required before T23 marks platform findings

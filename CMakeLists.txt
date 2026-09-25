@@ -524,6 +524,14 @@ if(LIBJPL_BUILD_TESTS)
             "-DDATADIR=${CMAKE_INSTALL_DATADIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_licenses.cmake")
 
+    # Workflow policy (F08/F17, offline): dedicated local-runner label,
+    # variable guards, registration proof, permissions, and action pins
+    # read as text without a YAML dependency.
+    add_test(NAME jpl_workflow_policy
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_workflows.cmake")
+
     option(LIBJPL_FETCH_EPHEMERIDES "Download JPL DE440/DE440t validation data (approx 210 MB)" OFF)
     set(LIBJPL_EPHEMERIS_DIR "${CMAKE_CURRENT_BINARY_DIR}/ephemeris" CACHE PATH "Downloaded/located JPL test data")
     # Source root for the shared module below: required when the build tree

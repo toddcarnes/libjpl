@@ -253,6 +253,22 @@ All commands run under PowerShell 5.1 from the worktree root
 - `jpl_fetch_cache` passes repeatedly; offline second configure against a
   populated cache covered in T17.
 
+## T11 evidence
+
+- New offline `jpl_workflow_policy` test (`tests/cmake/check_workflows.cmake`,
+  no YAML dependency) requires the dedicated local label, nonempty-variable
+  guard commands, explicit `ctest -N` registration inspection, and no bare
+  `[self-hosted]` local job. Failed on current YAML before the fix.
+- `.github/workflows/ephemerides.yml` local job now uses
+  `[self-hosted, libjpl-ephemerides]`, adds an explicit PowerShell preflight
+  failing on empty `JPLEPH`/`JPL_TESTPO` or missing directories, proves via
+  `ctest -N` that `jpl_all_ephemerides_local` plus at least one non-440
+  `jpl_testpo_[0-9]` suite are registered (parser-only cannot satisfy it),
+  then runs only those local registrations.
+- `docs/validation.md` documents the label/variables; inventory updated.
+- Policy test passes locally; hosted/maintainer-runner dispatch is T17 (no
+  pass claimed without execution).
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -264,7 +280,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F05 | T07 | Resolved | (this commit) | Finite tiny-Sun scale-safe reference | jpl_aberration/numeric/convenience/examples Debug+Release | T17 sanitizer rerun |
 | F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
 | F07 | T10 | Resolved | (this commit) | Forced failure restores prior destination | jpl_fetch_cache repeated; offline reuse in T17 | T17 offline second configure |
-| F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |
+| F08 | T11, T17 | Resolved | (this commit) | Variable/label/registration policy and dispatch | Policy test passes locally; hosted dispatch in T17 | T17 dispatch + macOS pending |
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
 | F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |
 | F11 | T09, T17 | Resolved | (this commit) | Interior corruption fails; complete real scan | Synthetic + fixture Debug+Release; real/local rerun in T17 | T17 real/local full scan |

@@ -48,10 +48,20 @@ jobs:
 
   local-sweep:
     name: Maintainer-local legacy/long-span sweep
-    runs-on: [self-hosted]
+    runs-on: [self-hosted, libjpl-ephemerides]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Preflight (dedicated runner data required)
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:JPLEPH)) { throw 'JPLEPH repository variable is required' }
+          if ([string]::IsNullOrWhiteSpace($env:JPL_TESTPO)) { throw 'JPL_TESTPO repository variable is required' }
+          if (-not (Test-Path -LiteralPath $env:JPLEPH -PathType Container)) { throw "JPLEPH directory not found: $env:JPLEPH" }
+          if (-not (Test-Path -LiteralPath $env:JPL_TESTPO -PathType Container)) { throw "JPL_TESTPO directory not found: $env:JPL_TESTPO" }
+        env:
+          JPLEPH: ${{ vars.JPLEPH }}
+          JPL_TESTPO: ${{ vars.JPL_TESTPO }}
       - name: Configure (fetch ON; JPLEPH/JPL_TESTPO redirect per-file sources inside this tier only)
         run: cmake -S . -B build/eph -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=ON
         env:
@@ -59,8 +69,18 @@ jobs:
           JPL_TESTPO: ${{ vars.JPL_TESTPO }}
       - name: Build
         run: cmake --build build/eph --config Release --parallel
+      - name: Prove local registration before execution
+        shell: powershell
+        run: |
+          ctest -N --test-dir build/eph -C Release > "$env:RUNNER_TEMP/jpl_local_tests.txt"
+          $names = Get-Content "$env:RUNNER_TEMP/jpl_local_tests.txt" -Raw
+          if ($names -notmatch 'jpl_all_ephemerides_local') { throw 'jpl_all_ephemerides_local is not registered' }
+          $local = [regex]::Matches($names, 'jpl_testpo_[0-9][0-9]*t?') | ForEach-Object { $_.Value } | Sort-Object -Unique
+          $non440 = @($local | Where-Object { $_ -ne 'jpl_testpo_440' -and $_ -ne 'jpl_testpo_440t' -and $_ -notmatch 'parser' })
+          if ($non440.Count -lt 1) { throw 'no local non-440 jpl_testpo_ suite is registered' }
+          Write-Output ("local suites: jpl_all_ephemerides_local + " + ($non440 -join ', '))
       - name: Local sweep (maintainer runner only)
-        run: ctest --test-dir build/eph -C Release --output-on-failure -R 'jpl_all_ephemerides_local|jpl_testpo_'
+        run: ctest --test-dir build/eph -C Release --output-on-failure -R 'jpl_all_ephemerides_local|jpl_testpo_[0-9]'
         env:
           JPLEPH: ${{ vars.JPLEPH }}
           JPL_TESTPO: ${{ vars.JPL_TESTPO }}

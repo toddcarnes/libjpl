@@ -232,6 +232,27 @@ All commands run under PowerShell 5.1 from the worktree root
 - Synthetic sweep negative/control plus committed fixture pass in Debug and
   Release; DE440/DE440t and maintainer-local reruns deferred to T17.
 
+## T10 evidence
+
+- `libjpl_resolve_fetch_file()` publishes transactionally: a stale sibling
+  backup (`${dest}.replace-backup`) fails loudly without touching either
+  file; otherwise the destination is moved to the backup via a checked
+  `${CMAKE_COMMAND} -E rename` subprocess (CMake 3.20 can inspect
+  `execute_process(RESULT_VARIABLE ...)`), the verified temp is published
+  the same way, and the backup is restored on publish failure (rollback
+  failure names both paths and preserves the backup). The backup is removed
+  only after the new destination exists and the temp is gone; destination
+  size/hash are re-verified after publication.
+- Test-only `LIBJPL_TEST_FORCE_PUBLISH_FAILURE` (default false) skips the
+  publish command and synthesizes a nonzero result so rollback is exercised
+  without platform races.
+- Regression `6b`: stale destination + valid downloadable replacement under
+  the forced-failure switch fails with `forced publish failure`, keeps the
+  original hash/size, and leaves no `.fetch-tmp`/`.replace-backup`. Before
+  the fix the switch was ignored (test failed with exit 0).
+- `jpl_fetch_cache` passes repeatedly; offline second configure against a
+  populated cache covered in T17.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -242,7 +263,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F04 | T06 | Resolved | (this commit) | Invalid codes combined with range/missing data | API/convenience/numeric/light-time/frames/TT-TDB/examples Debug+Release | T17 full acceptance |
 | F05 | T07 | Resolved | (this commit) | Finite tiny-Sun scale-safe reference | jpl_aberration/numeric/convenience/examples Debug+Release | T17 sanitizer rerun |
 | F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
-| F07 | T10 | Open | - | Forced failure restores prior destination | Fix pending | - |
+| F07 | T10 | Resolved | (this commit) | Forced failure restores prior destination | jpl_fetch_cache repeated; offline reuse in T17 | T17 offline second configure |
 | F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
 | F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |

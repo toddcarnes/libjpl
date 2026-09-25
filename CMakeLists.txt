@@ -482,6 +482,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DEXPECT="
             "-DSWEEP_DIR=${JPL_VALIDATOR_WORK}/sweep"
             "-DSWEEP_GOOD_DIR=${JPL_VALIDATOR_WORK}/sweep_good"
+            "-DSWEEP_CORRUPT_DIR=${JPL_VALIDATOR_WORK}/sweep_corrupt"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
     # The shared corpus is generated once by jpl_validator_data_setup; every
     # validator case consumes it read-only (F01), including the

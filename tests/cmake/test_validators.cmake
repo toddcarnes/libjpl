@@ -42,7 +42,8 @@ endif()
 
 if(DEFINED SWEEP_DIR)
   # Sweep mode: the mixed directory must fail (corrupt DE102 file
-  # present), while the good-only control directory must pass.
+  # present), while the good-only control directory must pass. The
+  # interior-corruption directory must fail at record one.
   execute_process(COMMAND "${RUNNER}" "${SWEEP_DIR}"
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(NOT DEFINED SWEEP_GOOD_DIR)
@@ -52,7 +53,7 @@ if(DEFINED SWEEP_DIR)
     message(FATAL_ERROR "sweep with corrupt file did not fail with exit 1 (got ${rc}):\n${out}\n${err}")
   endif()
   string(REPLACE "\n" " " err_flat "${err}")
-  if(NOT "${err_flat}" MATCHES "failed to open|invalid header|could not decode|too short|cannot stat")
+  if(NOT "${err_flat}" MATCHES "failed to open|invalid header|could not decode|too short|cannot stat|record [0-9]+")
     message(FATAL_ERROR "sweep did not report a present-file failure: ${rc}\n${out}\n${err}")
   endif()
   execute_process(COMMAND "${RUNNER}" "${SWEEP_GOOD_DIR}"
@@ -61,6 +62,18 @@ if(DEFINED SWEEP_DIR)
                   ERROR_VARIABLE good_err)
   if(NOT "${good_rc}" STREQUAL "0")
     message(FATAL_ERROR "good-only sweep failed: ${good_rc}\n${good_out}\n${good_err}")
+  endif()
+  if(NOT DEFINED SWEEP_CORRUPT_DIR)
+    message(FATAL_ERROR "sweep mode needs SWEEP_CORRUPT_DIR")
+  endif()
+  execute_process(COMMAND "${RUNNER}" "${SWEEP_CORRUPT_DIR}"
+                  RESULT_VARIABLE corrupt_rc OUTPUT_VARIABLE corrupt_out ERROR_VARIABLE corrupt_err)
+  if(NOT "${corrupt_rc}" STREQUAL "1")
+    message(FATAL_ERROR "interior-corruption sweep did not fail with exit 1 (got ${corrupt_rc}):\n${corrupt_out}\n${corrupt_err}")
+  endif()
+  string(REPLACE "\n" " " corrupt_flat "${corrupt_err}")
+  if(NOT "${corrupt_flat}" MATCHES "record 1")
+    message(FATAL_ERROR "interior-corruption sweep did not fail at record one:\n${corrupt_out}\n${corrupt_err}")
   endif()
   return()
 endif()

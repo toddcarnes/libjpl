@@ -270,7 +270,13 @@ T23 Windows MSVC `build/t23-clean` Debug+Release in-suite pass; Linux
 
 Requires explicit `LIBJPL_FETCH_EPHEMERIDES=ON` plus local or download
 sources; `JPLEPH`/`JPL_TESTPO` env dirs only redirect per-file sources
-inside this tier and never enable it alone.
+inside this tier and never enable it alone. The all-ephemerides sweep
+(`jpl_all_ephemerides[_local]`) decodes and validates every physical data
+record of every present binary: finite ordered encoded dates, continuity
+with the previous end, anchoring at coverage start/end (one trailing
+record may start at coverage end staying ordered). This opt-in tier
+intentionally performs a full sequential scan and can read several
+gigabytes.
 
 ```sh
 cmake -S . -B build/remediation-real -DLIBJPL_FETCH_EPHEMERIDES=ON

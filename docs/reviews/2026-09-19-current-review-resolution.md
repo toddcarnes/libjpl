@@ -212,6 +212,26 @@ All commands run under PowerShell 5.1 from the worktree root
   (Debug + Release): good passes, duplicate-only fails for the intended
   category, all prior negatives retain their category.
 
+## T09 evidence
+
+- `tests/test_all_ephemerides.c` iterates `index = 0 ..
+  jpl_record_count(ephemeris)-1` with one reused record buffer. Every
+  physical record is read; nonfinite start/end (`isfinite()`) and `end <=
+  start` fail with filename plus zero-based record index; continuity with
+  the previous end is verified; record zero must start at coverage start
+  and the final covered record must end at coverage end (one trailing
+  record may start at coverage end staying ordered). The manual NaN bit
+  inspection is removed in favor of `isfinite()` (also rejects infinities).
+- Success text states every physical record was decoded and checked;
+  `docs/validation.md` notes the opt-in tier intentionally performs a full
+  sequential scan that can read several gigabytes.
+- New `sweep_corrupt` fixture (three covered records, clean first/last
+  endpoints, NaN date in record one, separate directory): open succeeds but
+  the sweep fails at record one (`DE441.eph: record 1: nonfinite record
+  dates`). Before the fix the sweep exited zero (record-0-only check).
+- Synthetic sweep negative/control plus committed fixture pass in Debug and
+  Release; DE440/DE440t and maintainer-local reruns deferred to T17.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -226,7 +246,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
 | F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |
-| F11 | T09, T17 | Open | - | Interior corruption fails; complete real scan | Fix pending | - |
+| F11 | T09, T17 | Resolved | (this commit) | Interior corruption fails; complete real scan | Synthetic + fixture Debug+Release; real/local rerun in T17 | T17 real/local full scan |
 | F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |
 | F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
 | F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |

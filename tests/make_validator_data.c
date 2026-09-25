@@ -316,6 +316,53 @@ int main(int argc, char **argv) {
         fprintf(stderr, "could not write %s\n", path);
         goto done;
     }
+    /* F11 interior-corruption sweep fixture: three covered records with
+     * clean first/last endpoints and a NaN date in record one. Lives in
+     * its own directory so open succeeds but the sweep must fail. */
+    JOIN(path, "sweep_corrupt");
+    if (make_dir(path) != 0) {
+        fprintf(stderr, "could not create %s (%s)\n", path, strerror(errno));
+        goto done;
+    }
+    {
+        static unsigned char chdr[SMALL_DOUBLES * 8];
+        static double crecs[3 * SMALL_DOUBLES];
+        jpl_test_mock cmock;
+        size_t k;
+        memset(chdr, 0, sizeof chdr);
+        memcpy(chdr, "validator corrupt", 17);
+        test_mock_header(chdr, 2451545.0, 2451548.0, 1.0, 2);
+        test_put_ptr(chdr, 3, 3, 1, 1);
+        test_put_ptr(chdr, 12, (uint32_t)441, 0, 0);
+        for (k = 0; k < 3 * SMALL_DOUBLES; ++k) crecs[k] = 0.0;
+        crecs[0 * SMALL_DOUBLES + 0] = 2451545.0;
+        crecs[0 * SMALL_DOUBLES + 1] = 2451546.0;
+        crecs[0 * SMALL_DOUBLES + 2] = 5.0;
+        crecs[1 * SMALL_DOUBLES + 0] = NAN;
+        crecs[1 * SMALL_DOUBLES + 1] = 2451547.0;
+        crecs[1 * SMALL_DOUBLES + 2] = 5.0;
+        crecs[2 * SMALL_DOUBLES + 0] = 2451547.0;
+        crecs[2 * SMALL_DOUBLES + 1] = 2451548.0;
+        crecs[2 * SMALL_DOUBLES + 2] = 5.0;
+        memset(&cmock, 0, sizeof cmock);
+        cmock.record_doubles = SMALL_DOUBLES;
+        cmock.advertised_records = 3;
+        cmock.denum = 441;
+        cmock.constant_count = 2;
+        cmock.start[0] = 2451545.0;
+        cmock.end[0] = 2451548.0;
+        cmock.step_days = 1.0;
+        cmock.au_km = JPL_TEST_AU_KM;
+        cmock.emrat = JPL_TEST_MASS_RATIO;
+        cmock.header = chdr;
+        cmock.constants = NULL;
+        cmock.records = crecs;
+        JOIN(path, "sweep_corrupt/DE441.eph");
+        if (test_write_mock(path, &cmock) != 0) {
+            fprintf(stderr, "could not write %s\n", path);
+            goto done;
+        }
+    }
     /* Sweep control: a directory with only the good file (must pass). */
     JOIN(path, "sweep_good");
     if (make_dir(path) != 0) {

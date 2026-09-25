@@ -66,7 +66,8 @@ struct jpl_ephemeris {
     FILE *file;
     jpl_header header;
     size_t file_size;
-    size_t record_count;
+    size_t record_count;            /* physically readable data records */
+    size_t covered_record_count;    /* advertised intervals only */
     /* File identity captured from the open stream (not a path lookup),
      * used to verify FILE clones reopened the same object. POSIX stores
      * st_dev/st_ino; Windows stores volume serial + file index from the
@@ -345,18 +346,21 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
 /* Complete candidate validation: metadata, count, record width,
  * first/last/trailing endpoints, and checked classic spans. Parses into
  * the candidate-local header, never the published header. Returns JPL_OK
- * with *out_record_count set, or JPL_ERROR_FORMAT for an invalid
- * candidate, propagating actual I/O or allocation failures distinctly. */
+ * with *out_record_count (physical data records) and
+ * *out_covered_record_count (advertised intervals) set, or JPL_ERROR_FORMAT
+ * for an invalid candidate, propagating actual I/O or allocation failures
+ * distinctly. */
 static jpl_status validate_layout(const jpl_byte_source *source,
                                   jpl_byte_order order,
-                                  jpl_header *header, size_t *record_count) {
+                                  jpl_header *header, size_t *record_count,
+                                  size_t *covered_record_count) {
     double span_days, span_records, reconstructed;
     size_t max_records, expected_records, total_records, record_bytes, extra_records;
     size_t required_doubles, required_bytes, width;
     unsigned char classic[CLASSIC_HEADER_BYTES];
     jpl_header candidate;
     jpl_status status;
-    if (!source || !header || !record_count || !source->read) return JPL_ERROR_ARGUMENT;
+    if (!source || !header || !record_count || !covered_record_count || !source->read) return JPL_ERROR_ARGUMENT;
     /* Initial header reads use the classic required size, not an
      * unconditional extension-sized read. Parse into the candidate-local
      * header, never the published header. Overflow-name headers (T06:
@@ -632,8 +636,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
         }
     }
     if (record_bytes == 0) return JPL_ERROR_FORMAT;
+    if (expected_records == 0) return JPL_ERROR_FORMAT;
     candidate.record_double_count = record_bytes / 8;
     *header = candidate;
+    *covered_record_count = expected_records;
     *record_count = total_records - 2;
     return JPL_OK;
 }
@@ -676,25 +682,27 @@ static int headers_equal(const jpl_header *a, const jpl_header *b) {
  * unique surviving interpretation, or FORMAT when none (or several
  * different ones) survive; I/O and allocation failures propagate. */
 static jpl_status select_layout(const jpl_byte_source *source,
-                                jpl_header *header, size_t *record_count) {
+                                jpl_header *header, size_t *record_count,
+                                size_t *covered_record_count) {
     static const jpl_byte_order orders[2] = {
         JPL_BYTE_ORDER_LITTLE_ENDIAN, JPL_BYTE_ORDER_BIG_ENDIAN
     };
     jpl_header survivors[2];
-    size_t survivor_counts[2], survivor_total = 0;
+    size_t survivor_counts[2], survivor_covered[2], survivor_total = 0;
     int memory_failure = 0, io_failure = 0, argument_failure = 0;
     size_t o;
-    if (!source || !header || !record_count) return JPL_ERROR_ARGUMENT;
+    if (!source || !header || !record_count || !covered_record_count) return JPL_ERROR_ARGUMENT;
     for (o = 0; o < 2; ++o) {
         jpl_header candidate;
-        size_t count = 0;
+        size_t count = 0, covered = 0;
         jpl_status status;
         memset(&candidate, 0, sizeof candidate);
-        status = validate_layout(source, orders[o], &candidate, &count);
+        status = validate_layout(source, orders[o], &candidate, &count, &covered);
         if (status == JPL_OK) {
             if (survivor_total < 2) {
                 survivors[survivor_total] = candidate;
                 survivor_counts[survivor_total] = count;
+                survivor_covered[survivor_total] = covered;
             }
             ++survivor_total;
         } else if (status == JPL_ERROR_MEMORY) {
@@ -712,11 +720,13 @@ static jpl_status select_layout(const jpl_byte_source *source,
     if (survivor_total == 0) return JPL_ERROR_FORMAT;
     if (survivor_total == 2) {
         if (survivor_counts[0] == survivor_counts[1] &&
+            survivor_covered[0] == survivor_covered[1] &&
             headers_equal(&survivors[0], &survivors[1])) {
             /* Same geometry under both orders (e.g. symmetric zeros):
              * report the first order. */
             *header = survivors[0];
             *record_count = survivor_counts[0];
+            *covered_record_count = survivor_covered[0];
             return JPL_OK;
         }
         return JPL_ERROR_FORMAT;
@@ -724,6 +734,7 @@ static jpl_status select_layout(const jpl_byte_source *source,
     if (survivor_total == 1) {
         *header = survivors[0];
         *record_count = survivor_counts[0];
+        *covered_record_count = survivor_covered[0];
         return JPL_OK;
     }
     /* Defensive: survivor_total cannot exceed 2 (two byte orders), so any
@@ -948,7 +959,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     source.context = &fsource;
     source.size = e->file_size;
     source.read = file_read_bytes;
-    status = select_layout(&source, &e->header, &e->record_count);
+    status = select_layout(&source, &e->header, &e->record_count, &e->covered_record_count);
     if (status != JPL_OK) { jpl_status keep = status; jpl_close(e); return keep == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (keep == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT); }
     if (e->header.record_double_count == 0 || e->header.record_double_count > SIZE_MAX / 8) { jpl_close(e); return JPL_ERROR_FORMAT; }
     *out = e; return JPL_OK;
@@ -988,7 +999,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
     jpl_ephemeris *e;
     jpl_header header;
     jpl_status status;
-    size_t file_size = 0, record_count = 0;
+    size_t file_size = 0, record_count = 0, covered_record_count = 0;
     if (!path || !out) return JPL_ERROR_ARGUMENT;
     *out = NULL;
 #if defined(_WIN32)
@@ -1022,7 +1033,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
             source.context = &msource;
             source.size = file_size;
             source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count);
+            status = select_layout(&source, &header, &record_count, &covered_record_count);
             if (status == JPL_OK &&
                 (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
                 status = JPL_ERROR_FORMAT;
@@ -1041,6 +1052,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
+        e->covered_record_count = covered_record_count;
         *out = e;
         return JPL_OK;
     }
@@ -1075,7 +1087,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
             source.context = &msource;
             source.size = file_size;
             source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count);
+            status = select_layout(&source, &header, &record_count, &covered_record_count);
             if (status == JPL_OK &&
                 (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
                 status = JPL_ERROR_FORMAT;
@@ -1092,6 +1104,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
+        e->covered_record_count = covered_record_count;
         *out = e;
         return JPL_OK;
     }
@@ -1108,6 +1121,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     c->header = ephem->header;
     c->file_size = ephem->file_size;
     c->record_count = ephem->record_count;
+    c->covered_record_count = ephem->covered_record_count;
     c->is_mmap = ephem->is_mmap;
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
@@ -1139,6 +1153,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         }
         c->file_size = ephem->file_size;
         c->record_count = ephem->record_count;
+        c->covered_record_count = ephem->covered_record_count;
 #if !defined(_WIN32)
         c->id_dev = ephem->id_dev;
         c->id_ino = ephem->id_ino;
@@ -1178,7 +1193,9 @@ jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values,
  * one-neighbor adjustment, then a bounded binary search fallback over the
  * verified intervals (never an unbounded walk on malformed data). Interior
  * boundaries select the following interval; the final advertised coverage
- * endpoint explicitly selects the last advertised interval. */
+ * endpoint explicitly selects the last covered interval. Date selection
+ * uses the advertised covered count only; the physical trailing record
+ * stays reachable through jpl_read_record but never through a date. */
 static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
                                 size_t *index_out,
                                 double record_start[2], double record_end[2]) {
@@ -1187,7 +1204,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     size_t candidate = 0, lo, hi;
     jpl_status status;
     if (!e || !jd || !index_out || !record_start || !record_end) return JPL_ERROR_ARGUMENT;
-    if (e->record_count == 0) return JPL_ERROR_FORMAT;
+    if (e->covered_record_count == 0) return JPL_ERROR_FORMAT;
     status = jpl_date_normalize(e->header.start_jd, cov_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     if (!isfinite(e->header.step_days) || e->header.step_days <= 0.0) return JPL_ERROR_FORMAT;
@@ -1197,7 +1214,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     status = jpl_date_normalize(e->header.end_jd, boundary);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     if (jpl_date_compare(norm, boundary) == 0) {
-        candidate = e->record_count - 1;
+        candidate = e->covered_record_count - 1;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
         *index_out = candidate;
@@ -1217,12 +1234,12 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     quotient_d = (diff[0] + diff[1]) / e->header.step_days;
     if (!isfinite(quotient_d) || quotient_d < 0.0) return JPL_ERROR_RANGE;
     candidate = (size_t)quotient_d;
-    if (candidate >= e->record_count) candidate = e->record_count - 1;
+    if (candidate >= e->covered_record_count) candidate = e->covered_record_count - 1;
     for (;;) {
         int below = 0, above = 0;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, boundary);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        if (candidate + 1 < e->record_count) {
+        if (candidate + 1 < e->covered_record_count) {
             status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, next);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
         } else {
@@ -1230,11 +1247,11 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
         }
         below = jpl_date_compare(norm, boundary) < 0;
-        above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->record_count;
+        above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->covered_record_count;
         if (!below && !above) {
             status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 1 < e->record_count) {
+            if (candidate + 1 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, record_end);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
@@ -1258,11 +1275,11 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
             }
             break;
         }
-        if (above && candidate + 1 < e->record_count) {
+        if (above && candidate + 1 < e->covered_record_count) {
             size_t probe = candidate + 1;
             status = jpl_date_add_scaled(cov_start, e->header.step_days, probe, boundary);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 2 < e->record_count) {
+            if (candidate + 2 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, probe + 1, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
@@ -1270,7 +1287,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             }
             if (jpl_date_compare(norm, boundary) >= 0 &&
-                (jpl_date_compare(norm, next) < 0 || probe + 1 >= e->record_count)) {
+                (jpl_date_compare(norm, next) < 0 || probe + 1 >= e->covered_record_count)) {
                 candidate = probe;
                 continue;
             }
@@ -1280,7 +1297,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     }
     /* Bounded binary search over verified intervals. */
     lo = 0;
-    hi = e->record_count;
+    hi = e->covered_record_count;
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, boundary);
@@ -1288,14 +1305,14 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
         if (jpl_date_compare(norm, boundary) < 0) {
             hi = mid;
         } else {
-            if (mid + 1 < e->record_count) {
+            if (mid + 1 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, mid + 1, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
                 status = jpl_date_normalize(e->header.end_jd, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             }
-            if (jpl_date_compare(norm, next) < 0 || mid + 1 >= e->record_count) {
+            if (jpl_date_compare(norm, next) < 0 || mid + 1 >= e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, record_start);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
                 record_end[0] = next[0];
@@ -1335,7 +1352,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
         return JPL_ERROR_RANGE;
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
-    if (e->record_count == 0) return JPL_ERROR_FORMAT;
+    if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
     status = select_record(e, norm, &record_index, sched_start, sched_end);
     if (status != JPL_OK) return status;
     /* Single-record cache is for the FILE path only: it mutates per-handle

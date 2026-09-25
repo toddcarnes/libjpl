@@ -360,7 +360,9 @@ int main(void) {
             for (i = 0; i < PARSER_DOUBLES; ++i) rec360[r * PARSER_DOUBLES + i] = 0.0;
             rec360[r * PARSER_DOUBLES + 0] = 2451545.0 + (double)r;
             rec360[r * PARSER_DOUBLES + 1] = 2451546.0 + (double)r;
-            rec360[r * PARSER_DOUBLES + 2] = 5.0;
+            /* F02: covered vs trailing coefficients must differ so the
+             * final-endpoint query proves which record was selected. */
+            rec360[r * PARSER_DOUBLES + 2] = (r == 0) ? 5.0 : 99.0;
             rec360[r * PARSER_DOUBLES + 3] = 6.0;
             rec360[r * PARSER_DOUBLES + 4] = 7.0;
         }
@@ -396,6 +398,12 @@ int main(void) {
         JPL_TEST_CHECK(state[1] == 6.0 / JPL_TEST_AU_KM && state[2] == 7.0 / JPL_TEST_AU_KM);
         JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
         JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[3] == 0.0);
+        /* F02: the exact coverage end selects the covered interval, never
+         * the physical trailing record. */
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
     }

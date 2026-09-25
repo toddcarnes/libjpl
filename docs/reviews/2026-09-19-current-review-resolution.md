@@ -72,12 +72,28 @@ All commands run under PowerShell 5.1 from the worktree root
   dependency edge because the fixture mechanism orders setup first; verified
   via the single-test `-R` selection above.
 
+## T02 evidence
+
+- `struct jpl_ephemeris` stores `record_count` (physical data records) and
+  `covered_record_count` (advertised intervals). `validate_layout()` and
+  `select_layout()` thread both outputs through FILE and mmap opens; clones
+  copy both. `jpl_record_count()`/`jpl_read_record()` keep the physical
+  count; `select_record()` uses the covered count everywhere (endpoint
+  selection, clamping, binary-search bounds).
+- Regression: the one-interval trailing mock now uses covered coefficient
+  `5.0` vs trailing `99.0`; `{2451546.0, 0.0}` returns `5.0/AU` via FILE and
+  mmap (failed with `99.0/AU` before the fix). A dedicated `test_api_errors`
+  trailing mock also asserts raw record 2 stays readable while the coverage
+  end returns the covered value.
+- Focused suites Debug + Release: `jpl_parser`, `jpl_api_errors`,
+  `jpl_numeric`, `jpl_fixture`, `jpl_testpo_parser` all pass.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
 | --- | --- | --- | --- | --- | --- | --- |
 | F01 | T01, T17 | Resolved | (this commit) | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:10` 15/15 x10; single-select auto-runs setup; full parallel 36/36 (threads standalone) | T17 stress/docs-only/platform gates |
-| F02 | T02 | Open | - | Distinct trailing coefficient, FILE/mmap | Fix pending | - |
+| F02 | T02 | Resolved | (this commit) | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites | T17 full acceptance |
 | F03 | T03 | Open | - | Equal-value valid mock, FILE/mmap | Fix pending | - |
 | F04 | T06 | Open | - | Invalid codes combined with range/missing data | Fix pending | - |
 | F05 | T07 | Open | - | Finite tiny-Sun ERFA/scale-safe reference | Fix pending | - |

@@ -61,6 +61,9 @@ function(jpl_cache_case label expect_fail)
   endif()
 endfunction()
 # Assert that a failed case's combined output names the expected diagnostic.
+# newlines are flattened first (multi-line FATAL_ERROR text breaks MATCHES).
+# CMake MATCHES has no DOTALL flag: normalize every run of whitespace
+# (including newlines) to a single space so wrapped diagnostics still match.
 function(jpl_cache_expect_fail label pattern)
   execute_process(COMMAND ${ARGN}
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
@@ -68,6 +71,7 @@ function(jpl_cache_expect_fail label pattern)
     message(FATAL_ERROR "fetch-cache case '${label}' did not fail with exit 1 (got ${rc}):\n${out}\n${err}")
   endif()
   set(combined "${out}\n${err}")
+  string(REGEX REPLACE "[ \t\r\n]+" " " combined "${combined}")
   if(NOT combined MATCHES "${pattern}")
     message(FATAL_ERROR "fetch-cache case '${label}' stderr/stdout missing '${pattern}':\n${combined}")
   endif()

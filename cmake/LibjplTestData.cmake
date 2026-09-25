@@ -33,7 +33,9 @@
 #
 # Test-only switch LIBJPL_TEST_FORCE_PUBLISH_FAILURE (default false):
 # when true, the publish step is skipped and a nonzero result synthesized
-# so the rollback path is exercised without platform races.
+# so the rollback path is exercised without platform races. The flag is
+# read from the LIBJPL_TEST_FORCE_PUBLISH_FAILURE cache/environment entry
+# so `cmake -P` drivers (which forward -D as script variables) see it.
 
 # Reads one "<key>=<value>" pair from tests/data/MANIFEST.txt, which is
 # the single authoritative source for download URLs/sizes/hashes (no
@@ -201,15 +203,15 @@ function(libjpl_resolve_fetch_file out_var src_dir src_name url dest_name expect
             file(REMOVE "${fetch_tmp}")
             if(NOT _rollback_rc EQUAL 0 OR NOT EXISTS "${dest}" OR EXISTS "${replace_backup}")
                 message(FATAL_ERROR
-                    "libjpl: failed to publish ${dest_name} to ${dest} (${_publish_detail}, URL ${url}) "
+                    "libjpl: failed to publish ${dest_name} to ${dest} (${_publish_detail}; URL ${url}) "
                     "AND failed to roll back ${replace_backup} to ${dest}. "
                     "The backup is preserved for manual recovery.")
             endif()
             file(SHA256 "${dest}" _restored_hash)
             file(SIZE "${dest}" _restored_size)
             message(FATAL_ERROR
-                "libjpl: failed to publish ${dest_name} to ${dest} (${_publish_detail}, URL ${url}). "
-                "The prior cache was restored (size ${_restored_size}, SHA-256 ${_restored_hash}).")
+                "libjpl: failed to publish ${dest_name} to ${dest} (${_publish_detail}; URL ${url}). "
+                "The prior cache was restored (size ${_restored_size}; SHA-256 ${_restored_hash}).")
         endif()
         file(REMOVE "${fetch_tmp}")
         message(FATAL_ERROR

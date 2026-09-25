@@ -272,7 +272,8 @@ int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
   *         dataset is absent (valid in-coverage query for missing data),
   *         JPL_ERROR_FORMAT for nonfinite file coefficients,
   *         JPL_ERROR_NUMERIC when finite validated inputs produce an
-  *         unrepresentable result,
+  *         unrepresentable result (including a finite two-part date whose
+  *         mathematical sum is unrepresentable),
   *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
   * @note Computed outputs are transactional: on failure the caller's state
   *       array is left unchanged, and no partial component is published.
@@ -300,11 +301,11 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
  * @param ephemeris Open handle from jpl_open().
  * @param jd_tdb TDB Julian date of observation as a two-part array.
  * @param target Target jpl_target (1-13).
- * @param center Center jpl_target, or 0 for SSB.
+ * @param center Center jpl_target (1-13), or 0 for SSB.
  * @param state Output array of 6 slots receiving the relative state.
  * @param out_light_time Optional output light-time in days, may be NULL.
  * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/state/jd_tdb, nonfinite
- *         jd_tdb parts, or target/center outside 0-13;
+ *         jd_tdb parts, or target outside 1-13 or center outside 0-13;
  *         JPL_ERROR_RANGE on out-of-coverage jd or when no in-coverage
  *         emission epoch solves the delay equation (genuinely pre-coverage
  *         root under the subluminal-motion contract);
@@ -325,7 +326,8 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
  *       The 1e-12-day residual is a solver tolerance, not an
  *       astronomical accuracy claim: Chebyshev interpolation and model
  *       error dominate real ephemeris uncertainty.
- *       Only bodies 0-13 are accepted; nutations (14) and librations (15)
+ *       Only bodies 1-13 are accepted as targets and 0-13 as centers;
+ *       target 0 is always invalid; nutations (14) and librations (15)
  *       have no light-time meaning and return JPL_ERROR_ARGUMENT.
  *       State velocity is the mixed-epoch difference
  *       v_target(emission) - v_center(reception); it is not the derivative

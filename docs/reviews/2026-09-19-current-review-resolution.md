@@ -144,6 +144,29 @@ All commands run under PowerShell 5.1 from the worktree root
 - Focused suites Debug + Release: `jpl_parser`, `jpl_tests`,
   `jpl_api_errors`, `jpl_largefile` all pass.
 
+## T06 evidence
+
+- New private body validators in `src/jpl.c`: `valid_state_target()`,
+  `valid_state_center()`, `valid_lighttime_body()`. Target/center
+  combinations validate immediately after required pointer checks and before
+  date normalization or data access; `barycentric_state()` is never called
+  with an invalid code. Invalid target 99, invalid center 99, target 0,
+  angular target with nonzero center, and TT-TDB target all return
+  `JPL_ERROR_ARGUMENT` with unchanged outputs, even combined with an
+  out-of-range date or a missing dataset.
+- `jpl_date_normalize()` finite-overflow status is preserved: `{DBL_MAX,
+  DBL_MAX}` returns `JPL_ERROR_NUMERIC` (unchanged outputs) through state,
+  light-time, TT-TDB, planet/Moon, frame, and TT/TDB conversion APIs;
+  `{NAN, 0}` and `{INFINITY, 0}` stay `JPL_ERROR_ARGUMENT`. Applied in
+  `interpolate()`, `barycentric_state()`, `lighttime_solve()`,
+  `jpl_get_tt_minus_tdb()`, and `jpl_planet_position()`. File-header
+  normalization failures stay `JPL_ERROR_FORMAT`.
+- `include/jpl.h` light-time docs now state target 1-13, center 0-13
+  exactly; the "bodies 0-13 are valid targets" note is removed.
+  Finite-overflow pairs documented as NUMERIC in `jpl.h`/`jpl_convenience.h`.
+- API, convenience, numeric, light-time, frames, TT-TDB, and examples pass
+  in Debug and Release with transactional outputs.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -151,7 +174,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F01 | T01, T17 | Resolved | (this commit) | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:10` 15/15 x10; single-select auto-runs setup; full parallel 36/36 (threads standalone) | T17 stress/docs-only/platform gates |
 | F02 | T02 | Resolved | (this commit) | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites | T17 full acceptance |
 | F03 | T03 | Resolved | (this commit) | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT | T17 real-fixture tier |
-| F04 | T06 | Open | - | Invalid codes combined with range/missing data | Fix pending | - |
+| F04 | T06 | Resolved | (this commit) | Invalid codes combined with range/missing data | API/convenience/numeric/light-time/frames/TT-TDB/examples Debug+Release | T17 full acceptance |
 | F05 | T07 | Open | - | Finite tiny-Sun ERFA/scale-safe reference | Fix pending | - |
 | F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
 | F07 | T10 | Open | - | Forced failure restores prior destination | Fix pending | - |
@@ -159,7 +182,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
 | F10 | T08, T17 | Open | - | 120 duplicate rows fail; official files pass | Fix pending | - |
 | F11 | T09, T17 | Open | - | Interior corruption fails; complete real scan | Fix pending | - |
-| F12 | T06 | Open | - | All public date APIs return NUMERIC | Fix pending | - |
+| F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |
 | F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
 | F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
 | F15 | T12, T17 | Open | - | Docs-only configure matrix | Fix pending | - |

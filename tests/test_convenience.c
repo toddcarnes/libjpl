@@ -502,6 +502,17 @@ int main(void) {
             JPL_TEST_CHECK(isfinite(conv[k]));
             JPL_TEST_CHECK(fabs(conv[k] - ref->state[k]) < 1e-9);
         }
+        /* F12: a finite but unrepresentable date pair reports NUMERIC
+         * with outputs unchanged. */
+        {
+            static const double overflow[2] = {DBL_MAX, DBL_MAX};
+            double keep[6], got[6];
+            size_t q;
+            for (q = 0; q < 6; ++q) { keep[q] = 3.0; got[q] = 3.0; }
+            JPL_TEST_CHECK(jpl_planet_position(e, overflow, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, got) == JPL_ERROR_NUMERIC);
+            for (q = 0; q < 6; ++q) JPL_TEST_CHECK(got[q] == keep[q]);
+            JPL_TEST_CHECK(jpl_moon_position(NULL, overflow, got) == JPL_ERROR_ARGUMENT);
+        }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }

@@ -149,6 +149,8 @@ int main(void) {
     {
         double s[6];
         static const double q[2] = {8000017.0, 0.0};
+        static const double outside[2] = {8000020.0, 0.0};
+        double sentinel[6], before[6];
         JPL_TEST_CHECK(jpl_get_state(e, q, 0, 0, s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state(e, q, 99, 0, s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state(e, q, JPL_NUTATIONS, 1, s) == JPL_ERROR_ARGUMENT);
@@ -157,6 +159,56 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 99, 0, s, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 0, 0, s, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s, NULL) == JPL_OK);
+        /* F04 precedence: invalid bodies beat out-of-range dates and
+         * missing datasets, with outputs unchanged. Before the fix, an
+         * invalid target with an out-of-range date returned RANGE, and a
+         * valid target with an invalid center but missing data returned
+         * UNSUPPORTED. */
+        fill_state(sentinel, 7.0);
+        memcpy(before, sentinel, sizeof before);
+        memcpy(s, before, sizeof s);
+        JPL_TEST_CHECK(jpl_get_state(e, outside, 99, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(NULL, outside, 99, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_VENUS, 99, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, outside, 0, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_MARS, 99, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_NUTATIONS, 1, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_TT_TDB, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+    }
+
+    /* F12: finite-overflow dates report NUMERIC with outputs unchanged.
+     * {DBL_MAX, DBL_MAX} is finite in both parts but unrepresentable as a
+     * sum; {NAN, 0} and {INFINITY, 0} stay ARGUMENT. Before the fix, the
+     * finite pair collapsed to ARGUMENT. */
+    {
+        static const double overflow[2] = {DBL_MAX, DBL_MAX};
+        double s[6], before[6], sec = 9.0, rate = 9.0, lt = -7.0;
+        double R[3][3], Rbefore[3][3];
+        size_t a, b;
+        for (a = 0; a < 3; ++a) for (b = 0; b < 3; ++b) { R[a][b] = 5.0; Rbefore[a][b] = 5.0; }
+        fill_state(before, 7.0);
+        memcpy(s, before, sizeof s);
+        JPL_TEST_CHECK(jpl_get_state(e, overflow, JPL_MARS, 0, s) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, inf_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, overflow, JPL_MARS, 0, s, &lt) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(lt == -7.0);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, overflow, &sec, &rate) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
+        JPL_TEST_CHECK(jpl_frame_rotation_matrix(overflow, R) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
+        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(s, overflow, s) != JPL_OK);
+        memcpy(s, before, sizeof s);
+        JPL_TEST_CHECK(jpl_apply_aberration_full(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
     }
 
     /* T09: missing datasets report UNSUPPORTED after valid checks.

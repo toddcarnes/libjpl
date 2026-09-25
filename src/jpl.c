@@ -1322,6 +1322,32 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     return JPL_ERROR_RANGE;
 }
 
+/* Body-code validation for state-taking APIs (F04): target and center
+ * combinations are rejected before date normalization, coverage, dataset
+ * availability, record I/O, or body shortcuts. Invalid combinations return
+ * JPL_ERROR_ARGUMENT regardless of date or file contents. Target 0 is
+ * always invalid; center 0 is the SSB alias. */
+static int valid_state_target(int target) {
+    if (target == JPL_SSB) return 0;
+    if (target >= JPL_MERCURY && target <= JPL_EARTH_MOON_BARYCENTER) return 1;
+    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return 1;
+    return 0;
+}
+
+static int valid_state_center(int target, int center) {
+    if (center == JPL_SSB) return target != JPL_SSB;
+    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return center == 0;
+    if (target == JPL_TT_TDB) return 0;
+    if (center < JPL_MERCURY || center > JPL_EARTH_MOON_BARYCENTER) return 0;
+    return valid_state_target(target);
+}
+
+static int valid_lighttime_body(int target, int center) {
+    if (target <= JPL_SSB || target > JPL_EARTH_MOON_BARYCENTER) return 0;
+    if (center < JPL_SSB || center > JPL_EARTH_MOON_BARYCENTER) return 0;
+    return 1;
+}
+
 static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
                               size_t components, double state[6]) {
     double *record;
@@ -1336,7 +1362,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
     if (!e || !jd || !pointer || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     status = jpl_date_normalize(jd, norm);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+    if (status != JPL_OK) return status;
     /* Coverage precedes the missing-dataset report (TT-TDB path order):
      * valid in-coverage queries for absent data are UNSUPPORTED, while
      * out-of-coverage queries stay RANGE even when the dataset is absent. */
@@ -1510,7 +1536,7 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     if (!e || !jd || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     status = jpl_date_normalize(jd, norm);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+    if (status != JPL_OK) return status;
     status = jpl_date_normalize(e->header.start_jd, cov_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     status = jpl_date_normalize(e->header.end_jd, cov_end);
@@ -1554,19 +1580,21 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
     /* Target zero is consistently invalid; center zero is the SSB alias
-     * (L05). Validate target before any shortcut. */
-    if (target == JPL_SSB) return JPL_ERROR_ARGUMENT;
+     * (L05). Validate target/center combinations before date normalization
+     * or data access (F04): invalid codes report ARGUMENT regardless of
+     * date or file contents. Do not call barycentric_state() with an
+     * invalid code. */
+    if (!valid_state_target(target) || !valid_state_center(target, center)) return JPL_ERROR_ARGUMENT;
     if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) {
-        if (center != 0) return JPL_ERROR_ARGUMENT;
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
         return interpolate(e, jd, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
                            target == JPL_NUTATIONS ? 2 : 3, state);
     }
+    if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
     /* Body codes 1-13 plus center 0/12 route through barycentric legs
-     * below; anything else is rejected after date validation inside
-     * barycentric_state. Validate pointers/dates first so a missing
+     * below. Validate pointers/dates first so a missing
      * dataset reports UNSUPPORTED only after valid checks pass. */
     status = barycentric_state(e, jd, target, target_state);
     if (status != JPL_OK) return status;
@@ -1662,13 +1690,13 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
-    st = jpl_date_normalize(jd, norm);
-    if (st != JPL_OK) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject.
-     * Bodies 0-13 only; JPL_EARTH_MOON_BARYCENTER (13) is the highest code.
-     * Target 0 is consistently invalid here, matching jpl_get_state. */
-    if (target <= JPL_SSB || target > JPL_EARTH_MOON_BARYCENTER || center < JPL_SSB || center > JPL_EARTH_MOON_BARYCENTER)
-        return JPL_ERROR_ARGUMENT;
+     * Bodies 1-13 plus center 0-13 only; target 0 is consistently invalid
+     * here, matching jpl_get_state. Validate before date normalization or
+     * data access (F04). */
+    if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
+    st = jpl_date_normalize(jd, norm);
+    if (st != JPL_OK) return st;
     /* Coverage validates before any state read so out-of-coverage queries
      * report RANGE with outputs untouched. */
     st = jpl_date_normalize(e->header.start_jd, cov_start);
@@ -1803,7 +1831,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
     {
         double norm[2], cov_start[2], cov_end[2];
         status = jpl_date_normalize(jd_tdb, norm);
-        if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+        if (status != JPL_OK) return status;
         status = jpl_date_normalize(e->header.start_jd, cov_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
         status = jpl_date_normalize(e->header.end_jd, cov_end);

@@ -50,7 +50,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
     if(center<0||center>JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     s = jpl_date_normalize(jd_tt, tt);
-    if(s!=JPL_OK) return JPL_ERROR_ARGUMENT;
+    if(s!=JPL_OK) return s;
     /* Convert convenience TT input to a local TDB pair; propagate errors. */
     s = jpl_tt_to_tdb(tt, tdb);
     if(s!=JPL_OK) return s;

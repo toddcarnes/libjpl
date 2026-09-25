@@ -30,7 +30,9 @@ extern "C" {
    * @return JPL_OK on success, JPL_ERROR_ARGUMENT for invalid planet/center
    *         or NULL handle/state/jd_tt or nonfinite date parts,
    *         JPL_ERROR_RANGE for out-of-coverage TDB (checked before frame
-   *         gating), JPL_ERROR_UNSUPPORTED when the file frame is not
+   *         gating), JPL_ERROR_NUMERIC for a finite two-part date whose
+   *         mathematical sum is unrepresentable, JPL_ERROR_UNSUPPORTED when
+   *         the file frame is not
    *         ICRF-aligned (checked even for identical-body calls, so a zero
    *         vector never implies legacy-frame support), otherwise
    *         the underlying light-time/state/aberration

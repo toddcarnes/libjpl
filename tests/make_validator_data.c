@@ -363,6 +363,54 @@ int main(int argc, char **argv) {
             goto done;
         }
     }
+    /* Trailing-record sweep control: two covered records plus one physical
+     * trailing record. The sweep must pass: the final physical record
+     * starts exactly at coverage end and stays ordered. */
+    JOIN(path, "sweep_trailing");
+    if (make_dir(path) != 0) {
+        fprintf(stderr, "could not create %s (%s)\n", path, strerror(errno));
+        goto done;
+    }
+    {
+        static unsigned char thdr[SMALL_DOUBLES * 8];
+        static double trecs[3 * SMALL_DOUBLES];
+        jpl_test_mock tmock;
+        size_t k;
+        memset(thdr, 0, sizeof thdr);
+        memcpy(thdr, "validator trailing", 18);
+        test_mock_header(thdr, 2451545.0, 2451547.0, 1.0, 2);
+        test_put_ptr(thdr, 3, 3, 1, 1);
+        test_put_ptr(thdr, 12, (uint32_t)441, 0, 0);
+        for (k = 0; k < 3 * SMALL_DOUBLES; ++k) trecs[k] = 0.0;
+        trecs[0 * SMALL_DOUBLES + 0] = 2451545.0;
+        trecs[0 * SMALL_DOUBLES + 1] = 2451546.0;
+        trecs[0 * SMALL_DOUBLES + 2] = 5.0;
+        trecs[1 * SMALL_DOUBLES + 0] = 2451546.0;
+        trecs[1 * SMALL_DOUBLES + 1] = 2451547.0;
+        trecs[1 * SMALL_DOUBLES + 2] = 5.0;
+        trecs[2 * SMALL_DOUBLES + 0] = 2451547.0;
+        trecs[2 * SMALL_DOUBLES + 1] = 2451548.0;
+        trecs[2 * SMALL_DOUBLES + 2] = 5.0;
+        memset(&tmock, 0, sizeof tmock);
+        tmock.record_doubles = SMALL_DOUBLES;
+        tmock.advertised_records = 2;
+        tmock.trailing_record = 1;
+        tmock.denum = 441;
+        tmock.constant_count = 2;
+        tmock.start[0] = 2451545.0;
+        tmock.end[0] = 2451547.0;
+        tmock.step_days = 1.0;
+        tmock.au_km = JPL_TEST_AU_KM;
+        tmock.emrat = JPL_TEST_MASS_RATIO;
+        tmock.header = thdr;
+        tmock.constants = NULL;
+        tmock.records = trecs;
+        JOIN(path, "sweep_trailing/DE441.eph");
+        if (test_write_mock(path, &tmock) != 0) {
+            fprintf(stderr, "could not write %s\n", path);
+            goto done;
+        }
+    }
     /* Sweep control: a directory with only the good file (must pass). */
     JOIN(path, "sweep_good");
     if (make_dir(path) != 0) {

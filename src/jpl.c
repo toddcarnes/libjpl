@@ -281,7 +281,9 @@ _Static_assert((uintmax_t)(SIZE_MAX / MIN_RECORD_BYTES) < 9007199254740992ULL,
  * validation policy. Every read checks `offset <= size` and
  * `count <= size - offset` with subtraction guarded by the first check;
  * mmap memcpy and FILE seek/read share error classification (IO vs
- * FORMAT stays with the candidate evaluator). */
+ * FORMAT stays with the candidate evaluator). Parser-time reads go
+ * through parser_read_bytes (bounded-read hook); record-endpoint probes
+ * are a constant 16 bytes and share the same bound. */
 typedef jpl_status (*jpl_read_bytes_fn)(void *context, size_t offset,
                                         unsigned char *out, size_t count);
 typedef struct jpl_byte_source {
@@ -295,7 +297,9 @@ typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 
 #ifdef LIBJPL_TESTING
 /* F06 bounded-read test hook: nonzero limit fails any parser source read
- * requesting more bytes. Production builds compile to the direct read. */
+ * requesting more bytes. Production builds compile to the direct read.
+ * Declared before the byte-source callbacks so every parser read,
+ * including the 16-byte record-endpoint probes, routes through it. */
 static size_t jpl_parser_read_limit = 0;
 void jpl_test_set_parser_read_limit(size_t max_bytes) { jpl_parser_read_limit = max_bytes; }
 static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset,
@@ -390,7 +394,7 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
     double enc0, enc1;
     if (!source || !first || !second) return JPL_ERROR_ARGUMENT;
     if (record_bytes % 8 != 0 || record_bytes < (size_t)MIN_RECORD_BYTES) return JPL_ERROR_FORMAT;
-    status = source->read(source->context, offset, raw, sizeof raw);
+    status = parser_read_bytes(source, offset, raw, sizeof raw);
     if (status != JPL_OK) return status;
     enc0 = read_f64(raw, order);
     enc1 = read_f64(raw + 8, order);

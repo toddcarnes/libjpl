@@ -164,6 +164,7 @@ int main(int argc, char **argv) {
             size_t count = jpl_record_count(ephemeris);
             size_t index;
             double prev_end[2] = {0.0, 0.0};
+            double last_start[2] = {0.0, 0.0};
             int have_prev = 0;
             double cov_start[2], cov_end[2];
             if (jpl_date_normalize(header->start_jd, cov_start) != JPL_OK ||
@@ -213,15 +214,16 @@ int main(int argc, char **argv) {
                     return 1;
                 }
                 prev_end[0] = rec_end[0]; prev_end[1] = rec_end[1];
+                last_start[0] = rec_start[0]; last_start[1] = rec_start[1];
                 have_prev = 1;
             }
-            /* Final covered record ends at coverage end; an optional
-             * trailing record starts there and stays ordered. */
-            if (jpl_date_compare(prev_end, cov_end) != 0) {
-                /* Allow exactly one trailing record: it starts at coverage
-                 * end (continuity checked above) and remains ordered. A
-                 * file ending early or extending past one trailing record
-                 * fails here. */
+            /* Final covered record ends at coverage end; alternatively one
+             * trailing record starts exactly at coverage end and stays
+             * ordered (continuity and ordering already checked above).
+             * Anything else -- ending early or extending past one trailing
+             * record -- fails here. */
+            if (jpl_date_compare(prev_end, cov_end) != 0 &&
+                jpl_date_compare(last_start, cov_end) != 0) {
                 fprintf(stderr, "%s: record %zu: not anchored at coverage end\n",
                         filenames[i], count - 1);
                 free(record);

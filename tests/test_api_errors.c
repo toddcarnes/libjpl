@@ -206,7 +206,9 @@ int main(void) {
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(overflow, R) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(s, overflow, s) != JPL_OK);
+        memcpy(s, before, sizeof s);
+        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(s, overflow, s) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(s, before));
         memcpy(s, before, sizeof s);
         JPL_TEST_CHECK(jpl_apply_aberration_full(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
     }

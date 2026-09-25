@@ -506,7 +506,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             double sched_first[2] = {0.0, 0.0}, sched_last[2] = {0.0, 0.0}, sched_trail[2] = {0.0, 0.0};
             double tfirst[2] = {0.0, 0.0}, tsecond[2] = {0.0, 0.0};
             size_t attempt_total = 0, attempt_bytes = 0;
-            size_t off_first, off_last, off_trail;
+            size_t off_last, off_trail;
             jpl_status ep_status;
             extra_records = extras[ei];
             if (expected_records > SIZE_MAX - extra_records) break;
@@ -524,7 +524,6 @@ static jpl_status validate_layout(const jpl_byte_source *source,
              * is at 2*width. The constants record carries
              * constant_count doubles; data records carry scheduled
              * Julian dates at slots 0/1. */
-            off_first = width;
             off_last = width + expected_records * width;
             off_trail = width + (expected_records + 1) * width;
             {

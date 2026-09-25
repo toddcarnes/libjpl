@@ -561,7 +561,7 @@ int main(void) {
         static double cbig[PARSER_DOUBLES];
         jpl_test_mock mbig;
         jpl_ephemeris *e = NULL, *m = NULL;
-        double enc_start, enc_end, ulp, bad_end;
+        double enc_end, ulp, bad_end;
         size_t i;
         memset(hbig, 0, sizeof hbig);
         memcpy(hbig, "large epoch", 11);
@@ -585,7 +585,6 @@ int main(void) {
                 bigrec[r * PARSER_DOUBLES + 3] = 6.0;
                 bigrec[r * PARSER_DOUBLES + 4] = 7.0;
             }
-            enc_start = bigrec[0];
             enc_end = bigrec[1];
             memset(&mbig, 0, sizeof mbig);
             mbig.records = bigrec;

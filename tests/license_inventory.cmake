@@ -82,6 +82,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/cmake/test_validators.cmake"
   "tests/cmake/test_fetch_cache.cmake"
   "tests/cmake/check_workflows.cmake"
+  "tests/cmake/check_numerical_reference.cmake"
   "tests/cmake/test_docs_only.cmake"
   "tests/cmake/test_install.cmake"
   "tests/cmake/mutate_fixture.py"

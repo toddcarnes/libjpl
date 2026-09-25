@@ -304,6 +304,18 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_RUNNER=$<TARGET_FILE:jpl_fixture_tests>"
             "-DWORK=${JPL_FIXTURE_NEGATIVE_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_fixture_integrity.cmake")
+    # Numerical-reference provenance (F16): canonical-LF hashes for the
+    # reviewed numerical header and its independent generator, pinned in
+    # the manifest and verified in the offline suite (plus a mutated-copy
+    # negative control that must fail).
+    set(JPL_NUMERICAL_REF_WORK "${CMAKE_CURRENT_BINARY_DIR}/numerical_reference")
+    add_test(NAME jpl_numerical_reference_integrity
+        COMMAND ${CMAKE_COMMAND}
+            "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"
+            "-DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/numerical_reference.h"
+            "-DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_numerical_reference.c"
+            "-DWORK=${JPL_NUMERICAL_REF_WORK}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
     # jpl_testpo_tests builds whenever tests are enabled (T15): only its
     # large-data registrations stay opt-in; small synthetic validator
     # data below runs offline.

@@ -285,6 +285,28 @@ All commands run under PowerShell 5.1 from the worktree root
 - `jpl_docs_only`, `jpl_licenses` pass; AGENTS.md and inventory updated.
   Docs symbols/paths plus install coverage rerun in T17.
 
+## T13 evidence
+
+- Regenerated independently to two new build-tree paths
+  (`build/remediation/numerical_provenance/regen_{a,b}.h`): byte-identical
+  outputs, values match the checked-in header (not updated mechanically).
+  Canonical-LF hashes from my findings (CRLF->LF only, bare CR rejected):
+  reference `0a0f75214fcdc507ad15fa6b7874d7b9caab3c05874658934038085d2f1d3b26`,
+  generator `dfa98d6d97a066fa80e733ef8766bbb35cba0dd7c931e1d95955aa7b3f589955`.
+  These disagree with both the plan's hardcoded values and
+  `numerical_reference.md` prose; the regeneration evidence above is
+  authoritative per T13-Step1.
+- `tests/data/MANIFEST.txt` carries the two keys; `numerical_reference.md`
+  explains canonicalization and the corrected hashes.
+- New offline `jpl_numerical_reference_integrity`
+  (`tests/cmake/check_numerical_reference.cmake`): reads both keys, reads
+  each source file in binary mode (Python3 binary-safe canonicalization;
+  CMake `file(READ)` alone decodes newlines per-platform and cannot hash
+  source bytes), rejects bare CR, writes canonical copies under build WORK,
+  compares `file(SHA256)`, emits expected/actual on failure. A mutated
+  build-tree copy fails as required (verified manually).
+- Integrity, numerical, frame, aberration, light-time pass.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -304,6 +326,6 @@ All commands run under PowerShell 5.1 from the worktree root
 | F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
 | F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
 | F15 | T12, T17 | Resolved | (this commit) | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install in T17 | T17 docs/install gates |
-| F16 | T13, T17 | Open | - | Positive and mutated-copy integrity checks | Fix pending; canonical-LF hashes disagree with plan prose, will regenerate per T13-Step1, not copy mechanically | - |
+| F16 | T13, T17 | Resolved | (this commit) | Positive and mutated-copy integrity checks | Integrity + numerical/frame/aberration/light-time pass; mutated copy fails | T17 rerun |
 | F17 | T15, T17 | Open | - | Offline workflow policy plus hosted jobs | Fix pending | - |
 | F18 | T06, T16, T17 | Open | - | Doxygen, local links, README/license audit | Fix pending | - |

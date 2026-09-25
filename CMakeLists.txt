@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.2.0 LANGUAGES C)
+project(libjpl VERSION 0.3.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -119,6 +119,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libjplConfig.cmake"
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/libjpl")
 
 option(LIBJPL_BUILD_DOCS "Build Doxygen docs" OFF)
+# CTest is enabled unconditionally so docs checks exist even when ordinary
+# tests are OFF (F15); ordinary executables stay inside the tests option.
+enable_testing()
 if(LIBJPL_BUILD_DOCS)
   find_package(Doxygen REQUIRED)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in" "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile" @ONLY)
@@ -152,7 +155,6 @@ install(FILES src/erfa/LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/li
 
 option(LIBJPL_BUILD_TESTS "Build libjpl tests" ON)
 if(LIBJPL_BUILD_TESTS)
-    enable_testing()
     add_executable(jpl_tests tests/test_jpl.c)
     target_link_libraries(jpl_tests PRIVATE jpl)
     target_compile_features(jpl_tests PRIVATE c_std_17)
@@ -197,6 +199,7 @@ if(LIBJPL_BUILD_TESTS)
     target_link_libraries(jpl_parser_tests PRIVATE jpl)
     target_compile_features(jpl_parser_tests PRIVATE c_std_17)
     target_include_directories(jpl_parser_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_parser_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_parser COMMAND jpl_parser_tests)
     add_executable(jpl_api_errors_tests tests/test_api_errors.c)
     target_link_libraries(jpl_api_errors_tests PRIVATE jpl)
@@ -217,6 +220,8 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_largefile tests/test_largefile.c)
     target_link_libraries(jpl_largefile PRIVATE jpl)
     target_compile_features(jpl_largefile PRIVATE c_std_17)
+    target_include_directories(jpl_largefile PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_largefile PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_largefile COMMAND jpl_largefile)
     # Multi-gigabyte sparse fixture: generous timeout catches hangs without
     # asserting timing.
@@ -299,6 +304,18 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_RUNNER=$<TARGET_FILE:jpl_fixture_tests>"
             "-DWORK=${JPL_FIXTURE_NEGATIVE_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_fixture_integrity.cmake")
+    # Numerical-reference provenance (F16): canonical-LF hashes for the
+    # reviewed numerical header and its independent generator, pinned in
+    # the manifest and verified in the offline suite (plus a mutated-copy
+    # negative control that must fail).
+    set(JPL_NUMERICAL_REF_WORK "${CMAKE_CURRENT_BINARY_DIR}/numerical_reference")
+    add_test(NAME jpl_numerical_reference_integrity
+        COMMAND ${CMAKE_COMMAND}
+            "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"
+            "-DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/numerical_reference.h"
+            "-DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_numerical_reference.c"
+            "-DWORK=${JPL_NUMERICAL_REF_WORK}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
     # jpl_testpo_tests builds whenever tests are enabled (T15): only its
     # large-data registrations stay opt-in; small synthetic validator
     # data below runs offline.
@@ -328,6 +345,10 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_validator_data PRIVATE c_std_17)
     target_include_directories(jpl_validator_data PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     set(JPL_VALIDATOR_WORK "${CMAKE_CURRENT_BINARY_DIR}/validator_data")
+    add_test(NAME jpl_validator_data_setup
+        COMMAND jpl_validator_data "${JPL_VALIDATOR_WORK}")
+    set_tests_properties(jpl_validator_data_setup PROPERTIES
+        FIXTURES_SETUP jpl_validator_corpus)
     add_test(NAME jpl_validator_good
         COMMAND ${CMAKE_COMMAND}
             "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
@@ -436,6 +457,15 @@ if(LIBJPL_BUILD_TESTS)
             "-DTESTPO=${JPL_VALIDATOR_WORK}/ttdbwrong.testpo"
             "-DEXPECT=[==[reference mismatch]==]"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
+    add_test(NAME jpl_validator_duplicate_only
+        COMMAND ${CMAKE_COMMAND}
+            "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
+            "-DGENERATOR=$<TARGET_FILE:jpl_validator_data>"
+            "-DWORK=${JPL_VALIDATOR_WORK}"
+            "-DEPH=${JPL_VALIDATOR_WORK}/good.eph"
+            "-DTESTPO=${JPL_VALIDATOR_WORK}/duplicate_only.testpo"
+            "-DEXPECT=[==[insufficient reference coverage]==]"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
     add_test(NAME jpl_validator_read_error
         COMMAND ${CMAKE_COMMAND}
             "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
@@ -466,7 +496,20 @@ if(LIBJPL_BUILD_TESTS)
             "-DEXPECT="
             "-DSWEEP_DIR=${JPL_VALIDATOR_WORK}/sweep"
             "-DSWEEP_GOOD_DIR=${JPL_VALIDATOR_WORK}/sweep_good"
+            "-DSWEEP_CORRUPT_DIR=${JPL_VALIDATOR_WORK}/sweep_corrupt"
+            "-DSWEEP_TRAILING_DIR=${JPL_VALIDATOR_WORK}/sweep_trailing"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
+    # The shared corpus is generated once by jpl_validator_data_setup; every
+    # validator case consumes it read-only (F01), including the
+    # source-fixture read-error case.
+    set_tests_properties(
+        jpl_validator_good jpl_validator_nan jpl_validator_missing_body
+        jpl_validator_angular_present jpl_validator_denum jpl_validator_malformed6
+        jpl_validator_badcomp jpl_validator_overflow_pos jpl_validator_overflow_neg
+        jpl_validator_overlong jpl_validator_farpsi jpl_validator_ttdbwrong
+        jpl_validator_duplicate_only
+        jpl_validator_read_error jpl_fixture_read_error jpl_validator_sweep
+        PROPERTIES FIXTURES_REQUIRED jpl_validator_corpus)
 
     add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
     target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
@@ -495,6 +538,24 @@ if(LIBJPL_BUILD_TESTS)
             "-DWORK=${JPL_LICENSE_WORK}"
             "-DDATADIR=${CMAKE_INSTALL_DATADIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_licenses.cmake")
+
+    # Workflow policy (F08/F17, offline): dedicated local-runner label,
+    # variable guards, registration proof, permissions, and action pins
+    # read as text without a YAML dependency.
+    add_test(NAME jpl_workflow_policy
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_workflows.cmake")
+
+    # Docs-only configure matrix (F15): registered only in tests-enabled
+    # parent builds to avoid recursive self-registration. The nested build
+    # (docs ON, tests OFF) must still register exactly the two docs checks.
+    set(JPL_DOCS_ONLY_WORK "${CMAKE_CURRENT_BINARY_DIR}/docs_only")
+    add_test(NAME jpl_docs_only
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DWORK=${JPL_DOCS_ONLY_WORK}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_docs_only.cmake")
 
     option(LIBJPL_FETCH_EPHEMERIDES "Download JPL DE440/DE440t validation data (approx 210 MB)" OFF)
     set(LIBJPL_EPHEMERIS_DIR "${CMAKE_CURRENT_BINARY_DIR}/ephemeris" CACHE PATH "Downloaded/located JPL test data")

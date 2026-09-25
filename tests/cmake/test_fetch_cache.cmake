@@ -61,6 +61,9 @@ function(jpl_cache_case label expect_fail)
   endif()
 endfunction()
 # Assert that a failed case's combined output names the expected diagnostic.
+# newlines are flattened first (multi-line FATAL_ERROR text breaks MATCHES).
+# CMake MATCHES has no DOTALL flag: normalize every run of whitespace
+# (including newlines) to a single space so wrapped diagnostics still match.
 function(jpl_cache_expect_fail label pattern)
   execute_process(COMMAND ${ARGN}
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
@@ -68,6 +71,7 @@ function(jpl_cache_expect_fail label pattern)
     message(FATAL_ERROR "fetch-cache case '${label}' did not fail with exit 1 (got ${rc}):\n${out}\n${err}")
   endif()
   set(combined "${out}\n${err}")
+  string(REGEX REPLACE "[ \t\r\n]+" " " combined "${combined}")
   if(NOT combined MATCHES "${pattern}")
     message(FATAL_ERROR "fetch-cache case '${label}' stderr/stdout missing '${pattern}':\n${combined}")
   endif()
@@ -281,6 +285,48 @@ jpl_cache_case("corrupt cache replaced" 0
 file(SHA256 "${WORK}/replace/cache/cache.bin" _replace_hash)
 if(NOT _replace_hash STREQUAL PAYLOAD_HASH)
   message(FATAL_ERROR "replacement case left a corrupt destination (hash ${_replace_hash})")
+endif()
+
+# 6b. Forced publish failure: a stale destination with known bytes plus a
+#     valid downloadable replacement, resolved with
+#     -DLIBJPL_TEST_FORCE_PUBLISH_FAILURE=ON, must fail with
+#     "forced publish failure" while the destination keeps its original
+#     hash/size and no .fetch-tmp or .replace-backup remains. Before the
+#     fix the switch is ignored, so this case fails.
+file(MAKE_DIRECTORY "${WORK}/forcedfail/src" "${WORK}/forcedfail/cache")
+file(COPY_FILE "${WORK}/origin/payload.bin" "${WORK}/forcedfail/src/payload.bin")
+file(WRITE "${WORK}/forcedfail/cache/cache.bin" "WXYZ")
+file(SHA256 "${WORK}/forcedfail/cache/cache.bin" _forced_orig_hash)
+file(SIZE "${WORK}/forcedfail/cache/cache.bin" _forced_orig_size)
+file(TO_CMAKE_PATH "${WORK}/forcedfail/src/payload.bin" _forced_p)
+if(_forced_p MATCHES "^/")
+  set(_forced_url "file://${_forced_p}")
+else()
+  set(_forced_url "file:///${_forced_p}")
+endif()
+file(WRITE "${WORK}/forcedfail/resolve.cmake"
+  "include(\"${RESOLVER}\")\n"
+  "libjpl_resolve_fetch_file(OUT \"\" \"\" \"${_forced_url}\" \"cache.bin\" \"${PAYLOAD_SIZE}\" \"${PAYLOAD_HASH}\")\n"
+  "message(STATUS \"forcedfail resolved: \${OUT}\")\n")
+jpl_cache_expect_fail("forced publish failure rolls back" "forced publish failure"
+  "${CMAKE_COMMAND}"
+  "-DLIBJPL_EPHEMERIS_DIR=${WORK}/forcedfail/cache"
+  "-DLIBJPL_TEST_DATA_MANIFEST=${WORK}/manifest.txt"
+  "-DLIBJPL_TEST_FORCE_PUBLISH_FAILURE=ON"
+  -P "${WORK}/forcedfail/resolve.cmake")
+file(SHA256 "${WORK}/forcedfail/cache/cache.bin" _forced_hash)
+if(NOT _forced_hash STREQUAL _forced_orig_hash)
+  message(FATAL_ERROR "forced-failure case destroyed the destination (hash ${_forced_hash}, expected ${_forced_orig_hash})")
+endif()
+file(SIZE "${WORK}/forcedfail/cache/cache.bin" _forced_size)
+if(NOT _forced_size EQUAL _forced_orig_size)
+  message(FATAL_ERROR "forced-failure case changed the destination size (${_forced_size}, expected ${_forced_orig_size})")
+endif()
+if(EXISTS "${WORK}/forcedfail/cache/cache.bin.fetch-tmp")
+  message(FATAL_ERROR "forced-failure case left a stray temporary file")
+endif()
+if(EXISTS "${WORK}/forcedfail/cache/cache.bin.replace-backup")
+  message(FATAL_ERROR "forced-failure case left a stray backup file")
 endif()
 
 # 7. Zero/missing manifest value: an empty manifest must fail loudly naming

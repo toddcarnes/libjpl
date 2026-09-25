@@ -20,8 +20,15 @@ See LICENSE in the project root for the full license text.
  * libjpl; it refuses to overwrite an existing output path. The checked-in
  * header was added through the file workflow after review, not by silent
  * overwrite. Reproducibility: two runs to distinct build-tree paths gave
- * identical SHA-256 adaa42e38bb9687aba18a3e7074bc1299dbf7215aa6805723baaa28bd2923ef8.
- * Generator source SHA-256 a07f199010c5f6e827a6edeec58b63bb6f903d3c97569ed8e97328698d3d7bb8.
+ * identical canonical-LF SHA-256
+ * 0a0f75214fcdc507ad15fa6b7874d7b9caab3c05874658934038085d2f1d3b26
+ * (verified 2026-09-24; byte-identical outputs, values match the checked-in
+ * header). Canonicalization: CRLF replaced with LF, no other bytes changed,
+ * bare CR rejected. Generator source canonical-LF SHA-256
+ * dfa98d6d97a066fa80e733ef8766bbb35cba0dd7c931e1d95955aa7b3f589955.
+ * Both hashes are pinned in tests/data/MANIFEST.txt
+ * (numerical.reference.sha256 / numerical.generator.sha256) and enforced
+ * by CTest jpl_numerical_reference_integrity.
  *
  * Upstream anchor (ERFA t_erfa_c.c, t_dtdb):
  *   eraDtdb(2448939.5, 0.123, 0.76543, 5.0123, 5525.242, 3190.0)

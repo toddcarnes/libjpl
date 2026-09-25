@@ -55,6 +55,10 @@ int main(int argc, char **argv) {
     size_t tested = 0, skipped_range = 0, skipped_absent = 0, skipped_t16 = 0;
     size_t count_body[18] = {0};
     size_t count_comp[8] = {0};
+    /* F10 coverage matrix: successful rows by target and component. Ordinary
+     * targets use components 1-6, nutation 1-4, libration 1-6, TT-TDB 1-2.
+     * Angular rows never satisfy ordinary-body component requirements. */
+    size_t body_component[18][7] = {{0}};
     int in_data = 0, saw_eot = 0;
 
     if (argc != 3) {
@@ -184,6 +188,9 @@ int main(int argc, char **argv) {
             if ((size_t)row.component < sizeof count_comp / sizeof count_comp[0]) {
                 ++count_comp[row.component];
             }
+            if ((size_t)row.target < 18 && (size_t)row.component < 7) {
+                ++body_component[row.target][row.component];
+            }
             continue;
         }
         if (row.target < 1 || row.target > 15 || row.center < 0 || row.center > 15 ||
@@ -256,6 +263,9 @@ int main(int argc, char **argv) {
                 (size_t)row.component < sizeof count_comp / sizeof count_comp[0]) {
                 ++count_comp[row.component];
             }
+            if ((size_t)row.target < 18 && row.component >= 1 && (size_t)row.component < 7) {
+                ++body_component[row.target][row.component];
+            }
         }
     }
 
@@ -280,6 +290,102 @@ int main(int argc, char **argv) {
         fprintf(stderr, "missing EOT header in %s\n", argv[2]);
         jpl_close(ephemeris);
         return 1;
+    }
+    /* F10 coverage requirements: the 100-row minimum is only a truncation
+     * guard. Additionally require, for every dataset present in the binary
+     * and represented by the supported validator contract, each valid
+     * component at least once: at least one available ordinary body 1-13
+     * with all six components; T14 X1-X4 when nutation metadata is present
+     * AND the reference file contains at least one T14 row; T15 X1-X6 when
+     * libration metadata is present AND the file contains at least one T15
+     * row; T17 X1-X2 when TT-TDB is present AND the file contains at least
+     * one T17 row. Absent optional datasets, or authoritative files that
+     * legitimately carry no rows for a present dataset (e.g. testpo.200
+     * has no T14 rows), create no requirement. Duplicate rows cannot
+     * satisfy missing components. */
+    {
+        int ordinary_ok = 0, nut_ok = 1, lib_ok = 1, ttdb_ok = 1, t;
+        const jpl_pointer *nut = &header->pointers[JPL_TARGET_COUNT - 1];
+        int nut_present = nut->start_index > 0 && nut->coefficients_per_component > 0 && nut->subintervals > 0;
+        int lib_present = header->libration_pointer.start_index > 0 &&
+            header->libration_pointer.coefficients_per_component > 0 &&
+            header->libration_pointer.subintervals > 0;
+        for (t = 1; t <= 13; ++t) {
+            const jpl_pointer *p = NULL;
+            int c, present = 0, all = 1;
+            if (t == JPL_EARTH) {
+                p = &header->pointers[JPL_FILE_SLOT_EMB];
+            } else if (t == JPL_MOON) {
+                p = &header->pointers[JPL_MOON - 1];
+            } else if (t >= JPL_MERCURY && t <= JPL_SUN) {
+                p = &header->pointers[t - 1];
+            } else if (t == JPL_SOLAR_SYSTEM_BARYCENTER || t == JPL_EARTH_MOON_BARYCENTER) {
+                /* SSB/EMB need no file coefficients for coverage. */
+                present = 1;
+            }
+            if (p != NULL) {
+                present = p->start_index > 0 && p->coefficients_per_component > 0 && p->subintervals > 0;
+            }
+            if (!present) continue;
+            for (c = 1; c <= 6; ++c) {
+                if (body_component[t][c] == 0) { all = 0; break; }
+            }
+            if (all) ordinary_ok = 1;
+        }
+        if (nut_present) {
+            int c;
+            nut_ok = 1;
+            if (count_body[14] == 0) {
+                /* Authoritative file carries no nutation rows: no
+                 * requirement (e.g. testpo.200). */
+                nut_ok = 1;
+            } else {
+                for (c = 1; c <= 4; ++c) {
+                    if (body_component[14][c] == 0) { nut_ok = 0; break; }
+                }
+            }
+        }
+        if (lib_present) {
+            int c;
+            lib_ok = 1;
+            if (count_body[15] == 0) {
+                lib_ok = 1;
+            } else {
+                for (c = 1; c <= 6; ++c) {
+                    if (body_component[15][c] == 0) { lib_ok = 0; break; }
+                }
+            }
+        }
+        if (header->has_tt_tdb) {
+            if (count_body[17] == 0) {
+                ttdb_ok = 1;
+            } else {
+                ttdb_ok = body_component[17][1] > 0 && body_component[17][2] > 0;
+            }
+        }
+        if (!ordinary_ok || !nut_ok || !lib_ok || !ttdb_ok) {
+            fprintf(stderr, "insufficient reference coverage:");
+            if (!ordinary_ok) fprintf(stderr, " no ordinary body 1-13 with X1-X6;");
+            if (!nut_ok) {
+                int c;
+                for (c = 1; c <= 4; ++c) {
+                    if (body_component[14][c] == 0) fprintf(stderr, " T14 X%d missing;", c);
+                }
+            }
+            if (!lib_ok) {
+                int c;
+                for (c = 1; c <= 6; ++c) {
+                    if (body_component[15][c] == 0) fprintf(stderr, " T15 X%d missing;", c);
+                }
+            }
+            if (!ttdb_ok) {
+                if (body_component[17][1] == 0) fprintf(stderr, " T17 X1 missing;");
+                if (body_component[17][2] == 0) fprintf(stderr, " T17 X2 missing;");
+            }
+            fprintf(stderr, " (tested %zu)\n", tested);
+            jpl_close(ephemeris);
+            return 1;
+        }
     }
     jpl_close(ephemeris);
     printf("testpo %s: validated %zu lines (%zu out of coverage, %zu absent angular, %zu T16 excluded)\n",

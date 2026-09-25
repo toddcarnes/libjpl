@@ -156,40 +156,79 @@ int main(int argc, char **argv) {
             jpl_close(ephemeris);
             return 1;
         }
-        status = jpl_read_record(ephemeris, 0, record, header->record_double_count);
-        if (status != JPL_OK) {
-            fprintf(stderr, "%s: could not decode first coefficient record: %s\n",
-                    filenames[i], jpl_status_string(status));
-            free(record);
-            jpl_close(ephemeris);
-            return 1;
-        }
-        /* Geometry check: record bounds must be finite, ordered, and
-         * anchored at coverage start. A corrupt present file that passes
-         * open (e.g. NaN interior dates with clean endpoints) fails here
-         * instead of silently validating. NaN is checked via integer bit
-         * inspection so no floating-point comparison idiom is needed. */
+        /* F11: decode and validate every physical record, not just record
+         * zero. Each record needs finite ordered encoded dates; covered
+         * records anchor at coverage start/end with continuity, and one
+         * trailing record may start at coverage end staying ordered. */
         {
-            uint64_t b0 = 0, b1 = 0;
-            int bad = 0;
-            memcpy(&b0, &record[0], sizeof b0);
-            memcpy(&b1, &record[1], sizeof b1);
-            /* IEEE-754 binary64 NaN: exponent all ones, nonzero mantissa. */
-            bad = ((b0 & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL &&
-                   (b0 & 0x000FFFFFFFFFFFFFULL) != 0) ||
-                  ((b1 & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL &&
-                   (b1 & 0x000FFFFFFFFFFFFFULL) != 0);
-            if (bad) {
-                fprintf(stderr, "%s: nonfinite record date bits %llx %llx\n",
-                        filenames[i], (unsigned long long)b0, (unsigned long long)b1);
+            size_t count = jpl_record_count(ephemeris);
+            size_t index;
+            double prev_end[2] = {0.0, 0.0};
+            double last_start[2] = {0.0, 0.0};
+            int have_prev = 0;
+            double cov_start[2], cov_end[2];
+            if (jpl_date_normalize(header->start_jd, cov_start) != JPL_OK ||
+                jpl_date_normalize(header->end_jd, cov_end) != JPL_OK) {
+                fprintf(stderr, "%s: record %zu: nonfinite coverage\n", filenames[i], (size_t)0);
+                free(record);
+                jpl_close(ephemeris);
+                return 1;
             }
-            if (bad ||
-                jpl_date_compare((const double[2]){record[0], 0.0}, header->start_jd) < 0 ||
-                !(record[1] > record[0])) {
-            fprintf(stderr, "%s: could not decode first coefficient record\n", filenames[i]);
-            free(record);
-            jpl_close(ephemeris);
-            return 1;
+            for (index = 0; index < count; ++index) {
+                double rec_start[2], rec_end[2];
+                status = jpl_read_record(ephemeris, index, record, header->record_double_count);
+                if (status != JPL_OK) {
+                    fprintf(stderr, "%s: record %zu: could not decode: %s\n",
+                            filenames[i], index, jpl_status_string(status));
+                    free(record);
+                    jpl_close(ephemeris);
+                    return 1;
+                }
+                rec_start[0] = record[0]; rec_start[1] = 0.0;
+                rec_end[0] = record[1]; rec_end[1] = 0.0;
+                if (jpl_date_normalize(rec_start, rec_start) != JPL_OK ||
+                    jpl_date_normalize(rec_end, rec_end) != JPL_OK ||
+                    !isfinite(rec_start[0]) || !isfinite(rec_start[1]) ||
+                    !isfinite(rec_end[0]) || !isfinite(rec_end[1])) {
+                    fprintf(stderr, "%s: record %zu: nonfinite record dates\n", filenames[i], index);
+                    free(record);
+                    jpl_close(ephemeris);
+                    return 1;
+                }
+                if (!(jpl_date_compare(rec_end, rec_start) > 0)) {
+                    fprintf(stderr, "%s: record %zu: unordered record dates\n", filenames[i], index);
+                    free(record);
+                    jpl_close(ephemeris);
+                    return 1;
+                }
+                if (have_prev && jpl_date_compare(rec_start, prev_end) != 0) {
+                    fprintf(stderr, "%s: record %zu: discontinuous record dates\n", filenames[i], index);
+                    free(record);
+                    jpl_close(ephemeris);
+                    return 1;
+                }
+                if (index == 0 && jpl_date_compare(rec_start, cov_start) != 0) {
+                    fprintf(stderr, "%s: record %zu: not anchored at coverage start\n", filenames[i], index);
+                    free(record);
+                    jpl_close(ephemeris);
+                    return 1;
+                }
+                prev_end[0] = rec_end[0]; prev_end[1] = rec_end[1];
+                last_start[0] = rec_start[0]; last_start[1] = rec_start[1];
+                have_prev = 1;
+            }
+            /* Final covered record ends at coverage end; alternatively one
+             * trailing record starts exactly at coverage end and stays
+             * ordered (continuity and ordering already checked above).
+             * Anything else -- ending early or extending past one trailing
+             * record -- fails here. */
+            if (jpl_date_compare(prev_end, cov_end) != 0 &&
+                jpl_date_compare(last_start, cov_end) != 0) {
+                fprintf(stderr, "%s: record %zu: not anchored at coverage end\n",
+                        filenames[i], count - 1);
+                free(record);
+                jpl_close(ephemeris);
+                return 1;
             }
         }
         free(record);
@@ -200,6 +239,6 @@ int main(int argc, char **argv) {
         fputs("no JPL DE binaries found in directory\n", stderr);
         return 1;
     }
-    puts("all present JPL DE binaries opened successfully (skipped absent files)");
+    printf("all present JPL DE binaries decoded: every physical record checked (skipped absent files)\n");
     return 0;
 }

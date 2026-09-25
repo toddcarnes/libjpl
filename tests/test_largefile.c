@@ -12,6 +12,7 @@
 #endif
 
 #include "jpl.h"
+#include "jpl_private.h"
 #include "jpl_test_util.h"
 
 #include <stdint.h>
@@ -128,7 +129,15 @@ int main(void) {
     }
     JPL_TEST_CHECK(fclose(f) == 0);
 
-    JPL_TEST_CHECK(jpl_open(LF_PATH, &e) == JPL_OK);
+    /* F06: no parser read may exceed 2880 bytes, even for this 4096-byte
+     * record width. The hook reports over-limit requests as I/O failures,
+     * so a passing open under the limit proves bounded header reads. */
+    jpl_test_set_parser_read_limit(2880);
+    {
+        jpl_status lse = jpl_open(LF_PATH, &e);
+        jpl_test_set_parser_read_limit(0);
+        JPL_TEST_CHECK(lse == JPL_OK);
+    }
     JPL_TEST_CHECK(e != NULL);
     JPL_TEST_CHECK(jpl_record_count(e) == LF_INTERVALS);
     JPL_TEST_CHECK(jpl_read_record(e, 0, vals, LF_RECORD_DOUBLES) == JPL_OK);

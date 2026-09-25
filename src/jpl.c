@@ -17,6 +17,7 @@
 #include "jpl_private.h"
 
 #include <stdint.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -60,13 +61,17 @@ static int seek_to(FILE *file, size_t offset);
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out);
 static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, size_t size,
                                 jpl_byte_order order);
+static void parse_optional_tt_tdb(jpl_header *header,
+                                  const unsigned char tail[24],
+                                  jpl_byte_order order);
 static jpl_reference_frame classify_frame(int denum);
 
 struct jpl_ephemeris {
     FILE *file;
     jpl_header header;
     size_t file_size;
-    size_t record_count;
+    size_t record_count;            /* physically readable data records */
+    size_t covered_record_count;    /* advertised intervals only */
     /* File identity captured from the open stream (not a path lookup),
      * used to verify FILE clones reopened the same object. POSIX stores
      * st_dev/st_ino; Windows stores volume serial + file index from the
@@ -238,6 +243,26 @@ static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
     return 0;
 }
 
+/* Optional 24-byte TT-TDB tail decoder (F06): parses exactly the T14/T15
+ * triplets at their checked offset. Reads T15 from offset 12, checks
+ * integer bounds, and leaves has_tt_tdb == 0 until span validation in the
+ * caller. Extra constant names are skipped by offset, never copied. */
+static void parse_optional_tt_tdb(jpl_header *header,
+                                  const unsigned char tail[24],
+                                  jpl_byte_order order) {
+    uint32_t u_t15s, u_t15c, u_t15l;
+    const unsigned char *q;
+    if (!header || !tail) return;
+    header->has_tt_tdb = 0;
+    memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
+    q = tail + 12;
+    u_t15s = read_u32(q, order); q += 4; u_t15c = read_u32(q, order); q += 4; u_t15l = read_u32(q, order);
+    if (u_t15s > INT_MAX || u_t15c > INT_MAX || u_t15l > INT_MAX) return;
+    header->tt_tdb_pointer.start_index = (int)u_t15s;
+    header->tt_tdb_pointer.coefficients_per_component = (int)u_t15c;
+    header->tt_tdb_pointer.subintervals = (int)u_t15l;
+}
+
 /* Minimum physical record width bound (see CLASSIC_HEADER_BYTES above):
  * The interval count is bounded by file geometry (file_size divided by
  * this width, minus header/constants records) before any
@@ -256,7 +281,9 @@ _Static_assert((uintmax_t)(SIZE_MAX / MIN_RECORD_BYTES) < 9007199254740992ULL,
  * validation policy. Every read checks `offset <= size` and
  * `count <= size - offset` with subtraction guarded by the first check;
  * mmap memcpy and FILE seek/read share error classification (IO vs
- * FORMAT stays with the candidate evaluator). */
+ * FORMAT stays with the candidate evaluator). Parser-time reads go
+ * through parser_read_bytes (bounded-read hook); record-endpoint probes
+ * are a constant 16 bytes and share the same bound. */
 typedef jpl_status (*jpl_read_bytes_fn)(void *context, size_t offset,
                                         unsigned char *out, size_t count);
 typedef struct jpl_byte_source {
@@ -267,6 +294,25 @@ typedef struct jpl_byte_source {
 
 typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_mmap_source;
 typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
+
+#ifdef LIBJPL_TESTING
+/* F06 bounded-read test hook: nonzero limit fails any parser source read
+ * requesting more bytes. Production builds compile to the direct read.
+ * Declared before the byte-source callbacks so every parser read,
+ * including the 16-byte record-endpoint probes, routes through it. */
+static size_t jpl_parser_read_limit = 0;
+void jpl_test_set_parser_read_limit(size_t max_bytes) { jpl_parser_read_limit = max_bytes; }
+static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset,
+                                    unsigned char *out, size_t count) {
+    if (jpl_parser_read_limit != 0 && count > jpl_parser_read_limit) return JPL_ERROR_IO;
+    return source->read(source->context, offset, out, count);
+}
+#else
+static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset,
+                                    unsigned char *out, size_t count) {
+    return source->read(source->context, offset, out, count);
+}
+#endif
 
 static jpl_status mmap_read_bytes(void *context, size_t offset,
                                   unsigned char *out, size_t count) {
@@ -305,20 +351,38 @@ static jpl_status scheduled_endpoint(const double start[2], double step, size_t 
 }
 
 /* Reconstructed endpoints are compared to encoded file endpoints with a
- * documented bound derived from their binary64 encoding ULPs, not from a
- * coverage tolerance. One encoded double near 2.4e6 carries an ULP of
- * 2^-30 (~9.3e-10 day); the scheduled endpoint adds at most one rounding
- * of similar size, so accept |scheduled - encoded| <= 4 * 2^-30 days
- * (~3.7e-9 day, ~0.3 microsecond). This allowance excuses only rounding
- * already present in the encoded file dates; public coverage queries in
- * interpolate()/jpl_get_state() use exact comparisons, never this bound. */
-#define JPL_T05_ENDPOINT_TOL_DAYS (4.0 * 9.313225746154785e-10)
+ * magnitude-aware binary64 allowance (F13): derive it from the ULPs
+ * adjacent to the encoded endpoint and the scheduled high part, not from a
+ * fixed modern-epoch bound. Take the maximum finite adjacent spacing around
+ * both values via nextafter() in both directions, multiplied by four. The
+ * allowance excuses encoding arithmetic only and never widens public
+ * coverage: interpolate()/jpl_get_state() use exact comparisons. */
+static double endpoint_ulp_tolerance(const double scheduled[2], double encoded) {
+    double hi = scheduled[0], lo, hi_up, hi_dn, enc_up, enc_dn, spacing = 0.0, candidate;
+    if (!isfinite(hi) || !isfinite(encoded)) return -1.0;
+    lo = scheduled[1];
+    if (!isfinite(lo)) return -1.0;
+    hi_up = nextafter(hi, INFINITY);
+    hi_dn = nextafter(hi, -INFINITY);
+    enc_up = nextafter(encoded, INFINITY);
+    enc_dn = nextafter(encoded, -INFINITY);
+    if (isfinite(hi_up)) { candidate = fabs(hi_up - hi); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(hi_dn)) { candidate = fabs(hi - hi_dn); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(enc_up)) { candidate = fabs(enc_up - encoded); if (candidate > spacing) spacing = candidate; }
+    if (isfinite(enc_dn)) { candidate = fabs(encoded - enc_dn); if (candidate > spacing) spacing = candidate; }
+    if (!(spacing > 0.0) || !isfinite(spacing)) return -1.0;
+    if (spacing > DBL_MAX / 4.0) return -1.0;
+    return 4.0 * spacing;
+}
 
 static jpl_status endpoints_match(const double scheduled[2], double encoded) {
-    double error;
+    double error, tolerance;
     if (!isfinite(scheduled[0]) || !isfinite(scheduled[1]) || !isfinite(encoded)) return JPL_ERROR_FORMAT;
     error = fabs((scheduled[0] - encoded) + scheduled[1]);
-    if (!isfinite(error) || error > JPL_T05_ENDPOINT_TOL_DAYS) return JPL_ERROR_FORMAT;
+    if (!isfinite(error)) return JPL_ERROR_FORMAT;
+    tolerance = endpoint_ulp_tolerance(scheduled, encoded);
+    if (!isfinite(tolerance) || tolerance < 0.0) return JPL_ERROR_FORMAT;
+    if (error > tolerance) return JPL_ERROR_FORMAT;
     return JPL_OK;
 }
 
@@ -330,7 +394,7 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
     double enc0, enc1;
     if (!source || !first || !second) return JPL_ERROR_ARGUMENT;
     if (record_bytes % 8 != 0 || record_bytes < (size_t)MIN_RECORD_BYTES) return JPL_ERROR_FORMAT;
-    status = source->read(source->context, offset, raw, sizeof raw);
+    status = parser_read_bytes(source, offset, raw, sizeof raw);
     if (status != JPL_OK) return status;
     enc0 = read_f64(raw, order);
     enc1 = read_f64(raw + 8, order);
@@ -345,49 +409,31 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
 /* Complete candidate validation: metadata, count, record width,
  * first/last/trailing endpoints, and checked classic spans. Parses into
  * the candidate-local header, never the published header. Returns JPL_OK
- * with *out_record_count set, or JPL_ERROR_FORMAT for an invalid
- * candidate, propagating actual I/O or allocation failures distinctly. */
+ * with *out_record_count (physical data records) and
+ * *out_covered_record_count (advertised intervals) set, or JPL_ERROR_FORMAT
+ * for an invalid candidate, propagating actual I/O or allocation failures
+ * distinctly. */
 static jpl_status validate_layout(const jpl_byte_source *source,
                                   jpl_byte_order order,
-                                  jpl_header *header, size_t *record_count) {
+                                  jpl_header *header, size_t *record_count,
+                                  size_t *covered_record_count) {
     double span_days, span_records, reconstructed;
     size_t max_records, expected_records, total_records, record_bytes, extra_records;
     size_t required_doubles, required_bytes, width;
     unsigned char classic[CLASSIC_HEADER_BYTES];
     jpl_header candidate;
     jpl_status status;
-    if (!source || !header || !record_count || !source->read) return JPL_ERROR_ARGUMENT;
+    if (!source || !header || !record_count || !covered_record_count || !source->read) return JPL_ERROR_ARGUMENT;
     /* Initial header reads use the classic required size, not an
      * unconditional extension-sized read. Parse into the candidate-local
-     * header, never the published header. Overflow-name headers (T06:
-     * constant_count > 400) carry their IPT 14/15 tail past the classic
-     * cursor, so extend the initial window past 2856 when the classic
-     * pre-parse advertises overflow names -- bounded by the file size
-     * so a corrupt count cannot over-allocate. Re-parse the extended
-     * window under the same byte order before geometry checks. */
-    status = source->read(source->context, 0, classic, sizeof classic);
+     * header, never the published header. Overflow-name bytes are skipped
+     * by offset (F06): the tail offset is computed with checked arithmetic
+     * but extra names are never copied into a heap window. */
+    status = parser_read_bytes(source, 0, classic, sizeof classic);
     if (status != JPL_OK) return status;
     memset(&candidate, 0, sizeof candidate);
     status = parse_header(&candidate, classic, sizeof classic, order);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (candidate.constant_count > JPL_MAX_CONSTANT_NAMES) {
-        size_t extra = (size_t)(candidate.constant_count - JPL_MAX_CONSTANT_NAMES);
-        size_t need = 0;
-        unsigned char *wide = NULL;
-        jpl_header reparsed;
-        if (extra > (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE - 24) / (size_t)JPL_CONSTANT_NAME_LENGTH)
-            return JPL_ERROR_FORMAT;
-        need = (size_t)JPL_TT_TDB_TAIL_BASE + extra * (size_t)JPL_CONSTANT_NAME_LENGTH + 24;
-        if (need <= sizeof classic || need > source->size) return JPL_ERROR_FORMAT;
-        wide = malloc(need);
-        if (!wide) return JPL_ERROR_MEMORY;
-        status = source->read(source->context, 0, wide, need);
-        if (status != JPL_OK) { free(wide); return status; }
-        status = parse_header(&reparsed, wide, need, order);
-        free(wide);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        candidate = reparsed;
-    }
     if (source->size < (size_t)MIN_RECORD_BYTES) return JPL_ERROR_FORMAT;
     max_records = source->size / (size_t)MIN_RECORD_BYTES;
     if (max_records < 2) return JPL_ERROR_FORMAT;
@@ -427,9 +473,8 @@ static jpl_status validate_layout(const jpl_byte_source *source,
      * constants, data) has the same width, and the overflow names
      * occupy header-record bytes that would otherwise be padding.
      * (Overflow names need no extra width: e.g. 1470 name bytes must not
-     * be added to an 8144-byte pointer-derived width.) The full-record
-     * re-parse below still locates the tail at 2856+6*extra inside
-     * the width. */
+     * be added to an 8144-byte pointer-derived width.) The optional tail
+     * is read directly at 2856+6*extra inside the width. */
     required_doubles = candidate.record_double_count;
     if (required_doubles == 0) return JPL_ERROR_FORMAT;
     if ((size_t)candidate.constant_count > required_doubles) required_doubles = (size_t)candidate.constant_count;
@@ -465,7 +510,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             double sched_first[2] = {0.0, 0.0}, sched_last[2] = {0.0, 0.0}, sched_trail[2] = {0.0, 0.0};
             double tfirst[2] = {0.0, 0.0}, tsecond[2] = {0.0, 0.0};
             size_t attempt_total = 0, attempt_bytes = 0;
-            size_t off_first, off_last, off_trail;
+            size_t off_last, off_trail;
             jpl_status ep_status;
             extra_records = extras[ei];
             if (expected_records > SIZE_MAX - extra_records) break;
@@ -483,41 +528,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
              * is at 2*width. The constants record carries
              * constant_count doubles; data records carry scheduled
              * Julian dates at slots 0/1. */
-            off_first = width;
             off_last = width + expected_records * width;
             off_trail = width + (expected_records + 1) * width;
             {
                 size_t data_off = width + width;
-                unsigned char raw0[8];
-                double slot0;
-                if (data_off / width != 2) continue;
-                if (off_last / width != expected_records + 1) continue;
-                if (extra_records == 3 && off_trail / width != expected_records + 2) continue;
-                if (source->read(source->context, data_off, raw0, sizeof raw0) != JPL_OK) continue;
-                slot0 = read_f64(raw0, order);
-                if (!isnan(slot0)) {
-                    /* Constants-identity discriminator (R06b): a phantom
-                     * divisor reads the constants record as data. Real
-                     * constants records hold constant_count values, so
-                     * compare only when the candidate constants record
-                     * actually HAS payload at slot 0 (constant_count >
-                     * 0); a zero-payload constants record cannot
-                     * discriminate. */
-                    if (candidate.constant_count > 0) {
-                        unsigned char cbuf[8];
-                        double cslot0;
-                        if (source->read(source->context, off_first, cbuf, sizeof cbuf) != JPL_OK) continue;
-                        cslot0 = read_f64(cbuf, order);
-                        if (cslot0 == slot0) continue;
-                    }
-                } else {
-                    /* Corrupt first data date with no clean covered
-                     * endpoint to anchor the layout: reject the width
-                     * (single-record NaN-first files fail here; the
-                     * lazy FORMAT path is covered by interior-corrupt
-                     * files with clean endpoints). */
-                    continue;
-                }
                 ep_status = header_record_endpoints(source, data_off, width, order,
                                                     first, second);
                 if (ep_status != JPL_OK) continue;
@@ -546,30 +560,22 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                 /* Trailing record is physical only; its end need not tie
                  * to advertised coverage (checked as ordered/finite). */
             }
-            /* Full candidate header record must re-parse cleanly so
-             * extension words come only from inside it, never from the
-             * constants or data record. The optional TT-TDB triple is
-             * tentative until geometry is known: after the candidate
-             * width is established, locate 2856+6*extra with checked
-             * arithmetic, require 24 tail bytes inside that header
-             * record, and accept only a fully positive, checked,
-             * in-record span. Anything else (missing tail, absent or
-             * unrepresentable triple, overflow, span outside the
-             * physical record) means absent without enlarging the
-             * width or rejecting the classic file. */
+            /* Optional TT-TDB tail is parsed from 24 bytes read directly at
+             * its checked offset (F06): after the candidate width is
+             * established, locate 2856+6*extra with checked arithmetic and
+             * read the tail only when it fits inside the candidate header
+             * record. No overflow-name window and no full-record allocation.
+             * Accept only a fully positive, checked, in-record span.
+             * Anything else (missing tail, absent or unrepresentable triple,
+             * overflow, span outside the physical record) means absent
+             * without enlarging the width or rejecting the classic file. */
             {
-                unsigned char *full = malloc(width);
-                jpl_header reparsed;
+                jpl_header reparsed = candidate;
                 size_t end = 0, tail = 0, tail_extra = 0;
                 int tail_inside = 0;
                 jpl_pointer tentative;
+                unsigned char raw_tail[24];
                 jpl_status rstatus;
-                if (!full) return JPL_ERROR_MEMORY;
-                rstatus = source->read(source->context, 0, full, width);
-                if (rstatus != JPL_OK) { free(full); return rstatus; }
-                rstatus = parse_header(&reparsed, full, width, order);
-                free(full);
-                if (rstatus != JPL_OK) continue;
                 if (reparsed.record_double_count > width / 8) continue;
                 reparsed.record_double_count = width / 8;
                 reparsed.has_tt_tdb = 0;
@@ -585,6 +591,15 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                         tail_extra * (size_t)JPL_CONSTANT_NAME_LENGTH;
                     tail_inside = tail + 24 <= width ? 1 : 0;
                 }
+                if (tail_inside) {
+                    rstatus = parser_read_bytes(source, tail, raw_tail, sizeof raw_tail);
+                    if (rstatus != JPL_OK) {
+                        if (rstatus == JPL_ERROR_MEMORY) return JPL_ERROR_MEMORY;
+                        if (rstatus == JPL_ERROR_IO) return rstatus;
+                        continue;
+                    }
+                    parse_optional_tt_tdb(&reparsed, raw_tail, order);
+                }
                 tentative = reparsed.tt_tdb_pointer;
                 memset(&reparsed.tt_tdb_pointer, 0, sizeof reparsed.tt_tdb_pointer);
                 /* Span end is the 1-based count (start-1)+coeff*sub; end <=
@@ -599,13 +614,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                     reparsed.tt_tdb_pointer = tentative;
                     reparsed.has_tt_tdb = 1;
                 }
-                /* Newly visible TT-TDB triple invariant: the classic 2856-byte
-                 * pre-parse always truncates the 24-byte tail at 2856
-                 * (static assert at file scope: 2856+24 > 2856), so a triple
-                 * that appears only in a wider window is genuine header
-                 * metadata, never constants-record bytes. No runtime guard
-                 * needed; a 2856-wide candidate inventing a triple still
-                 * fails the width==classic case above. */
+                /* The classic parse never sees the 24-byte tail (fixed
+                 * 2856-byte window), so a triple accepted here is genuine
+                 * header metadata at its checked offset, never
+                 * constants-record bytes. */
                 attempt_bytes = width;
                 split_bytes[ei] = attempt_bytes;
                 split_totals[ei] = attempt_total;
@@ -632,8 +644,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
         }
     }
     if (record_bytes == 0) return JPL_ERROR_FORMAT;
+    if (expected_records == 0) return JPL_ERROR_FORMAT;
     candidate.record_double_count = record_bytes / 8;
     *header = candidate;
+    *covered_record_count = expected_records;
     *record_count = total_records - 2;
     return JPL_OK;
 }
@@ -676,25 +690,27 @@ static int headers_equal(const jpl_header *a, const jpl_header *b) {
  * unique surviving interpretation, or FORMAT when none (or several
  * different ones) survive; I/O and allocation failures propagate. */
 static jpl_status select_layout(const jpl_byte_source *source,
-                                jpl_header *header, size_t *record_count) {
+                                jpl_header *header, size_t *record_count,
+                                size_t *covered_record_count) {
     static const jpl_byte_order orders[2] = {
         JPL_BYTE_ORDER_LITTLE_ENDIAN, JPL_BYTE_ORDER_BIG_ENDIAN
     };
     jpl_header survivors[2];
-    size_t survivor_counts[2], survivor_total = 0;
+    size_t survivor_counts[2], survivor_covered[2], survivor_total = 0;
     int memory_failure = 0, io_failure = 0, argument_failure = 0;
     size_t o;
-    if (!source || !header || !record_count) return JPL_ERROR_ARGUMENT;
+    if (!source || !header || !record_count || !covered_record_count) return JPL_ERROR_ARGUMENT;
     for (o = 0; o < 2; ++o) {
         jpl_header candidate;
-        size_t count = 0;
+        size_t count = 0, covered = 0;
         jpl_status status;
         memset(&candidate, 0, sizeof candidate);
-        status = validate_layout(source, orders[o], &candidate, &count);
+        status = validate_layout(source, orders[o], &candidate, &count, &covered);
         if (status == JPL_OK) {
             if (survivor_total < 2) {
                 survivors[survivor_total] = candidate;
                 survivor_counts[survivor_total] = count;
+                survivor_covered[survivor_total] = covered;
             }
             ++survivor_total;
         } else if (status == JPL_ERROR_MEMORY) {
@@ -712,11 +728,13 @@ static jpl_status select_layout(const jpl_byte_source *source,
     if (survivor_total == 0) return JPL_ERROR_FORMAT;
     if (survivor_total == 2) {
         if (survivor_counts[0] == survivor_counts[1] &&
+            survivor_covered[0] == survivor_covered[1] &&
             headers_equal(&survivors[0], &survivors[1])) {
             /* Same geometry under both orders (e.g. symmetric zeros):
              * report the first order. */
             *header = survivors[0];
             *record_count = survivor_counts[0];
+            *covered_record_count = survivor_covered[0];
             return JPL_OK;
         }
         return JPL_ERROR_FORMAT;
@@ -724,6 +742,7 @@ static jpl_status select_layout(const jpl_byte_source *source,
     if (survivor_total == 1) {
         *header = survivors[0];
         *record_count = survivor_counts[0];
+        *covered_record_count = survivor_covered[0];
         return JPL_OK;
     }
     /* Defensive: survivor_total cannot exceed 2 (two byte orders), so any
@@ -845,32 +864,18 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
      * names immediately past the legacy 2856-byte cursor, and the two
      * triplets after them. Entry 15 is the TT-TDB dataset (*t files
      * only); entry 14 is parsed for symmetry and ignored. T#16 has no
-     * header slot and is not supported. The TT-TDB triple is tentative
-     * until record geometry is known (see validate_layout): it is
-     * stored raw with has_tt_tdb == 0 and never enlarges
-     * record_double_count here. An irrelevant T#14 word never
-     * invalidates a separately valid T#15 triple. In-record random
-     * bytes that happen to form a valid in-record triple cannot be
-     * distinguished from genuine metadata by geometry alone. */
-    { size_t extra = header->constant_count > JPL_MAX_CONSTANT_NAMES ?
-                         (size_t)(header->constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
-      size_t tail;
-      uint32_t u_t15s, u_t15c, u_t15l;
-      const unsigned char *q;
-      header->record_double_count = maximum;
-      header->byte_order = order;
-      header->has_tt_tdb = 0;
-      memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
-      if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH) return JPL_OK;
-      tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
-      if (tail > size || size - tail < 24) return JPL_OK;
-      q = bytes + tail + 12;
-      u_t15s = read_u32(q, order); q += 4; u_t15c = read_u32(q, order); q += 4; u_t15l = read_u32(q, order);
-      if (u_t15s > INT_MAX || u_t15c > INT_MAX || u_t15l > INT_MAX) return JPL_OK;
-      header->tt_tdb_pointer.start_index = (int)u_t15s;
-      header->tt_tdb_pointer.coefficients_per_component = (int)u_t15c;
-      header->tt_tdb_pointer.subintervals = (int)u_t15l;
-      return JPL_OK; }
+     * header slot and is not supported. parse_header covers only the
+     * classic 2856-byte fields and leaves the TT-TDB triple tentative
+     * and absent here: validate_layout reads the 24-byte tail directly
+     * at its checked offset (parse_optional_tt_tdb) once candidate
+     * geometry is known. record_double_count never grows for optional
+     * metadata here. An irrelevant T#14 word never invalidates a
+     * separately valid T#15 triple. */
+    header->record_double_count = maximum;
+    header->byte_order = order;
+    header->has_tt_tdb = 0;
+    memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
+    return JPL_OK;
 }
 
 /* Frame classification from the content-derived DENUM (T12/R04).
@@ -898,6 +903,11 @@ static jpl_byte_order native_order(void) {
 
 static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
     unsigned char *bytes; size_t i;
+    if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
+    /* Zero-count raw reads succeed without backend access (F14): no seek,
+     * mapping-base evaluation, malloc(0), read, or copy. Argument and
+     * handle validation above still applies. */
+    if (count == 0) return JPL_OK;
     if (ephemeris->is_mmap) {
         const unsigned char *base;
         if (!ephemeris->mmap_base) return JPL_ERROR_IO;
@@ -948,7 +958,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     source.context = &fsource;
     source.size = e->file_size;
     source.read = file_read_bytes;
-    status = select_layout(&source, &e->header, &e->record_count);
+    status = select_layout(&source, &e->header, &e->record_count, &e->covered_record_count);
     if (status != JPL_OK) { jpl_status keep = status; jpl_close(e); return keep == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (keep == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT); }
     if (e->header.record_double_count == 0 || e->header.record_double_count > SIZE_MAX / 8) { jpl_close(e); return JPL_ERROR_FORMAT; }
     *out = e; return JPL_OK;
@@ -988,7 +998,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
     jpl_ephemeris *e;
     jpl_header header;
     jpl_status status;
-    size_t file_size = 0, record_count = 0;
+    size_t file_size = 0, record_count = 0, covered_record_count = 0;
     if (!path || !out) return JPL_ERROR_ARGUMENT;
     *out = NULL;
 #if defined(_WIN32)
@@ -1022,7 +1032,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
             source.context = &msource;
             source.size = file_size;
             source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count);
+            status = select_layout(&source, &header, &record_count, &covered_record_count);
             if (status == JPL_OK &&
                 (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
                 status = JPL_ERROR_FORMAT;
@@ -1041,6 +1051,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
+        e->covered_record_count = covered_record_count;
         *out = e;
         return JPL_OK;
     }
@@ -1075,7 +1086,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
             source.context = &msource;
             source.size = file_size;
             source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count);
+            status = select_layout(&source, &header, &record_count, &covered_record_count);
             if (status == JPL_OK &&
                 (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
                 status = JPL_ERROR_FORMAT;
@@ -1092,6 +1103,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
+        e->covered_record_count = covered_record_count;
         *out = e;
         return JPL_OK;
     }
@@ -1108,6 +1120,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     c->header = ephem->header;
     c->file_size = ephem->file_size;
     c->record_count = ephem->record_count;
+    c->covered_record_count = ephem->covered_record_count;
     c->is_mmap = ephem->is_mmap;
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
@@ -1139,6 +1152,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         }
         c->file_size = ephem->file_size;
         c->record_count = ephem->record_count;
+        c->covered_record_count = ephem->covered_record_count;
 #if !defined(_WIN32)
         c->id_dev = ephem->id_dev;
         c->id_ino = ephem->id_ino;
@@ -1178,7 +1192,9 @@ jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values,
  * one-neighbor adjustment, then a bounded binary search fallback over the
  * verified intervals (never an unbounded walk on malformed data). Interior
  * boundaries select the following interval; the final advertised coverage
- * endpoint explicitly selects the last advertised interval. */
+ * endpoint explicitly selects the last covered interval. Date selection
+ * uses the advertised covered count only; the physical trailing record
+ * stays reachable through jpl_read_record but never through a date. */
 static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
                                 size_t *index_out,
                                 double record_start[2], double record_end[2]) {
@@ -1187,7 +1203,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     size_t candidate = 0, lo, hi;
     jpl_status status;
     if (!e || !jd || !index_out || !record_start || !record_end) return JPL_ERROR_ARGUMENT;
-    if (e->record_count == 0) return JPL_ERROR_FORMAT;
+    if (e->covered_record_count == 0) return JPL_ERROR_FORMAT;
     status = jpl_date_normalize(e->header.start_jd, cov_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     if (!isfinite(e->header.step_days) || e->header.step_days <= 0.0) return JPL_ERROR_FORMAT;
@@ -1197,7 +1213,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     status = jpl_date_normalize(e->header.end_jd, boundary);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     if (jpl_date_compare(norm, boundary) == 0) {
-        candidate = e->record_count - 1;
+        candidate = e->covered_record_count - 1;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
         *index_out = candidate;
@@ -1217,12 +1233,12 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     quotient_d = (diff[0] + diff[1]) / e->header.step_days;
     if (!isfinite(quotient_d) || quotient_d < 0.0) return JPL_ERROR_RANGE;
     candidate = (size_t)quotient_d;
-    if (candidate >= e->record_count) candidate = e->record_count - 1;
+    if (candidate >= e->covered_record_count) candidate = e->covered_record_count - 1;
     for (;;) {
         int below = 0, above = 0;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, boundary);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        if (candidate + 1 < e->record_count) {
+        if (candidate + 1 < e->covered_record_count) {
             status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, next);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
         } else {
@@ -1230,11 +1246,11 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
         }
         below = jpl_date_compare(norm, boundary) < 0;
-        above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->record_count;
+        above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->covered_record_count;
         if (!below && !above) {
             status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 1 < e->record_count) {
+            if (candidate + 1 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, record_end);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
@@ -1258,11 +1274,11 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
             }
             break;
         }
-        if (above && candidate + 1 < e->record_count) {
+        if (above && candidate + 1 < e->covered_record_count) {
             size_t probe = candidate + 1;
             status = jpl_date_add_scaled(cov_start, e->header.step_days, probe, boundary);
             if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 2 < e->record_count) {
+            if (candidate + 2 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, probe + 1, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
@@ -1270,7 +1286,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             }
             if (jpl_date_compare(norm, boundary) >= 0 &&
-                (jpl_date_compare(norm, next) < 0 || probe + 1 >= e->record_count)) {
+                (jpl_date_compare(norm, next) < 0 || probe + 1 >= e->covered_record_count)) {
                 candidate = probe;
                 continue;
             }
@@ -1280,7 +1296,7 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     }
     /* Bounded binary search over verified intervals. */
     lo = 0;
-    hi = e->record_count;
+    hi = e->covered_record_count;
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, boundary);
@@ -1288,14 +1304,14 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
         if (jpl_date_compare(norm, boundary) < 0) {
             hi = mid;
         } else {
-            if (mid + 1 < e->record_count) {
+            if (mid + 1 < e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, mid + 1, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             } else {
                 status = jpl_date_normalize(e->header.end_jd, next);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
             }
-            if (jpl_date_compare(norm, next) < 0 || mid + 1 >= e->record_count) {
+            if (jpl_date_compare(norm, next) < 0 || mid + 1 >= e->covered_record_count) {
                 status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, record_start);
                 if (status != JPL_OK) return JPL_ERROR_FORMAT;
                 record_end[0] = next[0];
@@ -1307,6 +1323,32 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
         }
     }
     return JPL_ERROR_RANGE;
+}
+
+/* Body-code validation for state-taking APIs (F04): target and center
+ * combinations are rejected before date normalization, coverage, dataset
+ * availability, record I/O, or body shortcuts. Invalid combinations return
+ * JPL_ERROR_ARGUMENT regardless of date or file contents. Target 0 is
+ * always invalid; center 0 is the SSB alias. */
+static int valid_state_target(int target) {
+    if (target == JPL_SSB) return 0;
+    if (target >= JPL_MERCURY && target <= JPL_EARTH_MOON_BARYCENTER) return 1;
+    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return 1;
+    return 0;
+}
+
+static int valid_state_center(int target, int center) {
+    if (center == JPL_SSB) return target != JPL_SSB;
+    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return center == 0;
+    if (target == JPL_TT_TDB) return 0;
+    if (center < JPL_MERCURY || center > JPL_EARTH_MOON_BARYCENTER) return 0;
+    return valid_state_target(target);
+}
+
+static int valid_lighttime_body(int target, int center) {
+    if (target <= JPL_SSB || target > JPL_EARTH_MOON_BARYCENTER) return 0;
+    if (center < JPL_SSB || center > JPL_EARTH_MOON_BARYCENTER) return 0;
+    return 1;
 }
 
 static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
@@ -1323,7 +1365,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
     if (!e || !jd || !pointer || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     status = jpl_date_normalize(jd, norm);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+    if (status != JPL_OK) return status;
     /* Coverage precedes the missing-dataset report (TT-TDB path order):
      * valid in-coverage queries for absent data are UNSUPPORTED, while
      * out-of-coverage queries stay RANGE even when the dataset is absent. */
@@ -1335,7 +1377,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
         return JPL_ERROR_RANGE;
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
-    if (e->record_count == 0) return JPL_ERROR_FORMAT;
+    if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
     status = select_record(e, norm, &record_index, sched_start, sched_end);
     if (status != JPL_OK) return status;
     /* Single-record cache is for the FILE path only: it mutates per-handle
@@ -1497,7 +1539,7 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     if (!e || !jd || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     status = jpl_date_normalize(jd, norm);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+    if (status != JPL_OK) return status;
     status = jpl_date_normalize(e->header.start_jd, cov_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     status = jpl_date_normalize(e->header.end_jd, cov_end);
@@ -1541,19 +1583,21 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
     /* Target zero is consistently invalid; center zero is the SSB alias
-     * (L05). Validate target before any shortcut. */
-    if (target == JPL_SSB) return JPL_ERROR_ARGUMENT;
+     * (L05). Validate target/center combinations before date normalization
+     * or data access (F04): invalid codes report ARGUMENT regardless of
+     * date or file contents. Do not call barycentric_state() with an
+     * invalid code. */
+    if (!valid_state_target(target) || !valid_state_center(target, center)) return JPL_ERROR_ARGUMENT;
     if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) {
-        if (center != 0) return JPL_ERROR_ARGUMENT;
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
         return interpolate(e, jd, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
                            target == JPL_NUTATIONS ? 2 : 3, state);
     }
+    if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
     /* Body codes 1-13 plus center 0/12 route through barycentric legs
-     * below; anything else is rejected after date validation inside
-     * barycentric_state. Validate pointers/dates first so a missing
+     * below. Validate pointers/dates first so a missing
      * dataset reports UNSUPPORTED only after valid checks pass. */
     status = barycentric_state(e, jd, target, target_state);
     if (status != JPL_OK) return status;
@@ -1649,13 +1693,13 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
-    st = jpl_date_normalize(jd, norm);
-    if (st != JPL_OK) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject.
-     * Bodies 0-13 only; JPL_EARTH_MOON_BARYCENTER (13) is the highest code.
-     * Target 0 is consistently invalid here, matching jpl_get_state. */
-    if (target <= JPL_SSB || target > JPL_EARTH_MOON_BARYCENTER || center < JPL_SSB || center > JPL_EARTH_MOON_BARYCENTER)
-        return JPL_ERROR_ARGUMENT;
+     * Bodies 1-13 plus center 0-13 only; target 0 is consistently invalid
+     * here, matching jpl_get_state. Validate before date normalization or
+     * data access (F04). */
+    if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
+    st = jpl_date_normalize(jd, norm);
+    if (st != JPL_OK) return st;
     /* Coverage validates before any state read so out-of-coverage queries
      * report RANGE with outputs untouched. */
     st = jpl_date_normalize(e->header.start_jd, cov_start);
@@ -1790,7 +1834,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
     {
         double norm[2], cov_start[2], cov_end[2];
         status = jpl_date_normalize(jd_tdb, norm);
-        if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+        if (status != JPL_OK) return status;
         status = jpl_date_normalize(e->header.start_jd, cov_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
         status = jpl_date_normalize(e->header.end_jd, cov_end);
@@ -1913,18 +1957,19 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     } else {
         w2 = 0.0;
     }
-    /* Second normalization is validated too: each accumulated square and
-     * the final root must stay finite, else NUMERIC. */
+    /* Second normalization uses the shared scale-safe norm (F05): build
+     * all three finite p[i] values first, then normalize without
+     * accumulating p[i]*p[i]. Finite large intermediates with a
+     * representable direction stay representable; a genuinely overflowing
+     * solar term above still reports NUMERIC. */
     rn = 0.0;
     for (i = 0; i < 3; ++i) {
         double term = w2 * (beta[i] - pdv * pnat[i]);
         if (!isfinite(term)) return JPL_ERROR_NUMERIC;
         p[i] = pnat[i] * bm1 + w1 * beta[i] + term;
         if (!isfinite(p[i])) return JPL_ERROR_NUMERIC;
-        rn += p[i] * p[i];
-        if (!isfinite(rn)) return JPL_ERROR_NUMERIC;
     }
-    rn = sqrt(rn);
+    rn = jpl_vec_norm3(p);
     if (!isfinite(rn) || !(rn > 0.0)) return JPL_ERROR_NUMERIC;
     /* Scale-aware restoration: (p/rn)*r cannot overflow before a
      * representable coordinate is multiplied. The r/rn quotient form is

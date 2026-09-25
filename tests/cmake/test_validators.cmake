@@ -22,22 +22,29 @@ if(NOT EXISTS "${RUNNER}")
   message(FATAL_ERROR "runner does not exist: ${RUNNER}")
 endif()
 
-# The generator runs idempotently before each case: the first CTest case
-# creates the directory, later cases reuse it (parallel-safe: every run
-# writes identical bytes, and make_dir tolerates an existing path).
-if(DEFINED GENERATOR AND DEFINED WORK)
-  execute_process(COMMAND "${GENERATOR}" "${WORK}"
-                  RESULT_VARIABLE gen_rc
-                  OUTPUT_VARIABLE gen_out
-                  ERROR_VARIABLE gen_err)
-  if(NOT "${gen_rc}" STREQUAL "0")
-    message(FATAL_ERROR "validator generator failed: ${gen_rc}\n${gen_out}\n${gen_err}")
+# Consumes the corpus generated once per run by the CTest fixture setup test
+# jpl_validator_data_setup (FIXTURES_SETUP jpl_validator_corpus); this driver
+# never regenerates or truncates it (F01). Every case requires
+# FIXTURES_REQUIRED jpl_validator_corpus via CMakeLists.txt. WORK only
+# supplies paths. Fail immediately when the expected corpus file is absent,
+# except the fixture read-error case (ROWS set), whose EPH/TESTPO/ROWS are
+# committed source fixtures, not generated files.
+if(DEFINED ROWS AND NOT "${ROWS}" STREQUAL "")
+  # Source-fixture case: no generated corpus needed; validate sources exist.
+elseif(DEFINED WORK)
+  if(NOT EXISTS "${EPH}")
+    message(FATAL_ERROR "validator corpus missing (run jpl_validator_data_setup first): ${EPH}")
+  endif()
+  if(NOT DEFINED SWEEP_DIR AND NOT EXISTS "${TESTPO}")
+    message(FATAL_ERROR "validator corpus missing (run jpl_validator_data_setup first): ${TESTPO}")
   endif()
 endif()
 
 if(DEFINED SWEEP_DIR)
   # Sweep mode: the mixed directory must fail (corrupt DE102 file
-  # present), while the good-only control directory must pass.
+  # present), while the good-only control directory must pass. The
+  # interior-corruption directory must fail at record one, and the
+  # trailing-record control directory must pass.
   execute_process(COMMAND "${RUNNER}" "${SWEEP_DIR}"
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(NOT DEFINED SWEEP_GOOD_DIR)
@@ -46,8 +53,8 @@ if(DEFINED SWEEP_DIR)
   if(NOT "${rc}" STREQUAL "1")
     message(FATAL_ERROR "sweep with corrupt file did not fail with exit 1 (got ${rc}):\n${out}\n${err}")
   endif()
-  string(REPLACE "\n" " " err_flat "${err}")
-  if(NOT "${err_flat}" MATCHES "failed to open|invalid header|could not decode|too short|cannot stat")
+  string(REGEX REPLACE "[ \t\r\n]+" " " err_flat "${err}")
+  if(NOT "${err_flat}" MATCHES "failed to open|invalid header|could not decode|too short|cannot stat|record [0-9]+")
     message(FATAL_ERROR "sweep did not report a present-file failure: ${rc}\n${out}\n${err}")
   endif()
   execute_process(COMMAND "${RUNNER}" "${SWEEP_GOOD_DIR}"
@@ -56,6 +63,26 @@ if(DEFINED SWEEP_DIR)
                   ERROR_VARIABLE good_err)
   if(NOT "${good_rc}" STREQUAL "0")
     message(FATAL_ERROR "good-only sweep failed: ${good_rc}\n${good_out}\n${good_err}")
+  endif()
+  if(NOT DEFINED SWEEP_CORRUPT_DIR)
+    message(FATAL_ERROR "sweep mode needs SWEEP_CORRUPT_DIR")
+  endif()
+  execute_process(COMMAND "${RUNNER}" "${SWEEP_CORRUPT_DIR}"
+                  RESULT_VARIABLE corrupt_rc OUTPUT_VARIABLE corrupt_out ERROR_VARIABLE corrupt_err)
+  if(NOT "${corrupt_rc}" STREQUAL "1")
+    message(FATAL_ERROR "interior-corruption sweep did not fail with exit 1 (got ${corrupt_rc}):\n${corrupt_out}\n${corrupt_err}")
+  endif()
+  string(REGEX REPLACE "[ \t\r\n]+" " " corrupt_flat "${corrupt_err}")
+  if(NOT "${corrupt_flat}" MATCHES "record 1")
+    message(FATAL_ERROR "interior-corruption sweep did not fail at record one:\n${corrupt_out}\n${corrupt_err}")
+  endif()
+  if(NOT DEFINED SWEEP_TRAILING_DIR)
+    message(FATAL_ERROR "sweep mode needs SWEEP_TRAILING_DIR")
+  endif()
+  execute_process(COMMAND "${RUNNER}" "${SWEEP_TRAILING_DIR}"
+                  RESULT_VARIABLE trail_rc OUTPUT_VARIABLE trail_out ERROR_VARIABLE trail_err)
+  if(NOT "${trail_rc}" STREQUAL "0")
+    message(FATAL_ERROR "trailing-record sweep failed: ${trail_rc}\n${trail_out}\n${trail_err}")
   endif()
   return()
 endif()

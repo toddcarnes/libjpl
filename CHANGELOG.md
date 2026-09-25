@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-19
+
 ### Changed
 
 - Two-part Julian dates are now required across the public API
@@ -32,6 +34,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Generated Doxygen HTML+XML with a checked public-symbol inventory
   (`jpl_docs_symbols`) and source/build paths-with-spaces coverage
   (`jpl_docs_paths`); README examples compile and run as `jpl_examples`.
+
+### Fixed
+
+- F01: validator corpus generated once per run via a CTest fixture setup;
+  repeated parallel execution no longer truncates shared files.
+- F02: trailing records kept out of date selection (advertised vs physical
+  counts); coverage-end queries select the final covered interval.
+- F03: layout validation without payload-value heuristics.
+- F04/F12: bodies validated before dates/data access; NUMERIC preserved
+  for finite unrepresentable date pairs.
+- F05: scale-safe aberration output normalization.
+- F06: bounded header reads for wide records (no file-controlled open-time
+  allocations).
+- F07: transactional fetch-cache publication with rollback.
+- F08: maintainer-local workflow gated on dedicated runner data and local
+  suite registration.
+- F09: package identity 0.3.0 (exact-version compatibility).
+- F10: reference component-coverage requirements for testpo files.
+- F11: full-record ephemeris sweep scan.
+- F13/F14: magnitude-aware endpoint tolerance; allocator-independent
+  zero-length reads.
+- F15: docs checks registered with docs ON even when tests are OFF.
+- F16: canonical-LF numerical-reference provenance hashes enforced.
+- F17: immutable action pins and read-only workflow permissions.
+- F18: live documentation aligned (ranges, links, fetch/workflow/sweep/
+  package/test guidance).
 
 ## [0.2.0] - 2026-09-19
 

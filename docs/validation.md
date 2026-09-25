@@ -99,6 +99,16 @@ Ubuntu Clang Debug/Release, macOS Clang Debug/Release,
 ASan/UBSan, TSan, docs/licenses/fixtures) and
 `.github/workflows/ephemerides.yml` (`workflow_dispatch` only: DE440/DE440t
 fetch tier in both configurations plus the maintainer-runner local sweep).
+Both workflows declare top-level `permissions: contents: read` and pin
+third-party actions to reviewed full commit SHAs (checkout/cache/
+upload-artifact/msvc-dev-cmd, release line kept in a trailing comment).
+The local sweep requires the dedicated `[self-hosted, libjpl-ephemerides]`
+runner label plus nonempty `JPLEPH` and `JPL_TESTPO` repository variables
+(preflight fails when either is empty or names a missing directory), proves
+via `ctest -N` that `jpl_all_ephemerides_local` and at least one local
+non-440 `jpl_testpo_` suite are registered (parser-only tests cannot
+satisfy it), then runs only `jpl_all_ephemerides_local` and
+`jpl_testpo_[0-9]` local registrations.
 Default CI remains offline with respect to ephemeris data
 (`LIBJPL_FETCH_EPHEMERIDES=OFF`); workflow files alone authorize no runs.
 Actual CI run results are required before T23 marks platform findings
@@ -270,7 +280,13 @@ T23 Windows MSVC `build/t23-clean` Debug+Release in-suite pass; Linux
 
 Requires explicit `LIBJPL_FETCH_EPHEMERIDES=ON` plus local or download
 sources; `JPLEPH`/`JPL_TESTPO` env dirs only redirect per-file sources
-inside this tier and never enable it alone.
+inside this tier and never enable it alone. The all-ephemerides sweep
+(`jpl_all_ephemerides[_local]`) decodes and validates every physical data
+record of every present binary: finite ordered encoded dates, continuity
+with the previous end, anchoring at coverage start/end (one trailing
+record may start at coverage end staying ordered). This opt-in tier
+intentionally performs a full sequential scan and can read several
+gigabytes.
 
 ```sh
 cmake -S . -B build/remediation-real -DLIBJPL_FETCH_EPHEMERIDES=ON

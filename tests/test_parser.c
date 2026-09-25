@@ -360,7 +360,9 @@ int main(void) {
             for (i = 0; i < PARSER_DOUBLES; ++i) rec360[r * PARSER_DOUBLES + i] = 0.0;
             rec360[r * PARSER_DOUBLES + 0] = 2451545.0 + (double)r;
             rec360[r * PARSER_DOUBLES + 1] = 2451546.0 + (double)r;
-            rec360[r * PARSER_DOUBLES + 2] = 5.0;
+            /* F02: covered vs trailing coefficients must differ so the
+             * final-endpoint query proves which record was selected. */
+            rec360[r * PARSER_DOUBLES + 2] = (r == 0) ? 5.0 : 99.0;
             rec360[r * PARSER_DOUBLES + 3] = 6.0;
             rec360[r * PARSER_DOUBLES + 4] = 7.0;
         }
@@ -396,6 +398,12 @@ int main(void) {
         JPL_TEST_CHECK(state[1] == 6.0 / JPL_TEST_AU_KM && state[2] == 7.0 / JPL_TEST_AU_KM);
         JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
         JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[3] == 0.0);
+        /* F02: the exact coverage end selects the covered interval, never
+         * the physical trailing record. */
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
     }
@@ -419,8 +427,7 @@ int main(void) {
      * reading extension bytes from its constants record. The constants
      * record opens with raw words {0,0,0,1000,1,1}, which would decode
      * as a positive TT-TDB triple {1000,1,1} if misread as a header
-     * tail at byte 2856; the validated geometry must ignore it. */
-    {
+     * tail at byte 2856; the validated geometry must ignore it. */    {
         enum { C357 = 357, CB357 = C357 * 8 };
         static unsigned char h357[CB357];
         static double c357[C357], d357[C357];
@@ -486,6 +493,186 @@ int main(void) {
         jpl_close(e);
     }
 
+    /* F03: a numeric constant equal to the record start date is valid data,
+     * not evidence of a phantom layout. One-record little-endian Mars mock
+     * with constant_count = 2, constants[0] == start_jd, valid distinct
+     * record endpoints and coefficients: both opens must succeed, constants
+     * must preserve the equal value, and state interpolation must succeed. */
+    {
+        static unsigned char hcol[PARSER_BYTES];
+        static double ccol[PARSER_DOUBLES], rcol[PARSER_DOUBLES];
+        jpl_test_mock mcol;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double got[2], state[6];
+        size_t i;
+        memset(hcol, 0, sizeof hcol);
+        memcpy(hcol, "constants collision", 19);
+        test_mock_header(hcol, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(hcol, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
+        test_put_ptr(hcol, 12, 441, 0, 0);
+        for (i = 0; i < PARSER_DOUBLES; ++i) ccol[i] = 0.0;
+        ccol[0] = 2451545.0;
+        ccol[1] = 22.0;
+        for (i = 0; i < PARSER_DOUBLES; ++i) rcol[i] = 0.0;
+        rcol[0] = 2451545.0;
+        rcol[1] = 2451546.0;
+        rcol[2] = 5.0;
+        rcol[3] = 6.0;
+        rcol[4] = 7.0;
+        memset(&mcol, 0, sizeof mcol);
+        mcol.record_doubles = PARSER_DOUBLES;
+        mcol.advertised_records = 1;
+        mcol.denum = 441;
+        mcol.constant_count = 2;
+        mcol.start[0] = 2451545.0;
+        mcol.end[0] = 2451546.0;
+        mcol.step_days = 1.0;
+        mcol.au_km = JPL_TEST_AU_KM;
+        mcol.emrat = JPL_TEST_MASS_RATIO;
+        mcol.header = hcol;
+        mcol.constants = ccol;
+        mcol.records = rcol;
+        JPL_TEST_CHECK(test_write_mock(path, &mcol) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+        JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
+        JPL_TEST_CHECK(got[0] == 2451545.0 && got[1] == 22.0);
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        jpl_close(m);
+        jpl_close(e);
+    }
+
+    /* F13: large-epoch rounding regression. A valid mock near JD 80000000
+     * with a non-binary step must open via FILE and mmap when its scheduled
+     * data endpoints are independently encoded as binary64; perturbing one
+     * endpoint by at least eight local ULPs must fail both opens. Before
+     * the fix, the valid mock fails under the fixed modern-epoch
+     * tolerance. The coverage span is a whole number of steps (3 x 1/3
+     * day) so the serialize-boundary sum stays exact in the count check;
+     * the scheduled endpoint (start + 1/3) itself is inexact in binary64,
+     * which is the rounding under test. */
+    {
+        static const double big_start = 80000000.0;
+        static const double big_step = 1.0 / 3.0;
+        static unsigned char hbig[PARSER_BYTES];
+        static double cbig[PARSER_DOUBLES];
+        jpl_test_mock mbig;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double enc_end, ulp, bad_end;
+        size_t i;
+        memset(hbig, 0, sizeof hbig);
+        memcpy(hbig, "large epoch", 11);
+        test_mock_header(hbig, big_start, big_start + 3.0 * big_step, big_step, 2);
+        test_put_ptr(hbig, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
+        test_put_ptr(hbig, 12, 441, 0, 0);
+        for (i = 0; i < PARSER_DOUBLES; ++i) cbig[i] = 0.0;
+        cbig[0] = 11.0;
+        cbig[1] = 22.0;
+        /* Three one-step records: endpoints are scheduled start + k*step,
+         * each independently encoded as binary64 (the writer serializes
+         * verbatim, so plant the rounded values directly). */
+        {
+            static double bigrec[3 * PARSER_DOUBLES];
+            size_t r, k;
+            for (r = 0; r < 3; ++r) {
+                for (k = 0; k < PARSER_DOUBLES; ++k) bigrec[r * PARSER_DOUBLES + k] = 0.0;
+                bigrec[r * PARSER_DOUBLES + 0] = big_start + (double)r * big_step;
+                bigrec[r * PARSER_DOUBLES + 1] = big_start + (double)(r + 1) * big_step;
+                bigrec[r * PARSER_DOUBLES + 2] = 5.0;
+                bigrec[r * PARSER_DOUBLES + 3] = 6.0;
+                bigrec[r * PARSER_DOUBLES + 4] = 7.0;
+            }
+            enc_end = bigrec[1];
+            memset(&mbig, 0, sizeof mbig);
+            mbig.records = bigrec;
+            mbig.record_doubles = PARSER_DOUBLES;
+        }
+        mbig.advertised_records = 3;
+        mbig.denum = 441;
+        mbig.constant_count = 2;
+        mbig.start[0] = big_start;
+        mbig.end[0] = big_start + 3.0 * big_step;
+        mbig.step_days = big_step;
+        mbig.au_km = JPL_TEST_AU_KM;
+        mbig.emrat = JPL_TEST_MASS_RATIO;
+        mbig.header = hbig;
+        mbig.constants = cbig;
+        /* records already points at bigrec; the negative leg below mutates
+         * bigrec in place through the same pointer. */
+        JPL_TEST_CHECK(test_write_mock(path, &mbig) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+        jpl_close(m);
+        jpl_close(e);
+        e = NULL;
+        m = NULL;
+        /* Perturb the first record end by at least eight local ULPs: both
+         * opens must now fail. nextafter() walks one ULP per call.
+         * bigrec lives in the block scope above; re-derive the pointer
+         * from the mock instead of touching rbig. */
+        ulp = enc_end;
+        for (i = 0; i < 8; ++i) ulp = nextafter(ulp, INFINITY);
+        bad_end = ulp;
+        JPL_TEST_CHECK(bad_end != enc_end);
+        mbig.records[1] = bad_end;
+        JPL_TEST_CHECK(test_write_mock(path, &mbig) == 0);
+        e = (jpl_ephemeris *)(uintptr_t)1;
+        m = (jpl_ephemeris *)(uintptr_t)1;
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(e == NULL);
+        JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(m == NULL);
+    }
+
+    /* F14: zero-constant foreign-endian coverage. A valid big-endian
+     * zero-constant mock must read constants with a non-NULL one-element
+     * destination through FILE and mmap, leaving the sentinel unchanged. */
+    {
+        static unsigned char hz[PARSER_BYTES];
+        static double rz[PARSER_DOUBLES];
+        jpl_test_mock mz;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double sentinel = 1234.5;
+        size_t i;
+        memset(hz, 0, sizeof hz);
+        memcpy(hz, "zero constants be", 17);
+        test_mock_header_be(hz, 2451545.0, 2451546.0, 1.0, 0);
+        test_put_ptr_be(hz, 3, 3, 1, 1); /* Mars */
+        test_put_ptr_be(hz, 12, 441, 0, 0);
+        for (i = 0; i < PARSER_DOUBLES; ++i) rz[i] = 0.0;
+        rz[0] = 2451545.0;
+        rz[1] = 2451546.0;
+        rz[2] = 5.0;
+        rz[3] = 6.0;
+        rz[4] = 7.0;
+        memset(&mz, 0, sizeof mz);
+        mz.record_doubles = PARSER_DOUBLES;
+        mz.advertised_records = 1;
+        mz.big_endian = 1;
+        mz.denum = 441;
+        mz.constant_count = 0;
+        mz.start[0] = 2451545.0;
+        mz.end[0] = 2451546.0;
+        mz.step_days = 1.0;
+        mz.au_km = JPL_TEST_AU_KM;
+        mz.emrat = JPL_TEST_MASS_RATIO;
+        mz.header = hz;
+        mz.constants = NULL;
+        mz.records = rz;
+        JPL_TEST_CHECK(test_write_mock(path, &mz) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+        JPL_TEST_CHECK(jpl_read_constants(e, &sentinel, 1) == JPL_OK);
+        JPL_TEST_CHECK(sentinel == 1234.5);
+        JPL_TEST_CHECK(jpl_read_constants(m, &sentinel, 1) == JPL_OK);
+        JPL_TEST_CHECK(sentinel == 1234.5);
+        jpl_close(m);
+        jpl_close(e);
+    }
+
     /* T05: saved ambiguous-preliminary BE case ([0,1], step 1, DENUM
      * 102, two constants, {3,1,1}) must succeed as big-endian after
      * full LE-candidate validation fails. */
@@ -547,10 +734,9 @@ int main(void) {
     /* T05: deliberately ambiguous file must fail rather than select
      * whichever width validates first. Two intervals [S,S+2] with a
      * 14400-byte file admit both W=3600/extra=2 and W=2880/extra=3,
-     * with matching dates planted at every candidate offset. The
-     * constants-identity discriminator passes both views (11.0 vs S
-     * at each view's own offsets), so only the split rule (at most one
-     * split may validate) can reject it. */
+     * with matching dates planted at every candidate offset. Geometry and
+     * scheduled endpoints alone admit both views, so only the split rule
+     * (at most one split may validate) can reject it. */
     {
         static unsigned char amb[14400];
         FILE *f;
@@ -564,10 +750,9 @@ int main(void) {
          * 11/22, distinct from the data start S. */
         test_put_f64(amb + 2880, 11.0);
         test_put_f64(amb + 2888, 22.0);
-        /* The W=3600 view reads its constants at [3600,7200): slot 0
-         * is amb[3600], which currently holds 0.0 (memset) -- distinct
-         * from S, so the W=3600 view ALSO passes its discriminator.
-         * Its data at 7200 holds S. Both views validate -> FORMAT.
+        /* The W=3600 view reads its constants at [3600,7200); that region
+         * holds 0.0 (memset) -- payload values never discriminate, and
+         * both views validate on geometry alone -> FORMAT.
          * NOTE: the W=3600 view's constants record overlaps the W=2880
          * view's constants record tail (3600 = 2880 + 720 = slot 90):
          * keep slot 90/91 of the W=2880 constants record at 0.0 (do NOT
@@ -613,6 +798,73 @@ int main(void) {
     JPL_TEST_CHECK(check_360_t15_absent(path, 1000u, 2147483647u, 2147483647u) == 0);
     JPL_TEST_CHECK(check_360_t15_absent(path, 359u, 3u, 1u) == 0);
     JPL_TEST_CHECK(check_360_t15_absent(path, 2u, 173u, 14u) == 0);
+
+    /* F06: safe wide-record regression. A valid mock with a 1 MiB record
+     * width, one advertised interval, and ordinary fixed header/endpoints.
+     * With the parser read limit at 2880 bytes, both opens must succeed
+     * (no parser read exceeds 2880 bytes). Before the fix, full-record
+     * parsing requested 1 MiB and both opens failed under the limit. The
+     * limit is reset even on failure; the hook is test-only and declared
+     * in src/jpl_private.h under LIBJPL_TESTING. */
+    {
+        enum { WDOUBLES = 131072, WBYTES = WDOUBLES * 8 };
+        static unsigned char *whdr = NULL;
+        static double *wconst = NULL, *wrec = NULL;
+        jpl_test_mock wm;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double state[6];
+        whdr = (unsigned char *)calloc(1, WBYTES);
+        wconst = (double *)calloc(WDOUBLES, sizeof *wconst);
+        wrec = (double *)calloc(WDOUBLES, sizeof *wrec);
+        JPL_TEST_CHECK(whdr != NULL && wconst != NULL && wrec != NULL);
+        memcpy(whdr, "wide record 1MiB", 16);
+        test_mock_header(whdr, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(whdr, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
+        test_put_ptr(whdr, 12, 441, 0, 0);
+        wconst[0] = 11.0;
+        wconst[1] = 22.0;
+        wrec[0] = 2451545.0;
+        wrec[1] = 2451546.0;
+        wrec[2] = 5.0;
+        wrec[3] = 6.0;
+        wrec[4] = 7.0;
+        memset(&wm, 0, sizeof wm);
+        wm.record_doubles = WDOUBLES;
+        wm.advertised_records = 1;
+        wm.denum = 441;
+        wm.constant_count = 2;
+        wm.start[0] = 2451545.0;
+        wm.end[0] = 2451546.0;
+        wm.step_days = 1.0;
+        wm.au_km = JPL_TEST_AU_KM;
+        wm.emrat = JPL_TEST_MASS_RATIO;
+        wm.header = whdr;
+        wm.constants = wconst;
+        wm.records = wrec;
+        JPL_TEST_CHECK(test_write_mock(path, &wm) == 0);
+        /* Pre-fix behavior: with the read limit set, both opens fail here
+         * because full-record parsing requests 1 MiB. Post-fix they must
+         * succeed; verified by running this block against the reverted
+         * parser during development. */
+        jpl_test_set_parser_read_limit(2880);
+        {
+            jpl_status se = jpl_open(path, &e);
+            jpl_status sm = jpl_open_mmap(path, &m);
+            jpl_test_set_parser_read_limit(0);
+            JPL_TEST_CHECK(se == JPL_OK);
+            JPL_TEST_CHECK(sm == JPL_OK);
+        }
+        JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == WDOUBLES);
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        jpl_close(m);
+        jpl_close(e);
+        free(wrec);
+        free(wconst);
+        free(whdr);
+    }
 
     /* T12: DENUM allowlist classification sampled through complete
      * open paths (unknown values stay readable by core). DENUM 200/202

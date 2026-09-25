@@ -9,6 +9,9 @@
 # (label `self-hosted`); hosted execution uses downloads plus cache only.
 name: ephemerides
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
 
@@ -22,9 +25,9 @@ jobs:
         config: [Debug, Release]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Restore ephemeris cache (keyed by manifest hash and platform)
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: build/eph/ephemeris
           key: ephemeris-${{ runner.os }}-${{ hashFiles('tests/data/MANIFEST.txt') }}
@@ -39,7 +42,7 @@ jobs:
       - name: DE440/DE440t testpo (both configurations)
         run: ctest --test-dir build/eph -C ${{ matrix.config }} --output-on-failure -R 'jpl_testpo_440|jpl_real_ephemeris|jpl_all_ephemerides$'
       - name: Retain summary counts/hashes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: testpo-summary-${{ matrix.config }}
           path: |
@@ -48,10 +51,20 @@ jobs:
 
   local-sweep:
     name: Maintainer-local legacy/long-span sweep
-    runs-on: [self-hosted]
+    runs-on: [self-hosted, libjpl-ephemerides]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Preflight (dedicated runner data required)
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:JPLEPH)) { throw 'JPLEPH repository variable is required' }
+          if ([string]::IsNullOrWhiteSpace($env:JPL_TESTPO)) { throw 'JPL_TESTPO repository variable is required' }
+          if (-not (Test-Path -LiteralPath $env:JPLEPH -PathType Container)) { throw "JPLEPH directory not found: $env:JPLEPH" }
+          if (-not (Test-Path -LiteralPath $env:JPL_TESTPO -PathType Container)) { throw "JPL_TESTPO directory not found: $env:JPL_TESTPO" }
+        env:
+          JPLEPH: ${{ vars.JPLEPH }}
+          JPL_TESTPO: ${{ vars.JPL_TESTPO }}
       - name: Configure (fetch ON; JPLEPH/JPL_TESTPO redirect per-file sources inside this tier only)
         run: cmake -S . -B build/eph -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=ON
         env:
@@ -59,8 +72,18 @@ jobs:
           JPL_TESTPO: ${{ vars.JPL_TESTPO }}
       - name: Build
         run: cmake --build build/eph --config Release --parallel
+      - name: Prove local registration before execution
+        shell: powershell
+        run: |
+          ctest -N --test-dir build/eph -C Release > "$env:RUNNER_TEMP/jpl_local_tests.txt"
+          $names = Get-Content "$env:RUNNER_TEMP/jpl_local_tests.txt" -Raw
+          if ($names -notmatch 'jpl_all_ephemerides_local') { throw 'jpl_all_ephemerides_local is not registered' }
+          $local = [regex]::Matches($names, 'jpl_testpo_[0-9][0-9]*t?') | ForEach-Object { $_.Value } | Sort-Object -Unique
+          $non440 = @($local | Where-Object { $_ -ne 'jpl_testpo_440' -and $_ -ne 'jpl_testpo_440t' -and $_ -notmatch 'parser' })
+          if ($non440.Count -lt 1) { throw 'no local non-440 jpl_testpo_ suite is registered' }
+          Write-Output ("local suites: jpl_all_ephemerides_local + " + ($non440 -join ', '))
       - name: Local sweep (maintainer runner only)
-        run: ctest --test-dir build/eph -C Release --output-on-failure -R 'jpl_all_ephemerides_local|jpl_testpo_'
+        run: ctest --test-dir build/eph -C Release --output-on-failure -R 'jpl_all_ephemerides_local|jpl_testpo_[0-9]'
         env:
           JPLEPH: ${{ vars.JPLEPH }}
           JPL_TESTPO: ${{ vars.JPL_TESTPO }}

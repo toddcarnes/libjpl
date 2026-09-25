@@ -124,7 +124,7 @@ Opt-in fetch tier: `-DLIBJPL_FETCH_EPHEMERIDES=ON` (default OFF, approx
 from JPL (`https://ssd.jpl.nasa.gov/ftp/eph/planets/Linux/de440/` and
 `.../de440t/`, filenames `linux_p1550p2650.440[t]` plus co-located
 `testpo.440[t]`), verifies them per `tests/data/MANIFEST.txt` (exact byte
-size for binaries, SHA-256 for testpo), and registers the integration
+size and SHA-256 for all four downloaded files), and registers the integration
 plus reference suites (`jpl_real_ephemeris`,
 `jpl_all_ephemerides` (download-only builds, when the resolved download
 dir is non-empty), `jpl_all_ephemerides_local` (only when `JPLEPH` is set),

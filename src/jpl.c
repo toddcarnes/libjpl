@@ -492,36 +492,6 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             off_trail = width + (expected_records + 1) * width;
             {
                 size_t data_off = width + width;
-                unsigned char raw0[8];
-                double slot0;
-                if (data_off / width != 2) continue;
-                if (off_last / width != expected_records + 1) continue;
-                if (extra_records == 3 && off_trail / width != expected_records + 2) continue;
-                if (source->read(source->context, data_off, raw0, sizeof raw0) != JPL_OK) continue;
-                slot0 = read_f64(raw0, order);
-                if (!isnan(slot0)) {
-                    /* Constants-identity discriminator (R06b): a phantom
-                     * divisor reads the constants record as data. Real
-                     * constants records hold constant_count values, so
-                     * compare only when the candidate constants record
-                     * actually HAS payload at slot 0 (constant_count >
-                     * 0); a zero-payload constants record cannot
-                     * discriminate. */
-                    if (candidate.constant_count > 0) {
-                        unsigned char cbuf[8];
-                        double cslot0;
-                        if (source->read(source->context, off_first, cbuf, sizeof cbuf) != JPL_OK) continue;
-                        cslot0 = read_f64(cbuf, order);
-                        if (cslot0 == slot0) continue;
-                    }
-                } else {
-                    /* Corrupt first data date with no clean covered
-                     * endpoint to anchor the layout: reject the width
-                     * (single-record NaN-first files fail here; the
-                     * lazy FORMAT path is covered by interior-corrupt
-                     * files with clean endpoints). */
-                    continue;
-                }
                 ep_status = header_record_endpoints(source, data_off, width, order,
                                                     first, second);
                 if (ep_status != JPL_OK) continue;

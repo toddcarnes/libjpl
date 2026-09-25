@@ -427,8 +427,7 @@ int main(void) {
      * reading extension bytes from its constants record. The constants
      * record opens with raw words {0,0,0,1000,1,1}, which would decode
      * as a positive TT-TDB triple {1000,1,1} if misread as a header
-     * tail at byte 2856; the validated geometry must ignore it. */
-    {
+     * tail at byte 2856; the validated geometry must ignore it. */    {
         enum { C357 = 357, CB357 = C357 * 8 };
         static unsigned char h357[CB357];
         static double c357[C357], d357[C357];
@@ -494,6 +493,58 @@ int main(void) {
         jpl_close(e);
     }
 
+    /* F03: a numeric constant equal to the record start date is valid data,
+     * not evidence of a phantom layout. One-record little-endian Mars mock
+     * with constant_count = 2, constants[0] == start_jd, valid distinct
+     * record endpoints and coefficients: both opens must succeed, constants
+     * must preserve the equal value, and state interpolation must succeed. */
+    {
+        static unsigned char hcol[PARSER_BYTES];
+        static double ccol[PARSER_DOUBLES], rcol[PARSER_DOUBLES];
+        jpl_test_mock mcol;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double got[2], state[6];
+        size_t i;
+        memset(hcol, 0, sizeof hcol);
+        memcpy(hcol, "constants collision", 19);
+        test_mock_header(hcol, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(hcol, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
+        test_put_ptr(hcol, 12, 441, 0, 0);
+        for (i = 0; i < PARSER_DOUBLES; ++i) ccol[i] = 0.0;
+        ccol[0] = 2451545.0;
+        ccol[1] = 22.0;
+        for (i = 0; i < PARSER_DOUBLES; ++i) rcol[i] = 0.0;
+        rcol[0] = 2451545.0;
+        rcol[1] = 2451546.0;
+        rcol[2] = 5.0;
+        rcol[3] = 6.0;
+        rcol[4] = 7.0;
+        memset(&mcol, 0, sizeof mcol);
+        mcol.record_doubles = PARSER_DOUBLES;
+        mcol.advertised_records = 1;
+        mcol.denum = 441;
+        mcol.constant_count = 2;
+        mcol.start[0] = 2451545.0;
+        mcol.end[0] = 2451546.0;
+        mcol.step_days = 1.0;
+        mcol.au_km = JPL_TEST_AU_KM;
+        mcol.emrat = JPL_TEST_MASS_RATIO;
+        mcol.header = hcol;
+        mcol.constants = ccol;
+        mcol.records = rcol;
+        JPL_TEST_CHECK(test_write_mock(path, &mcol) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+        JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
+        JPL_TEST_CHECK(got[0] == 2451545.0 && got[1] == 22.0);
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        jpl_close(m);
+        jpl_close(e);
+    }
+
     /* T05: saved ambiguous-preliminary BE case ([0,1], step 1, DENUM
      * 102, two constants, {3,1,1}) must succeed as big-endian after
      * full LE-candidate validation fails. */
@@ -555,10 +606,9 @@ int main(void) {
     /* T05: deliberately ambiguous file must fail rather than select
      * whichever width validates first. Two intervals [S,S+2] with a
      * 14400-byte file admit both W=3600/extra=2 and W=2880/extra=3,
-     * with matching dates planted at every candidate offset. The
-     * constants-identity discriminator passes both views (11.0 vs S
-     * at each view's own offsets), so only the split rule (at most one
-     * split may validate) can reject it. */
+     * with matching dates planted at every candidate offset. Geometry and
+     * scheduled endpoints alone admit both views, so only the split rule
+     * (at most one split may validate) can reject it. */
     {
         static unsigned char amb[14400];
         FILE *f;
@@ -572,10 +622,9 @@ int main(void) {
          * 11/22, distinct from the data start S. */
         test_put_f64(amb + 2880, 11.0);
         test_put_f64(amb + 2888, 22.0);
-        /* The W=3600 view reads its constants at [3600,7200): slot 0
-         * is amb[3600], which currently holds 0.0 (memset) -- distinct
-         * from S, so the W=3600 view ALSO passes its discriminator.
-         * Its data at 7200 holds S. Both views validate -> FORMAT.
+        /* The W=3600 view reads its constants at [3600,7200); that region
+         * holds 0.0 (memset) -- payload values never discriminate, and
+         * both views validate on geometry alone -> FORMAT.
          * NOTE: the W=3600 view's constants record overlaps the W=2880
          * view's constants record tail (3600 = 2880 + 720 = slot 90):
          * keep slot 90/91 of the W=2880 constants record at 0.0 (do NOT

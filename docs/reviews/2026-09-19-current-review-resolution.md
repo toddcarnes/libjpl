@@ -88,13 +88,29 @@ All commands run under PowerShell 5.1 from the worktree root
 - Focused suites Debug + Release: `jpl_parser`, `jpl_api_errors`,
   `jpl_numeric`, `jpl_fixture`, `jpl_testpo_parser` all pass.
 
+## T03 evidence
+
+- Deleted the constants slot-0 vs data slot-0 value comparison in
+  `validate_layout()` (`src/jpl.c`). Geometry (complete split candidates,
+  scheduled record endpoints) and header metadata remain the sole layout
+  discriminators.
+- Regression: valid one-record little-endian Mars mock with
+  `constant_count = 2`, `constants[0] == start_jd`, valid distinct endpoints
+  and coefficients. Failed with `JPL_ERROR_FORMAT` on both opens before the
+  fix; now both succeed, constants preserve the equal value, interpolation
+  succeeds (FILE + mmap).
+- Ambiguity still rejected: the deliberately ambiguous-width fixture returns
+  `JPL_ERROR_FORMAT` because both complete split candidates survive (split
+  rule), not because payload values differ. Comments updated accordingly.
+- `jpl_parser`, `jpl_mmap`, `jpl_fixture` pass in Debug and Release.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
 | --- | --- | --- | --- | --- | --- | --- |
 | F01 | T01, T17 | Resolved | (this commit) | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:10` 15/15 x10; single-select auto-runs setup; full parallel 36/36 (threads standalone) | T17 stress/docs-only/platform gates |
 | F02 | T02 | Resolved | (this commit) | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites | T17 full acceptance |
-| F03 | T03 | Open | - | Equal-value valid mock, FILE/mmap | Fix pending | - |
+| F03 | T03 | Resolved | (this commit) | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT | T17 real-fixture tier |
 | F04 | T06 | Open | - | Invalid codes combined with range/missing data | Fix pending | - |
 | F05 | T07 | Open | - | Finite tiny-Sun ERFA/scale-safe reference | Fix pending | - |
 | F06 | T04 | Open | - | Wide sparse record with bounded-read proof | Fix pending | - |

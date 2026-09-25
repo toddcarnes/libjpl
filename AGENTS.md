@@ -67,7 +67,7 @@ ctest --test-dir build -C Debug --output-on-failure
   `jpl_all_ephemerides_local` only when `JPLEPH` is set, `jpl_testpo_440[t]`
   plus the local `JPLEPH`/`JPL_TESTPO` sweep). `JPLEPH`/`JPL_TESTPO` env dirs
   only redirect per-file sources inside that tier; they do not enable it on
-  their own. Default offline suites: unit/validator/fixture/license/fetch-cache/install/docs/examples tiers (see `ctest -N`).
+  their own. Default offline suites: unit/validator/fixture/license/fetch-cache/install/workflow-policy/numerical-reference/docs-only/docs/examples tiers (see `ctest -N`).
 - Generated docs: `jpl_docs_symbols` (public-symbol XML inventory) and
   `jpl_docs_paths` (source/build paths with spaces) exist when docs are
   enabled, even with ordinary tests OFF (`jpl_docs_only` proves the

@@ -336,6 +336,25 @@ All commands run under PowerShell 5.1 from the worktree root
   approved SHA retaining the release comment.
 - Policy passes locally; hosted jobs are T17 (no dispatch claimed yet).
 
+## T16 evidence
+
+- Local-link regression in `tests/cmake/check_licenses.cmake`: extracts the
+  `` [`LICENSE`](...) `` target, resolves inside the source root, requires
+  an existing regular file. Failed pre-fix (`../LICENSE` escapes the root).
+- `LICENSES.md`: `[`LICENSE`](../LICENSE)` -> `[`LICENSE`](LICENSE)`;
+  installed notice paths unchanged.
+- `README.md` fetch wording: DE440, DE440t, testpo.440, testpo.440t all get
+  exact-size and SHA-256 verification from `tests/data/MANIFEST.txt`;
+  maintainer-local alternate spans used as-is per reference suites.
+- Audited live docs vs completed tasks: target ranges (T06), docs-only
+  tests (T12), validator fixture setup (T01), complete sweep cost (T09),
+  cache rollback (T10), local workflow prerequisites (T11), workflow pins
+  (T15), numerical hashes (T13), version 0.3.0 (T14). Historical
+  specs/plans/reviews untouched.
+- `jpl_licenses`, docs-only, workflow policy, numerical integrity,
+  fetch-cache, install pass; Markdown link scan is the license-link check
+  itself (no separate scanner added).
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -357,4 +376,4 @@ All commands run under PowerShell 5.1 from the worktree root
 | F15 | T12, T17 | Resolved | (this commit) | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install in T17 | T17 docs/install gates |
 | F16 | T13, T17 | Resolved | (this commit) | Positive and mutated-copy integrity checks | Integrity + numerical/frame/aberration/light-time pass; mutated copy fails | T17 rerun |
 | F17 | T15, T17 | Resolved | (this commit) | Offline workflow policy plus hosted jobs | Policy passes; hosted jobs in T17 | T17 hosted dispatch |
-| F18 | T06, T16, T17 | Open | - | Doxygen, local links, README/license audit | Fix pending | - |
+| F18 | T06, T16, T17 | Resolved | (this commit) | Doxygen, local links, README/license audit | Licenses/docs-only/policy/provenance/fetch/install pass; Doxygen + full suite in T17 | T17 full acceptance |

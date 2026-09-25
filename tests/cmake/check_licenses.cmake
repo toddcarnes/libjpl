@@ -39,6 +39,23 @@ foreach(required IN ITEMS "MIT License" "Copyright \\(c\\) 2026 Todd Carnes" "Pe
   endif()
 endforeach()
 
+# 1b. The LICENSES.md project-license link must resolve inside the source
+# root to an existing regular file (F18: ../LICENSE escapes the root).
+# The link text uses backticks ([`LICENSE`](...)): capture group 2 holds
+# the target (group 1 is the tick-quoted text). A later MATCH overwrites
+# CMAKE_MATCH_*, so copy the target out immediately and use only the copy.
+file(READ "${SOURCE}/LICENSES.md" _licenses_doc)
+string(REGEX MATCH "\\[([^]]+)\\]\\(([^)]+)\\)" _license_link "${_licenses_doc}")
+set(_license_target "${CMAKE_MATCH_2}")
+if("${_license_target}" STREQUAL "")
+  message(FATAL_ERROR "LICENSES.md carries no [`LICENSE`](...) project-license link")
+endif()
+get_filename_component(_license_resolved "${SOURCE}/${_license_target}" ABSOLUTE)
+file(RELATIVE_PATH _license_rel "${SOURCE}" "${_license_resolved}")
+if(_license_rel MATCHES "^\\.\\./" OR NOT EXISTS "${_license_resolved}" OR IS_DIRECTORY "${_license_resolved}")
+  message(FATAL_ERROR "LICENSES.md project-license link '${_license_target}' does not resolve to a file inside the source root")
+endif()
+
 # 2. Every inventoried first-party file must exist and carry the notice.
 foreach(rel IN LISTS JPL_LICENSE_FIRST_PARTY)
   if(NOT EXISTS "${SOURCE}/${rel}")

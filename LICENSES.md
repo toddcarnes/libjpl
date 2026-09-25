@@ -10,7 +10,7 @@ See LICENSE in the project root for the full license text.
 
 `libjpl` first-party code and documentation are licensed under the MIT
 License, copyright Todd Carnes (2026). The complete grant lives in
-[`LICENSE`](../LICENSE); every first-party source, header, test, script,
+[`LICENSE`](LICENSE); every first-party source, header, test, script,
 build, and documentation file carries a short copyright notice plus
 `SPDX-License-Identifier: MIT` in its native comment syntax. The
 enumerated file list is `tests/license_inventory.cmake` (the list

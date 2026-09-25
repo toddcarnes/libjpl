@@ -104,6 +104,27 @@ All commands run under PowerShell 5.1 from the worktree root
   rule), not because payload values differ. Comments updated accordingly.
 - `jpl_parser`, `jpl_mmap`, `jpl_fixture` pass in Debug and Release.
 
+## T04 evidence
+
+- `parse_header()` now parses only the classic 2856-byte fields and leaves
+  TT-TDB tentative and absent; new `parse_optional_tt_tdb()` decodes the
+  24-byte T14/T15 tail (T15 at offset 12, integer bounds checked).
+- `validate_layout()` no longer allocates an overflow-name window or a full
+  candidate record: the tail offset is computed with checked arithmetic and
+  the 24 tail bytes are read directly via the bounded source wrapper. Extra
+  constant names are skipped by offset, never copied. File-controlled record
+  widths no longer control heap allocation during open.
+- Test-only parser read limiter `jpl_test_set_parser_read_limit()` (declared
+  in `src/jpl_private.h` under `LIBJPL_TESTING`): every parser source read
+  routes through one wrapper; nonzero limits fail over-limit requests with
+  `JPL_ERROR_IO`. Kept out of installed headers.
+- Regression: 1 MiB wide-record mock under a 2880-byte limit opens via FILE
+  and mmap and interpolates (pre-fix: full-record parse requested 1 MiB and
+  both opens failed). `jpl_largefile` opens its 4096-byte record under the
+  same limit, proving no parser read exceeds 2880 bytes.
+- Parser matrix Debug + Release: `jpl_parser`, `jpl_largefile`, `jpl_tt_tdb`
+  (overflow-name + DE440t boundary), `jpl_fixture`, big-endian suites green.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -113,7 +134,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F03 | T03 | Resolved | (this commit) | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT | T17 real-fixture tier |
 | F04 | T06 | Open | - | Invalid codes combined with range/missing data | Fix pending | - |
 | F05 | T07 | Open | - | Finite tiny-Sun ERFA/scale-safe reference | Fix pending | - |
-| F06 | T04 | Open | - | Wide sparse record with bounded-read proof | Fix pending | - |
+| F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
 | F07 | T10 | Open | - | Forced failure restores prior destination | Fix pending | - |
 | F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |

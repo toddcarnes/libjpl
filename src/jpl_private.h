@@ -89,6 +89,11 @@ int jpl_date_compare(const double a[2], const double b[2]);
 jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
     const double jd[2], int target, int center, double state[6], double *delay,
     int fast_iterations, int safeguarded_iterations);
+
+/* Bounded-read test hook (F06): caps parser source reads at max_bytes when
+ * nonzero (0 disables). Production builds without LIBJPL_TESTING bypass it
+ * entirely; the hook is test-only and never declared in installed headers. */
+void jpl_test_set_parser_read_limit(size_t max_bytes);
 #endif
 
 #endif

@@ -671,6 +671,73 @@ int main(void) {
     JPL_TEST_CHECK(check_360_t15_absent(path, 359u, 3u, 1u) == 0);
     JPL_TEST_CHECK(check_360_t15_absent(path, 2u, 173u, 14u) == 0);
 
+    /* F06: safe wide-record regression. A valid mock with a 1 MiB record
+     * width, one advertised interval, and ordinary fixed header/endpoints.
+     * With the parser read limit at 2880 bytes, both opens must succeed
+     * (no parser read exceeds 2880 bytes). Before the fix, full-record
+     * parsing requested 1 MiB and both opens failed under the limit. The
+     * limit is reset even on failure; the hook is test-only and declared
+     * in src/jpl_private.h under LIBJPL_TESTING. */
+    {
+        enum { WDOUBLES = 131072, WBYTES = WDOUBLES * 8 };
+        static unsigned char *whdr = NULL;
+        static double *wconst = NULL, *wrec = NULL;
+        jpl_test_mock wm;
+        jpl_ephemeris *e = NULL, *m = NULL;
+        double state[6];
+        whdr = (unsigned char *)calloc(1, WBYTES);
+        wconst = (double *)calloc(WDOUBLES, sizeof *wconst);
+        wrec = (double *)calloc(WDOUBLES, sizeof *wrec);
+        JPL_TEST_CHECK(whdr != NULL && wconst != NULL && wrec != NULL);
+        memcpy(whdr, "wide record 1MiB", 16);
+        test_mock_header(whdr, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(whdr, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
+        test_put_ptr(whdr, 12, 441, 0, 0);
+        wconst[0] = 11.0;
+        wconst[1] = 22.0;
+        wrec[0] = 2451545.0;
+        wrec[1] = 2451546.0;
+        wrec[2] = 5.0;
+        wrec[3] = 6.0;
+        wrec[4] = 7.0;
+        memset(&wm, 0, sizeof wm);
+        wm.record_doubles = WDOUBLES;
+        wm.advertised_records = 1;
+        wm.denum = 441;
+        wm.constant_count = 2;
+        wm.start[0] = 2451545.0;
+        wm.end[0] = 2451546.0;
+        wm.step_days = 1.0;
+        wm.au_km = JPL_TEST_AU_KM;
+        wm.emrat = JPL_TEST_MASS_RATIO;
+        wm.header = whdr;
+        wm.constants = wconst;
+        wm.records = wrec;
+        JPL_TEST_CHECK(test_write_mock(path, &wm) == 0);
+        /* Pre-fix behavior: with the read limit set, both opens fail here
+         * because full-record parsing requests 1 MiB. Post-fix they must
+         * succeed; verified by running this block against the reverted
+         * parser during development. */
+        jpl_test_set_parser_read_limit(2880);
+        {
+            jpl_status se = jpl_open(path, &e);
+            jpl_status sm = jpl_open_mmap(path, &m);
+            jpl_test_set_parser_read_limit(0);
+            JPL_TEST_CHECK(se == JPL_OK);
+            JPL_TEST_CHECK(sm == JPL_OK);
+        }
+        JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == WDOUBLES);
+        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        jpl_close(m);
+        jpl_close(e);
+        free(wrec);
+        free(wconst);
+        free(whdr);
+    }
+
     /* T12: DENUM allowlist classification sampled through complete
      * open paths (unknown values stay readable by core). DENUM 200/202
      * map to dynamical-2000, 999 maps to unknown. */

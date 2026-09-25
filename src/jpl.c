@@ -60,6 +60,9 @@ static int seek_to(FILE *file, size_t offset);
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out);
 static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, size_t size,
                                 jpl_byte_order order);
+static void parse_optional_tt_tdb(jpl_header *header,
+                                  const unsigned char tail[24],
+                                  jpl_byte_order order);
 static jpl_reference_frame classify_frame(int denum);
 
 struct jpl_ephemeris {
@@ -239,6 +242,26 @@ static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
     return 0;
 }
 
+/* Optional 24-byte TT-TDB tail decoder (F06): parses exactly the T14/T15
+ * triplets at their checked offset. Reads T15 from offset 12, checks
+ * integer bounds, and leaves has_tt_tdb == 0 until span validation in the
+ * caller. Extra constant names are skipped by offset, never copied. */
+static void parse_optional_tt_tdb(jpl_header *header,
+                                  const unsigned char tail[24],
+                                  jpl_byte_order order) {
+    uint32_t u_t15s, u_t15c, u_t15l;
+    const unsigned char *q;
+    if (!header || !tail) return;
+    header->has_tt_tdb = 0;
+    memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
+    q = tail + 12;
+    u_t15s = read_u32(q, order); q += 4; u_t15c = read_u32(q, order); q += 4; u_t15l = read_u32(q, order);
+    if (u_t15s > INT_MAX || u_t15c > INT_MAX || u_t15l > INT_MAX) return;
+    header->tt_tdb_pointer.start_index = (int)u_t15s;
+    header->tt_tdb_pointer.coefficients_per_component = (int)u_t15c;
+    header->tt_tdb_pointer.subintervals = (int)u_t15l;
+}
+
 /* Minimum physical record width bound (see CLASSIC_HEADER_BYTES above):
  * The interval count is bounded by file geometry (file_size divided by
  * this width, minus header/constants records) before any
@@ -268,6 +291,23 @@ typedef struct jpl_byte_source {
 
 typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_mmap_source;
 typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
+
+#ifdef LIBJPL_TESTING
+/* F06 bounded-read test hook: nonzero limit fails any parser source read
+ * requesting more bytes. Production builds compile to the direct read. */
+static size_t jpl_parser_read_limit = 0;
+void jpl_test_set_parser_read_limit(size_t max_bytes) { jpl_parser_read_limit = max_bytes; }
+static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset,
+                                    unsigned char *out, size_t count) {
+    if (jpl_parser_read_limit != 0 && count > jpl_parser_read_limit) return JPL_ERROR_IO;
+    return source->read(source->context, offset, out, count);
+}
+#else
+static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset,
+                                    unsigned char *out, size_t count) {
+    return source->read(source->context, offset, out, count);
+}
+#endif
 
 static jpl_status mmap_read_bytes(void *context, size_t offset,
                                   unsigned char *out, size_t count) {
@@ -363,35 +403,14 @@ static jpl_status validate_layout(const jpl_byte_source *source,
     if (!source || !header || !record_count || !covered_record_count || !source->read) return JPL_ERROR_ARGUMENT;
     /* Initial header reads use the classic required size, not an
      * unconditional extension-sized read. Parse into the candidate-local
-     * header, never the published header. Overflow-name headers (T06:
-     * constant_count > 400) carry their IPT 14/15 tail past the classic
-     * cursor, so extend the initial window past 2856 when the classic
-     * pre-parse advertises overflow names -- bounded by the file size
-     * so a corrupt count cannot over-allocate. Re-parse the extended
-     * window under the same byte order before geometry checks. */
-    status = source->read(source->context, 0, classic, sizeof classic);
+     * header, never the published header. Overflow-name bytes are skipped
+     * by offset (F06): the tail offset is computed with checked arithmetic
+     * but extra names are never copied into a heap window. */
+    status = parser_read_bytes(source, 0, classic, sizeof classic);
     if (status != JPL_OK) return status;
     memset(&candidate, 0, sizeof candidate);
     status = parse_header(&candidate, classic, sizeof classic, order);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (candidate.constant_count > JPL_MAX_CONSTANT_NAMES) {
-        size_t extra = (size_t)(candidate.constant_count - JPL_MAX_CONSTANT_NAMES);
-        size_t need = 0;
-        unsigned char *wide = NULL;
-        jpl_header reparsed;
-        if (extra > (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE - 24) / (size_t)JPL_CONSTANT_NAME_LENGTH)
-            return JPL_ERROR_FORMAT;
-        need = (size_t)JPL_TT_TDB_TAIL_BASE + extra * (size_t)JPL_CONSTANT_NAME_LENGTH + 24;
-        if (need <= sizeof classic || need > source->size) return JPL_ERROR_FORMAT;
-        wide = malloc(need);
-        if (!wide) return JPL_ERROR_MEMORY;
-        status = source->read(source->context, 0, wide, need);
-        if (status != JPL_OK) { free(wide); return status; }
-        status = parse_header(&reparsed, wide, need, order);
-        free(wide);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        candidate = reparsed;
-    }
     if (source->size < (size_t)MIN_RECORD_BYTES) return JPL_ERROR_FORMAT;
     max_records = source->size / (size_t)MIN_RECORD_BYTES;
     if (max_records < 2) return JPL_ERROR_FORMAT;
@@ -431,9 +450,8 @@ static jpl_status validate_layout(const jpl_byte_source *source,
      * constants, data) has the same width, and the overflow names
      * occupy header-record bytes that would otherwise be padding.
      * (Overflow names need no extra width: e.g. 1470 name bytes must not
-     * be added to an 8144-byte pointer-derived width.) The full-record
-     * re-parse below still locates the tail at 2856+6*extra inside
-     * the width. */
+     * be added to an 8144-byte pointer-derived width.) The optional tail
+     * is read directly at 2856+6*extra inside the width. */
     required_doubles = candidate.record_double_count;
     if (required_doubles == 0) return JPL_ERROR_FORMAT;
     if ((size_t)candidate.constant_count > required_doubles) required_doubles = (size_t)candidate.constant_count;
@@ -520,30 +538,22 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                 /* Trailing record is physical only; its end need not tie
                  * to advertised coverage (checked as ordered/finite). */
             }
-            /* Full candidate header record must re-parse cleanly so
-             * extension words come only from inside it, never from the
-             * constants or data record. The optional TT-TDB triple is
-             * tentative until geometry is known: after the candidate
-             * width is established, locate 2856+6*extra with checked
-             * arithmetic, require 24 tail bytes inside that header
-             * record, and accept only a fully positive, checked,
-             * in-record span. Anything else (missing tail, absent or
-             * unrepresentable triple, overflow, span outside the
-             * physical record) means absent without enlarging the
-             * width or rejecting the classic file. */
+            /* Optional TT-TDB tail is parsed from 24 bytes read directly at
+             * its checked offset (F06): after the candidate width is
+             * established, locate 2856+6*extra with checked arithmetic and
+             * read the tail only when it fits inside the candidate header
+             * record. No overflow-name window and no full-record allocation.
+             * Accept only a fully positive, checked, in-record span.
+             * Anything else (missing tail, absent or unrepresentable triple,
+             * overflow, span outside the physical record) means absent
+             * without enlarging the width or rejecting the classic file. */
             {
-                unsigned char *full = malloc(width);
-                jpl_header reparsed;
+                jpl_header reparsed = candidate;
                 size_t end = 0, tail = 0, tail_extra = 0;
                 int tail_inside = 0;
                 jpl_pointer tentative;
+                unsigned char raw_tail[24];
                 jpl_status rstatus;
-                if (!full) return JPL_ERROR_MEMORY;
-                rstatus = source->read(source->context, 0, full, width);
-                if (rstatus != JPL_OK) { free(full); return rstatus; }
-                rstatus = parse_header(&reparsed, full, width, order);
-                free(full);
-                if (rstatus != JPL_OK) continue;
                 if (reparsed.record_double_count > width / 8) continue;
                 reparsed.record_double_count = width / 8;
                 reparsed.has_tt_tdb = 0;
@@ -559,6 +569,15 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                         tail_extra * (size_t)JPL_CONSTANT_NAME_LENGTH;
                     tail_inside = tail + 24 <= width ? 1 : 0;
                 }
+                if (tail_inside) {
+                    rstatus = parser_read_bytes(source, tail, raw_tail, sizeof raw_tail);
+                    if (rstatus != JPL_OK) {
+                        if (rstatus == JPL_ERROR_MEMORY) return JPL_ERROR_MEMORY;
+                        if (rstatus == JPL_ERROR_IO) return rstatus;
+                        continue;
+                    }
+                    parse_optional_tt_tdb(&reparsed, raw_tail, order);
+                }
                 tentative = reparsed.tt_tdb_pointer;
                 memset(&reparsed.tt_tdb_pointer, 0, sizeof reparsed.tt_tdb_pointer);
                 /* Span end is the 1-based count (start-1)+coeff*sub; end <=
@@ -573,13 +592,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                     reparsed.tt_tdb_pointer = tentative;
                     reparsed.has_tt_tdb = 1;
                 }
-                /* Newly visible TT-TDB triple invariant: the classic 2856-byte
-                 * pre-parse always truncates the 24-byte tail at 2856
-                 * (static assert at file scope: 2856+24 > 2856), so a triple
-                 * that appears only in a wider window is genuine header
-                 * metadata, never constants-record bytes. No runtime guard
-                 * needed; a 2856-wide candidate inventing a triple still
-                 * fails the width==classic case above. */
+                /* The classic parse never sees the 24-byte tail (fixed
+                 * 2856-byte window), so a triple accepted here is genuine
+                 * header metadata at its checked offset, never
+                 * constants-record bytes. */
                 attempt_bytes = width;
                 split_bytes[ei] = attempt_bytes;
                 split_totals[ei] = attempt_total;
@@ -826,32 +842,18 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
      * names immediately past the legacy 2856-byte cursor, and the two
      * triplets after them. Entry 15 is the TT-TDB dataset (*t files
      * only); entry 14 is parsed for symmetry and ignored. T#16 has no
-     * header slot and is not supported. The TT-TDB triple is tentative
-     * until record geometry is known (see validate_layout): it is
-     * stored raw with has_tt_tdb == 0 and never enlarges
-     * record_double_count here. An irrelevant T#14 word never
-     * invalidates a separately valid T#15 triple. In-record random
-     * bytes that happen to form a valid in-record triple cannot be
-     * distinguished from genuine metadata by geometry alone. */
-    { size_t extra = header->constant_count > JPL_MAX_CONSTANT_NAMES ?
-                         (size_t)(header->constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
-      size_t tail;
-      uint32_t u_t15s, u_t15c, u_t15l;
-      const unsigned char *q;
-      header->record_double_count = maximum;
-      header->byte_order = order;
-      header->has_tt_tdb = 0;
-      memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
-      if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH) return JPL_OK;
-      tail = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
-      if (tail > size || size - tail < 24) return JPL_OK;
-      q = bytes + tail + 12;
-      u_t15s = read_u32(q, order); q += 4; u_t15c = read_u32(q, order); q += 4; u_t15l = read_u32(q, order);
-      if (u_t15s > INT_MAX || u_t15c > INT_MAX || u_t15l > INT_MAX) return JPL_OK;
-      header->tt_tdb_pointer.start_index = (int)u_t15s;
-      header->tt_tdb_pointer.coefficients_per_component = (int)u_t15c;
-      header->tt_tdb_pointer.subintervals = (int)u_t15l;
-      return JPL_OK; }
+     * header slot and is not supported. parse_header covers only the
+     * classic 2856-byte fields and leaves the TT-TDB triple tentative
+     * and absent here: validate_layout reads the 24-byte tail directly
+     * at its checked offset (parse_optional_tt_tdb) once candidate
+     * geometry is known. record_double_count never grows for optional
+     * metadata here. An irrelevant T#14 word never invalidates a
+     * separately valid T#15 triple. */
+    header->record_double_count = maximum;
+    header->byte_order = order;
+    header->has_tt_tdb = 0;
+    memset(&header->tt_tdb_pointer, 0, sizeof header->tt_tdb_pointer);
+    return JPL_OK;
 }
 
 /* Frame classification from the content-derived DENUM (T12/R04).

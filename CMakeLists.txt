@@ -443,6 +443,15 @@ if(LIBJPL_BUILD_TESTS)
             "-DTESTPO=${JPL_VALIDATOR_WORK}/ttdbwrong.testpo"
             "-DEXPECT=[==[reference mismatch]==]"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
+    add_test(NAME jpl_validator_duplicate_only
+        COMMAND ${CMAKE_COMMAND}
+            "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
+            "-DGENERATOR=$<TARGET_FILE:jpl_validator_data>"
+            "-DWORK=${JPL_VALIDATOR_WORK}"
+            "-DEPH=${JPL_VALIDATOR_WORK}/good.eph"
+            "-DTESTPO=${JPL_VALIDATOR_WORK}/duplicate_only.testpo"
+            "-DEXPECT=[==[insufficient reference coverage]==]"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
     add_test(NAME jpl_validator_read_error
         COMMAND ${CMAKE_COMMAND}
             "-DRUNNER=$<TARGET_FILE:jpl_testpo_tests>"
@@ -482,6 +491,7 @@ if(LIBJPL_BUILD_TESTS)
         jpl_validator_angular_present jpl_validator_denum jpl_validator_malformed6
         jpl_validator_badcomp jpl_validator_overflow_pos jpl_validator_overflow_neg
         jpl_validator_overlong jpl_validator_farpsi jpl_validator_ttdbwrong
+        jpl_validator_duplicate_only
         jpl_validator_read_error jpl_fixture_read_error jpl_validator_sweep
         PROPERTIES FIXTURES_REQUIRED jpl_validator_corpus)
 

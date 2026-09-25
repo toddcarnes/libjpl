@@ -186,6 +186,32 @@ All commands run under PowerShell 5.1 from the worktree root
 - `jpl_aberration`, `jpl_numeric`, `jpl_convenience`, `jpl_examples` pass in
   Debug and Release.
 
+## T08 evidence
+
+- `tests/test_testpo.c` tracks `body_component[18][7]`, incremented only
+  after a numerical comparison succeeds. Angular rows never satisfy
+  ordinary-body requirements. After parsing, the runner requires: at least
+  one available ordinary body 1-13 with all six components (SSB/EMB need no
+  file coefficients); T14 X1-X4 when nutation metadata is present; T15 X1-X6
+  when libration metadata is present; T17 X1-X2 when TT-TDB is present. The
+  100-row minimum stays as an independent truncation guard. Failures emit
+  `insufficient reference coverage: ...` naming every missing
+  target/component.
+- `tests/make_validator_data.c`: good corpus now carries Mars X1-X6,
+  nutation X1-X4, libration X1-X6, TT-TDB X1-X2 with actual mock
+  coefficients (zero rates exact); all three row grammars stay represented.
+  New `duplicate_only.testpo` (120 identical valid Mars X1 rows) plus CTest
+  `jpl_validator_duplicate_only` expecting `insufficient reference
+  coverage`. Before runner changes it exited zero; the driver expects
+  failure, so the test failed pre-fix.
+- During development the good corpus needed two corrections (TT-TDB X2
+  expectations must use the matching record/subinterval coefficients, not a
+  neighboring value; X1 at a subinterval edge evaluates c0-c1, not c0):
+  evidence that the diversity check exercises real per-component values.
+- All synthetic validator tests serial and `-j 16 --repeat until-fail:5`
+  (Debug + Release): good passes, duplicate-only fails for the intended
+  category, all prior negatives retain their category.
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
@@ -199,7 +225,7 @@ All commands run under PowerShell 5.1 from the worktree root
 | F07 | T10 | Open | - | Forced failure restores prior destination | Fix pending | - |
 | F08 | T11, T17 | Open | - | Variable/label/registration policy and dispatch | Fix pending | macOS hosted dispatch pending everywhere |
 | F09 | T14, T17 | Open | - | Exact 0.3.0 consumer and mismatch tests | Fix pending | - |
-| F10 | T08, T17 | Open | - | 120 duplicate rows fail; official files pass | Fix pending | - |
+| F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |
 | F11 | T09, T17 | Open | - | Interior corruption fails; complete real scan | Fix pending | - |
 | F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |
 | F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |

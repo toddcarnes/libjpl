@@ -76,7 +76,11 @@ static int write_full_mock(const char *path, int denum, int with_jupiter) {    s
     constants[0] = 11.0;
     constants[1] = 22.0;
     /* Five advertised one-day records cover 2451545.0-2451550.0 so every
-     * runner row lands in coverage; file size stays tiny (7*7872). */
+     * runner row lands in coverage; file size stays tiny (7*7872).
+     * TT-TDB coefficients are identical in every record (c0 0.001, with
+     * higher coefficients zero so multi-coefficient evaluation matches the
+     * midpoint value exactly); the X1/X2 writer uses only record 0's
+     * subinterval midpoint. */
     for (r = 0; r < 5; ++r) {
         double *rec = records + r * GOOD_DOUBLES;
         for (i = 0; i < GOOD_DOUBLES; ++i) {
@@ -99,6 +103,15 @@ static int write_full_mock(const char *path, int denum, int with_jupiter) {    s
         rec[901] = 0.3;
         rec[938] = 0.001;
         rec[939] = 0.00002;
+        rec[940] = 0.0;
+        rec[941] = 0.0;
+        rec[942] = 0.0;
+        rec[943] = 0.0;
+        rec[944] = 0.0;
+        rec[945] = 0.0;
+        rec[946] = 0.0;
+        rec[947] = 0.0;
+        rec[948] = 0.0;
         rec[949] = 0.002;
         rec[950] = 0.00003;
         rec[960] = 0.003;
@@ -227,7 +240,7 @@ int main(int argc, char **argv) {
      * historical testpo rows do; the runners convert actuals back. */
     double au = JPL_TEST_NONMODERN_AU_KM;
     textbuf good, nan_rows, missing, angular, denum, malformed, badcomp;
-    textbuf opos, oneg, overlong, farpsi, ttdbwrong;
+    textbuf opos, oneg, overlong, farpsi, ttdbwrong, duponly;
     int rc = 1;
 
     if (argc != 2) {
@@ -258,6 +271,7 @@ int main(int argc, char **argv) {
     memset(&overlong, 0, sizeof overlong);
     memset(&farpsi, 0, sizeof farpsi);
     memset(&ttdbwrong, 0, sizeof ttdbwrong);
+    memset(&duponly, 0, sizeof duponly);
 
     /* Output directory plus sweep subdirectory (idempotent: later CTest
      * cases reuse the directory created by the first case). */
@@ -314,8 +328,10 @@ int main(int argc, char **argv) {
         goto done;
     }
 
-    /* Good full-file input: 180+ valid rows mixing 7/6/5-token forms over
-     * Mars, nutation (X1-4 at indices 0,1,3,4), libration, and TT-TDB. */
+    /* Good full-file input: Mars X1-X6, nutation X1-X4, libration X1-X6,
+     * and TT-TDB X1-X2, using the actual mock coefficients (zero rates as
+     * exact expected values). All three supported row grammars stay
+     * represented by the spot checks below. */
     /* T#17 rows use Chebyshev midpoint value/rate, not raw c0/c1:
      * at a subinterval midpoint value = c0, rate = 2*c1/substep. All
      * five records carry identical coefficients, so every record's
@@ -326,25 +342,46 @@ int main(int argc, char **argv) {
     {
         char row[256];
         int i;
-        for (i = 0; i < 30; ++i) {
+        for (i = 0; i < 15; ++i) {
             double jd = 2451545.5 + (double)(i % 5);
-            /* Mars X1/X2 7-token, spread over all five records. */
-            snprintf(row, sizeof row, "441 2000.01.01 %.1f 4 0 1 %.17g\n", jd, 5.0 / au);
-            tb_append(&good, row);
-            snprintf(row, sizeof row, "441 2000.01.01 %.1f 4 0 2 %.17g\n", jd, 6.0 / au);
-            tb_append(&good, row);
-            /* Nutation X1/X3 7-token. */
+            int c;
+            /* Mars X1-X6 7-token, spread over all five records. */
+            for (c = 1; c <= 6; ++c) {
+                double want = c <= 3 ? (double)(c + 4) / au : 0.0;
+                snprintf(row, sizeof row, "441 2000.01.01 %.1f 4 0 %d %.17g\n", jd, c, want);
+                tb_append(&good, row);
+            }
+            /* Nutation X1-X4 7-token (X3/X4 are the rates at 0.0). */
             snprintf(row, sizeof row, "441 2000.01.01 %.1f 14 0 1 %.17g\n", jd, 0.001);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 14 0 2 %.17g\n", jd, 0.002);
             tb_append(&good, row);
             snprintf(row, sizeof row, "441 2000.01.01 %.1f 14 0 3 %.17g\n", jd, 0.0);
             tb_append(&good, row);
-            /* Libration X1 7-token. */
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 14 0 4 %.17g\n", jd, 0.0);
+            tb_append(&good, row);
+            /* Libration X1-X6 7-token (X4-X6 are rates at 0.0). */
             snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 1 %.17g\n", jd, 0.1);
             tb_append(&good, row);
-            /* TT-TDB X1 7-token at the in-coverage subinterval midpoint
-             * of the matching record (value 0.001 + record index). */
-            snprintf(row, sizeof row, "441 2000.01.01 %.3f 17 0 1 %.17g\n",
-                     jd - 0.375, 0.001);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 2 %.17g\n", jd, 0.2);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 3 %.17g\n", jd, 0.3);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 4 %.17g\n", jd, 0.0);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 5 %.17g\n", jd, 0.0);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 %.1f 15 0 6 %.17g\n", jd, 0.0);
+            tb_append(&good, row);
+            /* TT-TDB X1/X2 7-token: 2451545.5 sits at subinterval 2's left
+             * edge (normalized -1), so value = c0-c1 = 0.003+0.00001 and
+             * rate = 2*c1/substep with c1 = rec[961] = -0.00001, substep
+             * 0.25 d. */
+            snprintf(row, sizeof row, "441 2000.01.01 2451545.5 17 0 1 %.17g\n",
+                     0.003 - -0.00001);
+            tb_append(&good, row);
+            snprintf(row, sizeof row, "441 2000.01.01 2451545.5 17 0 2 %.17g\n",
+                     2.0 * -0.00001 / 0.25);
             tb_append(&good, row);
         }
         /* Token-form spot checks: identical epochs in 6-token and
@@ -354,6 +391,17 @@ int main(int argc, char **argv) {
         tb_append(&good, row);
         snprintf(row, sizeof row, "441-13200.09.01-3099998.5 15 0 1 %.17g\n", 0.1);
         tb_append(&good, row);
+    }
+    /* F10 duplicate-only negative: 120 identical valid Mars X1 rows exceed
+     * the 100-row minimum but fail the diversity check. */
+    tb_append(&duponly, header_block());
+    {
+        char row[256];
+        int i;
+        for (i = 0; i < 120; ++i) {
+            snprintf(row, sizeof row, "441 2000.01.01 2451545.5 4 0 1 %.17g\n", 5.0 / au);
+            tb_append(&duponly, row);
+        }
     }
     /* 100 NaN TT-TDB rows with proper framing so the failure is the NaN
      * reference, not missing framing. NaN COORD never parses as a valid
@@ -454,7 +502,8 @@ int main(int argc, char **argv) {
 
     if (good.failed || nan_rows.failed || missing.failed || angular.failed ||
         denum.failed || malformed.failed || badcomp.failed || opos.failed ||
-        oneg.failed || overlong.failed || farpsi.failed || ttdbwrong.failed) {
+        oneg.failed || overlong.failed || farpsi.failed || ttdbwrong.failed ||
+        duponly.failed) {
         fprintf(stderr, "out of memory building validator data\n");
         goto done;
     }
@@ -478,6 +527,7 @@ int main(int argc, char **argv) {
     WRITE("overlong.testpo", overlong);
     WRITE("farpsi.testpo", farpsi);
     WRITE("ttdbwrong.testpo", ttdbwrong);
+    WRITE("duplicate_only.testpo", duponly);
 #undef WRITE
 #undef JOIN
 
@@ -495,6 +545,7 @@ done:
     free(overlong.data);
     free(farpsi.data);
     free(ttdbwrong.data);
+    free(duponly.data);
     if (rc == 0) {
         printf("validator data written\n");
     }

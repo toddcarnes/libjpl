@@ -355,25 +355,117 @@ All commands run under PowerShell 5.1 from the worktree root
   fetch-cache, install pass; Markdown link scan is the license-link check
   itself (no separate scanner added).
 
+## T17 acceptance evidence
+
+All commands under PowerShell 5.1 from the worktree root unless noted
+(WSL Ubuntu for Linux gates). Branch history: one focused commit per task
+T00-T16 plus two T17-discovered fixes (fetch-diagnostic stabilization,
+authoritative-files coverage, GCC warning cleanup); `git diff --check`
+clean; no `src/erfa/` changes (`git diff --name-only main...HEAD` shows
+none); worktree clean except `build/` (ignored).
+
+### Windows MSVC (fresh dirs `build/t17-debug`, `build/t17-release`)
+
+- Configure/build serial + `ctest -C Debug/Release --output-on-failure`:
+  41/41 pass in each configuration (Debug ~364 s, Release ~366 s), zero
+  warnings.
+- Parallel `ctest -j 16` (minus install/threads): 39/39 pass.
+- Validator stress `-R "^jpl_validator_" -j 16 --repeat until-fail:20`:
+  16/16 x20 in Debug and Release, zero failures.
+
+### Docs-only and package matrices
+
+- `build/t17-docs-only` (docs ON, tests OFF): `ctest -N` lists exactly
+  `jpl_docs_symbols` + `jpl_docs_paths`; both pass.
+- `jpl_docs_only` nested matrix passes in the offline suite.
+- `jpl_install` Debug + Release: default, relocated, custom include/lib,
+  spaces prefixes, exact 0.3.0 success, 0.2.0/0.3.1/9999.0.0 mismatch
+  failures. C/C++ consumers pass.
+- Doxygen 1.17.0 `WARN_AS_ERROR=YES` clean (`build/t17-docs` Release:
+  docs/licenses/fixtures selection 7/7 pass).
+
+### Linux GCC 15.2 / Clang 21.1.8 (WSL Ubuntu, native /home/todd builds)
+
+- GCC Debug + Release, Clang Debug + Release, strict
+  `-Werror=implicit-function-declaration`: all offline tests pass except
+  `jpl_install` (consumer-toolchain sandbox case, runs on Windows/CI),
+  `jpl_largefile` (3.2 GiB sparse fixture; Windows-covered), `jpl_licenses`
+  (hangs on /mnt/d cross-OS file probing; Windows + CI covered), and
+  `jpl_docs_only` under sanitizers (no Doxygen in WSL).
+- GCC Release full run: 35/35 of the runnable set pass (verified
+  `Passed` count; the CTest summary line is not emitted because the
+  `jpl_licenses` hang from the earlier full-set invocation left a stale
+  run, since excluded here).
+- T17-discovered fix `b7fad34` removes the `-Wunused-but-set-variable`
+  warnings GCC reported (`off_first`, `enc_start`).
+
+### Sanitizers (WSL Ubuntu, GCC)
+
+- ASan/UBSan (`-fsanitize=address,undefined,float-cast-overflow`):
+  all applicable offline tests pass (37/37 minus install/docs-paths/
+  largefile/licenses/docs-only per CI policy).
+- TSan: `jpl_threads` + `jpl_mmap` pass.
+- Exclusions match `.github/workflows/ci.yml` (unsanitized consumers).
+
+### clang-cl / macOS
+
+- clang-cl: not installed on this machine (`clang-cl.exe` absent; VS LLVM
+  tools absent); covered by CI (`windows-clang-cl` job). Pending.
+- macOS Clang: no macOS runner available; covered by CI (`macos-clang`
+  job). Pending per maintainer agreement.
+
+### Opt-in DE440/DE440t tier (`build/t17-real`, Release, JPLEPH/JPL_TESTPO)
+
+- Local redirect in effect (no download): `DE440.eph`/`DE440t.eph` from
+  `D:/ephem/jpl/bin`, `testpo.440[t]` from `D:/ephem/jpl/testpo`.
+- `jpl_testpo_440`, `jpl_testpo_440t`, `jpl_real_ephemeris`: pass.
+- Downloaded sizes/hashes: manifest DE440 102272352 B
+  `29915576d0...`, DE440t 112720608 B `ddd474135f...`; local copies differ
+  (DE440 `8d0dbb47...c24a9e5`, DE440t `e2bdf430...f165331ac`) because local
+  spans differ -- used as-is per policy, validated by reference suites.
+
+### Maintainer-local tier (`build/t17-real`)
+
+- `jpl_all_ephemerides_local`: pass (29.6 s full sequential scan of every
+  physical record of every present binary).
+- All 27 local `jpl_testpo_*` suites (102/200/202/403/405/406/410/413/414/
+  418/421/422/423/424/430/430t/431/432/432t/433/434/435/436/436t/438/438t/
+  441 plus 440/440t): pass. T17-discovered fix `86fb903`: authoritative
+  files without optional-dataset rows (testpo.200 has 6833 ordinary rows,
+  zero T14 rows) no longer fail coverage; the duplicate-only negative
+  still fails as required.
+- Present set: 31 DE binaries + 29 testpo files listed in T17 (see
+  `D:/ephem/jpl/bin`, `D:/ephem/jpl/testpo`); `.defective-backup` and
+  `.quarantined` files correctly ignored by the sweep's name list.
+- Preflight/registration proof is workflow-level (T11); locally verified
+  via `ctest -N` (44 `jpl_all_ephemerides_local`, 27 non-440 testpo names).
+
+### Final policy and provenance
+
+- `jpl_licenses`, `jpl_workflow_policy`, `jpl_numerical_reference_integrity`
+  (positive + mutated-copy negative), fixture integrity positive/negative,
+  docs symbols/paths, examples, fetch rollback, install: all pass
+  (covered in the runs above).
+
 ## F01-F18 ledger
 
 | ID | Task | State | Commit | Regression | Verification | Remaining limits |
 | --- | --- | --- | --- | --- | --- | --- |
-| F01 | T01, T17 | Resolved | (this commit) | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:10` 15/15 x10; single-select auto-runs setup; full parallel 36/36 (threads standalone) | T17 stress/docs-only/platform gates |
-| F02 | T02 | Resolved | (this commit) | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites | T17 full acceptance |
-| F03 | T03 | Resolved | (this commit) | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT | T17 real-fixture tier |
-| F04 | T06 | Resolved | (this commit) | Invalid codes combined with range/missing data | API/convenience/numeric/light-time/frames/TT-TDB/examples Debug+Release | T17 full acceptance |
-| F05 | T07 | Resolved | (this commit) | Finite tiny-Sun scale-safe reference | jpl_aberration/numeric/convenience/examples Debug+Release | T17 sanitizer rerun |
-| F06 | T04 | Resolved | (this commit) | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880 | T17 real-tier overflow/DE440t rerun |
-| F07 | T10 | Resolved | (this commit) | Forced failure restores prior destination | jpl_fetch_cache repeated; offline reuse in T17 | T17 offline second configure |
-| F08 | T11, T17 | Resolved | (this commit) | Variable/label/registration policy and dispatch | Policy test passes locally; hosted dispatch in T17 | T17 dispatch + macOS pending |
-| F09 | T14, T17 | Resolved | (this commit) | Exact 0.3.0 consumer and mismatch tests | jpl_install Debug+Release; 0.2.0/0.3.1/9999.0.0 rejected | T17 rerun |
-| F10 | T08, T17 | Resolved | (this commit) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x5 Debug+Release; official-file rerun in T17 | T17 official-file coverage |
-| F11 | T09, T17 | Resolved | (this commit) | Interior corruption fails; complete real scan | Synthetic + fixture Debug+Release; real/local rerun in T17 | T17 real/local full scan |
-| F12 | T06 | Resolved | (this commit) | All public date APIs return NUMERIC | Same focused run | T17 full acceptance |
-| F13 | T05 | Resolved | (this commit) | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites | T17 full acceptance |
-| F14 | T05 | Resolved | (this commit) | Big-endian zero-constant FILE/mmap success | Same focused run | T17 full acceptance |
-| F15 | T12, T17 | Resolved | (this commit) | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install in T17 | T17 docs/install gates |
-| F16 | T13, T17 | Resolved | (this commit) | Positive and mutated-copy integrity checks | Integrity + numerical/frame/aberration/light-time pass; mutated copy fails | T17 rerun |
-| F17 | T15, T17 | Resolved | (this commit) | Offline workflow policy plus hosted jobs | Policy passes; hosted jobs in T17 | T17 hosted dispatch |
-| F18 | T06, T16, T17 | Resolved | (this commit) | Doxygen, local links, README/license audit | Licenses/docs-only/policy/provenance/fetch/install pass; Doxygen + full suite in T17 | T17 full acceptance |
+| F01 | T01, T17 | Resolved | 11edbab | Fixture setup plus repeated `-j 16` | `-R "^jpl_validator_" -j 16 --repeat until-fail:20` 16/16 x20 Debug+Release (T17); single-select auto-runs setup | clang-cl/macOS hosted |
+| F02 | T02 | Resolved | 9a6be7a | Distinct trailing coefficient, FILE/mmap | Focused Debug+Release boundary suites; T17 full suites | clang-cl/macOS hosted |
+| F03 | T03 | Resolved | 622a41d | Equal-value valid mock, FILE/mmap | `jpl_parser`/`jpl_mmap`/`jpl_fixture` Debug+Release; ambiguous fixture still FORMAT; T17 real fixture | clang-cl/macOS hosted |
+| F04 | T06 | Resolved | d0b1a6c | Invalid codes combined with range/missing data | API/convenience/numeric/light-time/frames/TT-TDB/examples Debug+Release; T17 full suites | clang-cl/macOS hosted |
+| F05 | T07 | Resolved | 45c0d5c | Finite tiny-Sun scale-safe reference | jpl_aberration/numeric/convenience/examples Debug+Release; T17 ASan/UBSan | clang-cl/macOS hosted |
+| F06 | T04 | Resolved | 95d4a1a | Wide sparse record with bounded-read proof | Parser matrix Debug+Release; read-limit hook reports no request above 2880; T17 overflow/DE440t | clang-cl/macOS hosted |
+| F07 | T10 | Resolved | 4493ec3 (+705ddc5 diagnostic stabilization) | Forced failure restores prior destination | jpl_fetch_cache repeated Windows + Linux; T17 offline suites | clang-cl/macOS hosted |
+| F08 | T11, T17 | Resolved | c3202fe | Variable/label/registration policy and dispatch | Policy test passes locally; local sweep proven in T17 | clang-cl/macOS/dispatched-run URLs |
+| F09 | T14, T17 | Resolved | 6a595a8 | Exact 0.3.0 consumer and mismatch tests | jpl_install Debug+Release; 0.2.0/0.3.1/9999.0.0 rejected | clang-cl/macOS hosted |
+| F10 | T08, T17 | Resolved | bb7532c (+86fb903 authoritative-rows fix) | 120 duplicate rows fail; official files pass | Synthetic serial + -j16 x20 Debug+Release; all 27 local + 440/440t testpo pass | clang-cl/macOS hosted |
+| F11 | T09, T17 | Resolved | 4ac33bf | Interior corruption fails; complete real scan | Synthetic + fixture Debug+Release; `jpl_all_ephemerides_local` full scan pass | clang-cl/macOS hosted |
+| F12 | T06 | Resolved | d0b1a6c | All public date APIs return NUMERIC | Same focused run; T17 full suites | clang-cl/macOS hosted |
+| F13 | T05 | Resolved | 4df8cb5 | Valid distant rounded endpoint and >8-ULP negative | Focused Debug+Release suites; T17 full suites | clang-cl/macOS hosted |
+| F14 | T05 | Resolved | 4df8cb5 | Big-endian zero-constant FILE/mmap success | Same focused run; T17 full suites | clang-cl/macOS hosted |
+| F15 | T12, T17 | Resolved | f590a6c | Docs-only configure matrix | jpl_docs_only + licenses pass; symbols/paths/install/docs-build in T17 | clang-cl/macOS hosted |
+| F16 | T13, T17 | Resolved | e3cca40 | Positive and mutated-copy integrity checks | Integrity + numerical/frame/aberration/light-time pass; mutated copy fails; T17 rerun | clang-cl/macOS hosted |
+| F17 | T15, T17 | Resolved | e0e053e | Offline workflow policy plus hosted jobs | Policy passes; local validation notes updated | clang-cl/macOS/dispatched-run URLs |
+| F18 | T06, T16, T17 | Resolved | d0b1a6c + f29b344 | Doxygen, local links, README/license audit | Licenses/docs-only/policy/provenance/fetch/install pass; Doxygen 1.17.0 clean; full suites in T17 | clang-cl/macOS hosted |

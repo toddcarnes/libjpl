@@ -54,6 +54,13 @@ These checks cover the current Windows MSVC and Ubuntu GCC paths. This
 follow-up did not run clang-cl, macOS, or the optional real-ephemeris
 download tier; no pass is inferred for those configurations.
 
+Merge acceptance found an additional worktree-layout issue: running
+`jpl_licenses` and `jpl_install` from the main checkout picked up files
+inside the ignored `.worktrees/` directory as unlisted source. The license
+checker now excludes that directory, with a positive synthetic nested-
+worktree regression in `jpl_licenses`. Both focused tests pass with the
+worktree still present; the merged main suite is rerun separately.
+
 ## Frame-source table (T12, R04)
 
 Classification is content-derived from the header DENUM via an explicit

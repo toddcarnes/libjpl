@@ -43,6 +43,22 @@ file(MAKE_DIRECTORY "${WORK}")
 jpl_license_case("intact source passes" 0
   "-DSOURCE=${SOURCE}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
 
+# Positive: an ignored project-local worktree is not first-party source.
+# Build the smallest complete source copy required by the inventory check;
+# the nested file deliberately has no copyright notice.
+include("${INVENTORY}")
+set(worktree_source "${WORK}/source-with-worktree")
+foreach(rel IN LISTS JPL_LICENSE_FIRST_PARTY)
+  get_filename_component(rel_dir "${rel}" DIRECTORY)
+  file(MAKE_DIRECTORY "${worktree_source}/${rel_dir}")
+  file(COPY_FILE "${SOURCE}/${rel}" "${worktree_source}/${rel}")
+endforeach()
+file(COPY_FILE "${SOURCE}/LICENSE" "${worktree_source}/LICENSE")
+file(MAKE_DIRECTORY "${worktree_source}/.worktrees/linked/build")
+file(WRITE "${worktree_source}/.worktrees/linked/build/unlisted.c" "int generated;\n")
+jpl_license_case("nested git worktree is ignored" 0
+  "-DSOURCE=${worktree_source}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
+
 # Positive: a staged prefix holding both complete texts passes.
 file(MAKE_DIRECTORY "${WORK}/stage/${DATADIR}/licenses/libjpl")
 file(COPY_FILE "${SOURCE}/LICENSE" "${WORK}/stage/${DATADIR}/licenses/libjpl/LICENSE")

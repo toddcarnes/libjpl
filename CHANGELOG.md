@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Kept private parser and light-time test hooks out of the installed static
   library. Install tests now inspect defined archive symbols.
+- Excluded ignored `.worktrees/` checkouts from the license inventory sweep
+  so installed-package verification works from the main checkout too.
 - Replaced Python-dependent fixture mutation and integrity checks with a
   C17 test tool that canonicalizes CRLF byte-for-byte and rejects bare CR.
 - Guarded record/subinterval quotient-to-integer casts before conversion.

@@ -41,3 +41,15 @@ reproduction showed the missing `dot` executable. The maintainer approved
 installing Graphviz in Ubuntu, after which full Debug and Release runs
 passed. Linux Clang, Windows clang-cl, macOS, and opt-in real ephemeris
 tests were not run for this follow-up.
+
+## Main-checkout integration follow-up
+
+The first merged-checkout run passed 40/42 tests. `jpl_licenses` and
+`jpl_install` failed because the license inventory sweep traversed the
+ignored `.worktrees/` directory containing the implementation worktree.
+This was not visible when tests ran inside the linked worktree itself.
+`tests/cmake/check_licenses.cmake` now excludes `.worktrees/`, and
+`tests/cmake/test_licenses.cmake` constructs a positive nested-worktree
+case that fails with the old checker. Both focused license/install tests
+pass with `.worktrees/` still present in the main checkout. A fresh merged
+full-suite result must be recorded after the follow-up commit lands.

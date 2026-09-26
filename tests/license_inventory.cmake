@@ -17,7 +17,7 @@
 #   docs/superpowers/  - historical design records, preserved verbatim
 #   docs/reviews/      - saved review plus progress ledger, verbatim
 #   build/, out/, cmake-build-*/ - generated build trees, no notices
-#   .git/, .superpowers/, docs/html/, docs/latex/ - tooling/generated output
+#   .git/, .worktrees/, .superpowers/, docs/html/, docs/latex/ - tooling output
 set(JPL_LICENSE_FIRST_PARTY
   "CMakeLists.txt"
   "Doxyfile.in"

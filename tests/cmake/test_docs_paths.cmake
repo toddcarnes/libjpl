@@ -37,6 +37,7 @@ file(MAKE_DIRECTORY "${SRC_COPY}")
 set(whitelist
   "CMakeLists.txt"
   "Doxyfile.in"
+  "docs/api.dox"
   "LICENSE"
   "include/jpl.h"
   "include/jpl_frames.h"

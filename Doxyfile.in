@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 PROJECT_NAME = libjpl
 OUTPUT_DIRECTORY = "@CMAKE_CURRENT_BINARY_DIR@/docs"
-INPUT = "@CMAKE_CURRENT_SOURCE_DIR@/include"
+INPUT = "@CMAKE_CURRENT_SOURCE_DIR@/include" "@CMAKE_CURRENT_SOURCE_DIR@/docs/api.dox"
 RECURSIVE = NO
 GENERATE_HTML = YES
 GENERATE_XML = YES

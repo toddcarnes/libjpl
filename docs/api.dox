@@ -38,6 +38,7 @@
  * ## Convenience helpers
  * - @ref jpl_planet_position "jpl_planet_position()" - Compute an apparent planet position.
  * - @ref jpl_moon_position "jpl_moon_position()" - Compute an apparent Moon position.
+ * - @ref jpl_apparent_ecliptic_position "jpl_apparent_ecliptic_position()" - Query geocentric apparent longitude, latitude, and range.
  * - @ref jpl_au_per_day_to_km_per_s "jpl_au_per_day_to_km_per_s()" - Convert velocity units.
  * - @ref jpl_km_to_au "jpl_km_to_au()" - Convert distance units.
  *

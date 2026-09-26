@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 #include "jpl_frames.h"
+#include "jpl_private.h"
 #include "jpl_test_util.h"
 #include "numerical_reference.h"
 #include "erfa.h"
@@ -79,6 +80,31 @@ int main(void) {
             JPL_TEST_CHECK(fabs(o2[k] - pr[k]) < 1e-15);
             JPL_TEST_CHECK(fabs(o2[k+3] - vr[k]) < 1e-15);
         }
+    }
+    /* True-of-date nutation belongs to the new position-only rotation;
+     * the existing public state conversion remains mean-of-date. */
+    {
+        const double tt[2] = {2451545.0, 0.25};
+        double p[3] = {1.0, 0.2, 0.1};
+        const double zero[3] = {0.0, 0.0, 0.0};
+        const double bad[3] = {INFINITY, 0.0, 0.0};
+        double m[3][3], dpsi, deps, expect[3], got[3] = {7.0, 8.0, 9.0};
+        int k;
+        eraPnm06a(tt[0], tt[1], m);
+        eraNut06a(tt[0], tt[1], &dpsi, &deps);
+        eraRx(eraObl06(tt[0], tt[1]) + deps, m);
+        eraRxp(m, p, expect);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(p, tt, got) == JPL_OK);
+        for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - expect[k]) < 1e-13);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(zero, tt, got) == JPL_OK);
+        for (k = 0; k < 3; ++k) JPL_TEST_CHECK(got[k] == 0.0);
+        got[0] = 7.0; got[1] = 8.0; got[2] = 9.0;
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(bad, tt, got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(got[0] == 7.0 && got[1] == 8.0 && got[2] == 9.0);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(NULL, tt, got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(got[0] == 7.0 && got[1] == 8.0 && got[2] == 9.0);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(p, NULL, got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(p, tt, NULL) == JPL_ERROR_ARGUMENT);
     }
     /* TT/TDB conversion is status-returning with pair outputs now. */
     {

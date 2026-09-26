@@ -87,6 +87,57 @@ jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2]
  * @note state is unchanged on failure.
  */
 jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
+
+/** @brief Apparent geocentric position and estimated motion in the true ecliptic of date. */
+typedef struct jpl_apparent_ecliptic_result {
+    double longitude_deg; /**< @brief Tropical longitude in [0,360) degrees. */
+    double latitude_deg; /**< @brief Ecliptic latitude in degrees. */
+    double range_au; /**< @brief Earth-center apparent range in modern AU. */
+    double longitude_rate_deg_per_day; /**< @brief Signed apparent longitude rate in degrees per TT day; negative is retrograde. */
+    double range_rate_km_per_s; /**< @brief Horizons-style line-of-sight projection of mixed-epoch velocity in km/s; negative is approaching Earth. */
+} jpl_apparent_ecliptic_result;
+
+/**
+ * @brief Returns an apparent geocentric true-ecliptic position and motion of date.
+ * @param ephem Open DE handle from jpl_open(), jpl_open_mmap(), or a clone.
+ * @param jd_tt Reception epoch as a two-part TT Julian date.
+ * @param target Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune,
+ *        Pluto, Moon, or Sun. Earth, EMB, SSB, angular data, and invalid
+ *        target codes have no supported Earth-centered direction.
+ * @param out Receives longitude, latitude, range, signed longitude speed,
+ *        and signed radial range-rate on success.
+ * @return JPL_OK on success; JPL_ERROR_ARGUMENT for NULL pointers, a
+ *         nonfinite date part, or an unsupported target code;
+ *         JPL_ERROR_RANGE if reception or emission lies outside file
+ *         coverage or no usable neighboring epochs for a rate estimate;
+ *         JPL_ERROR_UNSUPPORTED for a non-ICRF-aligned file or
+ *         missing target data; JPL_ERROR_FORMAT, JPL_ERROR_IO,
+ *         JPL_ERROR_MEMORY, JPL_ERROR_CONVERGENCE, or JPL_ERROR_NUMERIC
+ *         for underlying failures.
+ * @note Uses light-time, finite-source solar light deflection (omitted for
+ *       the Sun itself), and stellar aberration. The orientation is the
+ *       IAU 2006 precession / IAU 2000A nutation true ecliptic and equinox
+ *       of date at reception TT. This differs from the mean ecliptic used
+ *       by jpl_icrs_to_ecliptic(). No topocentric or refraction correction
+ *       is applied. File coverage is not a promise of frame/time-model
+ *       accuracy across the entire file span.
+ * @note Longitude speed is a numerical derivative of the fully corrected
+ *       apparent longitude at nearby TT epochs (normally +/-0.01 day).
+ *       A one-sided estimate is used near coverage boundaries. Longitude
+ *       is unwrapped across 0/360 degrees before differentiation; its
+ *       estimate may be less reliable very near the solar limb.
+ *       Radial range-rate follows Horizons quantity 20: the mixed-epoch
+ *       velocity from jpl_get_state_lighttime(), projected on the
+ *       unaberrated light-time-corrected line of sight. It is not the
+ *       derivative of the returned apparent range.
+ * @note Planet targets follow the DE planetary-system barycenters; these
+ *       need not coincide with physical planet centers (notably Jupiter).
+ * @note out is unchanged on failure. As with other FILE-path
+ *       reads, use a clone per concurrent reader, or use jpl_open_mmap().
+ */
+jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
+                                          const double jd_tt[2], int target,
+                                          jpl_apparent_ecliptic_result *out);
 /** @brief Convert velocity from AU/day to km/s.
  *  @param vel_au_day Input triple, must be non-NULL.
  *  @param vel_km_s Output triple, must be non-NULL.

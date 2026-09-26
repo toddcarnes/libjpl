@@ -29,6 +29,9 @@
 
 /* Schwarzschild radius of the Sun in AU (ERFA ERFA_SRS = 1.97412574336e-8). */
 #define JPL_SRS_AU 1.97412574336e-8
+/* Nominal solar radius from Horizons' Sun target radii, for limiting
+ * deflection of a ray occulted by the solar disk. */
+#define JPL_SOLAR_RADIUS_KM 695700.0
 
 /* Light-time solver: tolerance-based convergence per design spec. The
  * public wrapper supplies JPL_LIGHTTIME_FAST_MAX_ITER fixed-point steps
@@ -75,6 +78,11 @@ jpl_status jpl_date_add_scaled(const double date[2], double step,
 jpl_status jpl_date_partition(const double begin[2], const double end[2],
                               size_t count, size_t index, double out[2]);
 int jpl_date_compare(const double a[2], const double b[2]);
+
+/* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
+ * A pure rotation; the public mean-of-date state helpers are unchanged. */
+jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
+                                              const double jd_tt[2], double out[3]);
 
 /* Private deterministic light-time iteration-budget hook for tests.
  * Defined in the non-installed jpl_testing archive under LIBJPL_TESTING;

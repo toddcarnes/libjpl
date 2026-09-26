@@ -97,6 +97,25 @@ if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) 
 if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handle error */ }
 ```
 
+### Geocentric apparent ecliptic position
+
+```c
+#include <jpl.h>
+#include <jpl_convenience.h>
+
+jpl_ephemeris *de; /* from jpl_open(...) */
+static const double jd_tt[2] = {2451545.0, 0.0};
+jpl_apparent_ecliptic_result position;
+if (jpl_apparent_ecliptic_position(de, jd_tt, JPL_MOON, &position) != JPL_OK) { /* handle error */ }
+/* position.longitude_deg, position.latitude_deg, position.range_au;
+ * longitude_rate_deg_per_day indicates prograde or retrograde motion;
+ * range_rate_km_per_s is Horizons-style line-of-sight radial motion,
+ * not the derivative of position.range_au. */
+```
+
+Planet targets follow the DE planetary-system barycenters, which may
+differ from physical planet centers.
+
 The `jpl_examples` CTest suite compiles and runs these patterns from
 `tests/examples.c` against the committed fixture.
 
@@ -119,6 +138,13 @@ Always-on fixture (no network): `tests/data/de441_2000_2010.eph` is a
 `jpl_fixture_integrity` checks manifest-pinned hashes. These tests do not
 prove the original slicing command. See [fixture provenance](tests/data/PROVENANCE.md)
 for source evidence and its limits.
+
+The `jpl_horizons_offline` test compares apparent positions for the Sun,
+Moon, and planet barycenters in the committed DE441 slice with pinned
+Horizons values. `jpl_horizons_de441_local` checks the wider Horizons
+overlap when `JPLEPH` points to a local directory containing `DE441.eph`.
+Ordinary tests never query Horizons. The reference settings and limitations
+are recorded in [fixture provenance](tests/data/PROVENANCE.md).
 
 Opt-in fetch tier: `-DLIBJPL_FETCH_EPHEMERIDES=ON` (default OFF, approx
 210 MB) downloads DE440/DE440t binaries plus `testpo.440`/`testpo.440t`

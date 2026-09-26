@@ -121,6 +121,35 @@ int main(void) {
         JPL_TEST_CHECK(jpl_planet_position(e,jd,1,16,st)==JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_planet_position(e,jd,1,99,st)==JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_moon_position(e,jd,moon_earth)==JPL_OK);
+        {
+            jpl_apparent_ecliptic_result position = {7.0, 8.0, 9.0, 10.0, 11.0};
+            const jpl_apparent_ecliptic_result keep = {7.0, 8.0, 9.0, 10.0, 11.0};
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MOON, &position) == JPL_OK);
+            JPL_TEST_CHECK(isfinite(position.longitude_deg) && position.longitude_deg >= 0.0 && position.longitude_deg < 360.0);
+            JPL_TEST_CHECK(isfinite(position.latitude_deg) && fabs(position.latitude_deg) <= 90.0);
+            JPL_TEST_CHECK(fabs(position.range_au - MOON_KM / AU_KM) < 1e-9);
+            JPL_TEST_CHECK(isfinite(position.longitude_rate_deg_per_day));
+            JPL_TEST_CHECK(isfinite(position.range_rate_km_per_s));
+            JPL_TEST_CHECK(fabs(position.range_rate_km_per_s) < 1e-3);
+            /* The forward neighbor crosses coverage; a backward rate remains available. */
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, (const double[2]){2451545.0, 0.9999},
+                                                          JPL_MOON, &position) == JPL_OK);
+            JPL_TEST_CHECK(isfinite(position.longitude_rate_deg_per_day));
+            JPL_TEST_CHECK(isfinite(position.range_rate_km_per_s));
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_SUN, &position) == JPL_OK);
+            JPL_TEST_CHECK(position.longitude_deg >= 0.0 && position.longitude_deg < 360.0 && position.range_au > 0.9);
+            position = keep;
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_EARTH, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_SSB, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_EARTH_MOON_BARYCENTER, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_NUTATIONS, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_LIBRATIONS, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&position, &keep, sizeof keep) == 0);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(NULL, jd, JPL_MOON, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, NULL, JPL_MOON, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MOON, NULL) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&position, &keep, sizeof keep) == 0);
+        }
         JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_EARTH,JPL_SUN,earth_sun)==JPL_OK);
         JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_MOON,JPL_SUN,moon_sun)==JPL_OK);
         expect_moon = MOON_KM/AU_KM;
@@ -140,6 +169,82 @@ int main(void) {
         for (i=0;i<6;++i) JPL_TEST_CHECK(fabs(sum[i]-moon_sun[i]) < 1e-9);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path)==0);
+    }
+    /* An artificial target close to the Sun but outside its apparent
+     * disk distinguishes finite-source bending from aberration alone. */
+    {
+        const char *path = "jpl_test_convenience_bending.bin";
+        enum { N = 360, BYTES = N * 8 };
+        static unsigned char hdr[BYTES];
+        static double rec[N];
+        jpl_test_mock mock;
+        jpl_ephemeris *e = NULL;
+        const double jd[2] = {2451545.5, 0.0};
+        jpl_apparent_ecliptic_result out_pos;
+        double old_state[6], old_ecliptic[3], lon_old, difference;
+        memset(hdr, 0, sizeof hdr);
+        memset(rec, 0, sizeof rec);
+        memset(&mock, 0, sizeof mock);
+        test_put_ptr(hdr, 0, 3, 2, 1);   /* Mercury: x/y slopes */
+        test_put_ptr(hdr, 2, 9, 2, 1);   /* EMB = Earth: Moon is zero */
+        test_put_ptr(hdr, 9, 15, 2, 1);  /* geocentric Moon */
+        test_put_ptr(hdr, 10, 21, 2, 1); /* Sun at the origin */
+        rec[0] = 2451545.0;
+        rec[1] = 2451546.0;
+        rec[2] = -0.5 * JPL_TEST_AU_KM;
+        rec[3] = 0.005 * JPL_TEST_AU_KM;
+        rec[4] = 0.01 * JPL_TEST_AU_KM;
+        rec[5] = -0.0025 * JPL_TEST_AU_KM;
+        rec[8] = JPL_TEST_AU_KM;
+        mock.record_doubles = N;
+        mock.advertised_records = 1;
+        mock.denum = 441;
+        mock.constant_count = 2;
+        mock.start[0] = 2451545.0;
+        mock.end[0] = 2451546.0;
+        mock.step_days = 1.0;
+        mock.au_km = JPL_TEST_AU_KM;
+        mock.emrat = JPL_TEST_MASS_RATIO;
+        mock.header = hdr;
+        mock.records = rec;
+        JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_EARTH, old_state) == JPL_OK);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(old_state, jd, old_ecliptic) == JPL_OK);
+        lon_old = atan2(old_ecliptic[1], old_ecliptic[0]);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        difference = atan2(sin(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old),
+                           cos(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old));
+        JPL_TEST_CHECK(fabs(difference) > 1e-9 && fabs(difference) < 1e-3);
+        JPL_TEST_CHECK(out_pos.range_au > 1.5);
+        JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1);
+        JPL_TEST_CHECK(out_pos.range_rate_km_per_s < -1.0);
+        {
+            jpl_apparent_ecliptic_result near_end;
+            const double near_end_tt[2] = {2451545.0, 0.9999};
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, near_end_tt,
+                                                           JPL_MERCURY, &near_end) == JPL_OK);
+            JPL_TEST_CHECK(near_end.longitude_rate_deg_per_day > 0.1);
+            JPL_TEST_CHECK(fabs(near_end.longitude_rate_deg_per_day -
+                                out_pos.longitude_rate_deg_per_day) < 0.03);
+            JPL_TEST_CHECK(near_end.range_rate_km_per_s < -1.0);
+        }
+        jpl_close(e);
+        e = NULL;
+        /* A positive-x target crossing y=0 tests signed longitude speed
+         * across the 360-to-0 degree normalization boundary. */
+        rec[2] = 2.0 * JPL_TEST_AU_KM;
+        rec[3] = 0.0;
+        rec[4] = 0.00005 * JPL_TEST_AU_KM;
+        rec[5] = 0.005 * JPL_TEST_AU_KM;
+        JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        JPL_TEST_CHECK(out_pos.longitude_deg < 0.02 || out_pos.longitude_deg > 359.98);
+        JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1 &&
+                       out_pos.longitude_rate_deg_per_day < 5.0);
+        jpl_close(e);
+        JPL_TEST_CHECK(remove(path) == 0);
     }
     /* Reception-vs-emission regression: EMB y(t) has a quadratic Chebyshev
      * term so observer velocity differs between tdb and tdb-lt. Sun seen
@@ -283,7 +388,8 @@ int main(void) {
             test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
             test_put_f64(rec + 8 * 8, JPL_TEST_AU_KM);
             test_put_f64(rec + 14 * 8, JPL_TEST_AU_KM);
-            test_put_f64(rec + 20 * 8, JPL_TEST_AU_KM);
+            /* A distinct Sun keeps the finite-source direction defined. */
+            test_put_f64(rec + 20 * 8, 2.0 * JPL_TEST_AU_KM);
             JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
             JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
             JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == cases[c].denum);
@@ -295,6 +401,18 @@ int main(void) {
             } else {
                 JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_SUN, conv) == JPL_ERROR_UNSUPPORTED);
                 JPL_TEST_CHECK(memcmp(conv, keep, sizeof conv) == 0);
+            }
+            {
+                jpl_apparent_ecliptic_result ecliptic = {7.0, 8.0, 9.0, 10.0, 11.0};
+                const jpl_apparent_ecliptic_result keep_ecliptic = {7.0, 8.0, 9.0, 10.0, 11.0};
+                if (cases[c].frame == JPL_FRAME_ICRF) {
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &ecliptic) == JPL_OK);
+                } else {
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &ecliptic) == JPL_ERROR_UNSUPPORTED);
+                    JPL_TEST_CHECK(memcmp(&ecliptic, &keep_ecliptic, sizeof ecliptic) == 0);
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, (const double[2]){2451540.0, 0.0},
+                                                                 JPL_MERCURY, &ecliptic) == JPL_ERROR_RANGE);
+                }
             }
             /* Frame eligibility precedes the zero shortcut: identical-body
              * convenience on a legacy frame reports UNSUPPORTED, never a

@@ -67,6 +67,22 @@ static int geometric_vs_apparent(const char *path) {
     return 0;
 }
 
+static int geocentric_ecliptic(const char *path) {
+    jpl_ephemeris *de = NULL;
+    static const double jd_tt[2] = {2451545.0, 0.0};
+    jpl_apparent_ecliptic_result position;
+    if (jpl_open(path, &de) != JPL_OK) return 1;
+    if (jpl_apparent_ecliptic_position(de, jd_tt, JPL_MOON, &position) != JPL_OK) {
+        jpl_close(de);
+        return 1;
+    }
+    printf("moon: lon=%f lat=%f range=%f lon_rate=%f range_rate=%f\n",
+           position.longitude_deg, position.latitude_deg, position.range_au,
+           position.longitude_rate_deg_per_day, position.range_rate_km_per_s);
+    jpl_close(de);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "usage: jpl_examples <fixture.eph>\n");
@@ -75,6 +91,7 @@ int main(int argc, char **argv) {
     if (basic_state(argv[1]) != 0) return 1;
     if (moon_sun(argv[1]) != 0) return 1;
     if (geometric_vs_apparent(argv[1]) != 0) return 1;
+    if (geocentric_ecliptic(argv[1]) != 0) return 1;
     puts("examples passed");
     return 0;
 }

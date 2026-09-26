@@ -12,6 +12,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-26
+
+### Added
+
+- Added `jpl_get_constant_name()` to retrieve every DE constant name,
+  including names beyond the first 400 stored in `jpl_header`.
+- Added `jpl_apparent_ecliptic_position()` for geocentric apparent
+  true-of-date longitude, latitude, range, signed longitude speed, and
+  Horizons-style radial range-rate.
+- Pinned 220 DE441 Horizons observer rows for offline and optional local
+  full-file comparisons of apparent positions and motion.
+- Added a grouped Doxygen API landing page.
+
 ### Fixed
 
 - Kept private parser and light-time test hooks out of the installed static

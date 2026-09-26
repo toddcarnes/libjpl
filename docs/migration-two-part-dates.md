@@ -4,9 +4,9 @@ SPDX-License-Identifier: MIT
 See LICENSE in the project root for the full license text.
 -->
 
-# Migration to two-part Julian dates (Unreleased)
+# Migration to two-part Julian dates (0.3.0)
 
-This guide covers the Unreleased breaking changes also summarized in
+This guide covers the 0.3.0 breaking changes also summarized in
 `CHANGELOG.md`. No scalar compatibility wrapper is offered: replace
 scalar-date call sites directly.
 

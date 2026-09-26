@@ -116,11 +116,35 @@ Notes:
   rate.
 - Frames: `jpl_frame_rotation_matrix()` and the ecliptic helpers rotate
   position and velocity at a fixed epoch (`R*v`); no `dR/dt` term.
-- Apparent place means light-time plus stellar aberration only
+- In `jpl_planet_position()` and `jpl_moon_position()`, apparent place
+  means light-time plus stellar aberration only
   (including the <=0.4uas solar-potential term when the Sun distance is
   known; not gravitational bending). The body-center observer is the
   center barycenter at reception (SSB/center 0/12: zero velocity).
   Adding apparent Moon/Earth legs mixes epochs and is approximate.
+- `jpl_apparent_ecliptic_position()` is a distinct geocentric path for
+  ICRF-aligned DE files. It adds finite-source
+  solar light deflection before aberration (no self-deflection for the
+  Sun), then returns longitude and latitude in the IAU2006/2000A true
+  ecliptic and equinox of reception TT, plus range in AU. The older
+  `jpl_planet_position()` and `jpl_moon_position()` keep their existing
+  correction policy and state-velocity contract.
+  Signed apparent longitude speed (degrees/TT day) comes from neighboring
+  corrected positions. Central differences use +/-0.01 day; at coverage
+  boundaries they become one-sided. Radial range-rate (km/s) is the
+  Horizons-style projection of mixed-epoch target-minus-observer velocity
+  on the light-time-corrected line of sight, not a derivative of range.
+- Pinned Horizons DE441 observer references contain 22 TT dates for each
+  of the Sun, Moon, and eight planet barycenters. Quantity 45 supplies
+  airless apparent ICRF RA/Dec and is rotated into the modern frame for
+  comparison; quantity 31 is an IAU76/80 ecliptic diagnostic, not an
+  interchangeable expected longitude. The committed DE441 slice checks
+  120 apparent rows offline; the full local DE441 file checks 220 when
+  `JPLEPH` is set. Deep-time apparent residuals are diagnostics; JPL
+  testpo covers full-span *geometric* interpolation. Quantity 20's signed
+  range-rate is checked against the helper in km/s; neighboring Q45
+  positions check longitude speed in degrees/TT day. Exact request
+  settings and source evidence are in `tests/data/PROVENANCE.md`.
 - Legacy/unknown frames are rejected by convenience calls
   (`JPL_ERROR_UNSUPPORTED`); frame/time-model validity intervals are
   narrower than file coverage.

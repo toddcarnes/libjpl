@@ -59,6 +59,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/test_fixture.c"
   "tests/test_testpo.c"
   "tests/test_real_ephemeris.c"
+  "tests/test_horizons.c"
   "tests/test_all_ephemerides.c"
   "tests/data/numerical_reference.h"
   "tests/data/numerical_reference.md"
@@ -84,6 +85,8 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/cmake/test_fetch_cache.cmake"
   "tests/cmake/check_workflows.cmake"
   "tests/cmake/check_numerical_reference.cmake"
+  "tests/cmake/check_horizons_reference.cmake"
+  "tests/cmake/test_horizons_compare.cmake"
   "tests/cmake/check_archive_symbols.cmake"
   "tests/cmake/test_fixture_tool.cmake"
   "tests/cmake/test_docs_only.cmake"
@@ -94,11 +97,13 @@ set(JPL_LICENSE_FIRST_PARTY
 #   src/erfa/LICENSE - third-party ERFA BSD-3 grant (checked on install only).
 #   tests/data/de441_2000_2010.eph - binary fixture, non-commentable.
 #   tests/data/testpo_441_slice.txt - third-party JPL reference data, byte-pinned.
+#   tests/data/horizons_de441.txt - third-party JPL observer reference data, byte-pinned.
 #   tests/data/fixture_rows.txt - hashed ordered identity list, parser-read.
 set(JPL_LICENSE_EXEMPT_FILES
   "LICENSE"
   "src/erfa/LICENSE"
   "tests/data/de441_2000_2010.eph"
   "tests/data/testpo_441_slice.txt"
+  "tests/data/horizons_de441.txt"
   "tests/data/fixture_rows.txt"
 )

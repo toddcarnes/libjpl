@@ -30,6 +30,7 @@ jpl_tt_to_tdb
 jpl_tdb_to_tt
 jpl_planet_position
 jpl_moon_position
+jpl_apparent_ecliptic_position
 jpl_au_per_day_to_km_per_s
 jpl_km_to_au
 # Public types, values, and constants.
@@ -72,6 +73,7 @@ JPL_FRAME_ICRF
 jpl_pointer
 jpl_header
 jpl_ephemeris
+jpl_apparent_ecliptic_result
 JPL_TITLE_LINE_LENGTH
 JPL_CONSTANT_NAME_LENGTH
 JPL_MAX_CONSTANT_NAMES

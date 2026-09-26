@@ -20,6 +20,36 @@ static jpl_status check_pair(const double p[2]) {
     return JPL_OK;
 }
 
+jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
+                                              const double jd_tt[2], double out[3]) {
+    double tt[2], m[3][3], p[3], rotated[3], dpsi, deps, eps;
+    jpl_status status;
+    size_t i, k;
+    if (!in || !jd_tt || !out) return JPL_ERROR_ARGUMENT;
+    for (i = 0; i < 3; ++i) {
+        if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
+        p[i] = in[i];
+    }
+    status = jpl_date_normalize(jd_tt, tt);
+    if (status != JPL_OK) return status;
+    eraPnm06a(tt[0], tt[1], m);
+    eraNut06a(tt[0], tt[1], &dpsi, &deps);
+    eps = eraObl06(tt[0], tt[1]) + deps;
+    if (!isfinite(eps) || !isfinite(dpsi)) return JPL_ERROR_NUMERIC;
+    eraRx(eps, m);
+    for (i = 0; i < 3; ++i) {
+        for (k = 0; k < 3; ++k) {
+            if (!isfinite(m[i][k])) return JPL_ERROR_NUMERIC;
+        }
+    }
+    eraRxp(m, p, rotated);
+    for (i = 0; i < 3; ++i) {
+        if (!isfinite(rotated[i])) return JPL_ERROR_NUMERIC;
+    }
+    memcpy(out, rotated, sizeof rotated);
+    return JPL_OK;
+}
+
 jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]) {
     double norm[2], ecm[3][3], local[3][3];
     jpl_status status;

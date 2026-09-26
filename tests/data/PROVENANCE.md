@@ -105,3 +105,52 @@ Policy: if an authoritative reconstruction differs from the committed
 bytes, obtain review before replacing data rather than changing the
 expected hash automatically. Do not invent missing metadata or label
 the gaps above verified.
+
+## Horizons apparent-position reference
+
+`tests/data/horizons_de441.txt` contains 220 rows acquired 2026-09-26
+through the [Horizons file API](https://ssd-api.jpl.nasa.gov/doc/horizons_file.html)
+(response API version 1.0). The ten target-specific requests were submitted
+sequentially, each with one multi-date `TLIST`, using `EPHEM_TYPE=OBSERVER`,
+`CENTER=500@399`, `TIME_TYPE=TT`, `TLIST_TYPE=JD`, `CAL_FORMAT=JD`,
+`QUANTITIES=45,31,20`, `REF_SYSTEM=ICRF`, `ANG_FORMAT=DEG`,
+`RANGE_UNITS=AU`, `APPARENT=AIRLESS`, `CSV_FORMAT=YES`,
+`EXTRA_PREC=YES`, `OBJ_DATA=NO`, and `MAKE_EPHEM=YES`. The 22 TT JD
+epochs per target are fourteen broadly separated dates (-1894917.5,
+-1500000.5, -1000000.5, 0, 1000000.5, 2000000.5, 2451545.0,
+2453005.0, 2453166.5, 2455197.5, 3000000.5, 4000000.5,
+5000000.5, 5370000.5) plus `-0.01` and `+0.01` TT day around each
+of the four dates in 2000–2010. The original decimal tokens, without
+rounding to C literals, are in the reference text.
+
+Targets were `COMMAND=1,2,4,5,6,7,8,9,10,301`; the `JPL_MOON=10`
+code maps to Horizons Moon 301, `JPL_SUN=11` maps to Sun 10, and
+the other libjpl codes select the corresponding planetary barycenters.
+Each of the ten returned target headers and every Earth-center header
+said `{source: DE441}`, and each batch returned 22 rows bounded by
+`$$SOE`/`$$EOE`. In contrast, a probe of physical Mars 499 reported
+`{source: mar099}`; it is not a DE441 Mars-barycenter reference.
+The reference text retains quantities 45 (airless apparent ICRF RA/Dec,
+degrees), 31 (IAU76/80 apparent ecliptic longitude/latitude, degrees),
+and 20 (apparent range in AU and signed radial range-rate in km/s).
+The earlier 140-row acquisition omitted the returned range-rate;
+these newly acquired batches supersede it and include neighboring
+corrected positions for independent longitude-speed comparisons. A hash of the
+normalized rows pins the reviewed text but does not establish their
+upstream authenticity. Reacquisition must verify source labels and
+all settings before replacing the reference. These JPL-sourced values
+are exempt from the first-party MIT notice in the license inventory;
+the surrounding validation code and prose remain first-party.
+
+The [Swiss Ephemeris comparison guide](https://ephe.scryr.io/swisseph/doc/swisseph.htm#how-to-compare-the-swiss-ephemeris-with-ephemerides-of-the-jpl-horizons-system)
+explains why TT, corrected apparent positions, inertial quantity 45,
+and the planetary-system barycenters are necessary for this comparison.
+The libjpl helper uses a modern IAU2006/2000A true-of-date orientation:
+quantity 31's IAU76/80 ecliptic angles are retained for checking the
+reference frame but are not direct expected values for that API.
+Horizons' Moon observer service rejected queries earlier than about
+9999 BC and later than about 9999 AD, so these apparent rows cover
+only the overlap with the local DE441 file. The independent JPL testpo
+rows and local full-file sweep check *geometric* interpolation beyond
+that observer range. Very distant apparent rows are diagnostic, not a
+promise of modern-epoch physical-model accuracy.

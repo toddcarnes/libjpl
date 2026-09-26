@@ -208,7 +208,7 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_frames_tests tests/test_frames.c)
     target_link_libraries(jpl_frames_tests PRIVATE jpl)
     target_compile_features(jpl_frames_tests PRIVATE c_std_17)
-    target_include_directories(jpl_frames_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_include_directories(jpl_frames_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
     add_test(NAME jpl_frames COMMAND jpl_frames_tests)
     add_executable(jpl_convenience_tests tests/test_convenience.c)
     target_link_libraries(jpl_convenience_tests PRIVATE jpl)
@@ -354,6 +354,35 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
+    add_test(NAME jpl_horizons_integrity
+        COMMAND ${CMAKE_COMMAND}
+            "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"
+            "-DREF=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/horizons_integrity"
+            "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_horizons_reference.cmake")
+    add_executable(jpl_horizons_tests tests/test_horizons.c)
+    target_link_libraries(jpl_horizons_tests PRIVATE jpl)
+    target_compile_features(jpl_horizons_tests PRIVATE c_std_17)
+    target_include_directories(jpl_horizons_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
+    add_test(NAME jpl_horizons_offline
+        COMMAND jpl_horizons_tests
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
+    add_test(NAME jpl_horizons_reference_mutation
+        COMMAND ${CMAKE_COMMAND}
+            "-DRUNNER=$<TARGET_FILE:jpl_horizons_tests>"
+            "-DEPH=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
+            "-DREF=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/horizons_comparison"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_horizons_compare.cmake")
+    if(DEFINED ENV{JPLEPH} AND NOT "$ENV{JPLEPH}" STREQUAL "" AND
+       EXISTS "$ENV{JPLEPH}/DE441.eph")
+        add_test(NAME jpl_horizons_de441_local
+            COMMAND jpl_horizons_tests "$ENV{JPLEPH}/DE441.eph"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
+    endif()
     # jpl_testpo_tests builds whenever tests are enabled: only its
     # large-data registrations stay opt-in; small synthetic validator
     # data below runs offline.

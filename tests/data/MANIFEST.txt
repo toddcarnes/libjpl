@@ -16,6 +16,9 @@ fixture.rows.sha256=540055b7352d4ef97ae67345e140cbf56b7f121fa6f8505c52a471739dd5
 # build-tree paths (byte-identical, values match the checked-in header).
 numerical.reference.sha256=0a0f75214fcdc507ad15fa6b7874d7b9caab3c05874658934038085d2f1d3b26
 numerical.generator.sha256=dfa98d6d97a066fa80e733ef8766bbb35cba0dd7c931e1d95955aa7b3f589955
+# Horizons observer reference: canonical LF, 22 TT dates x 10 DE441 targets.
+horizons.de441.rows=220
+horizons.de441.reference.sha256=9fb6de5cad4931cae315fd81524a8ed7c9eacf5c73b8c5800022db54a3e1cdd4
 # Full source/tool provenance and outstanding gaps: tests/data/PROVENANCE.md.
 # Downloads (LIBJPL_FETCH_EPHEMERIDES=ON only). Machine-readable block:
 # CMake parses these "<key>=<value>" pairs at configure time

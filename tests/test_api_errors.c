@@ -708,6 +708,22 @@ int main(void) {
         JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, q, JPL_MARS, JPL_MARS, s, NULL, 0, 0) == JPL_OK);
     }
 
+    /* The private selector must reject a finite date far beyond coverage
+     * without converting its huge record quotient to size_t. */
+    {
+        const double far_date[2] = {DBL_MAX, 0.0};
+        const double inside[2] = {8000017.0, 0.0};
+        double start[2] = {-5.0, -6.0}, end[2] = {-7.0, -8.0};
+        double state[6];
+        size_t index = SIZE_MAX;
+        JPL_TEST_CHECK(jpl_test_select_record(e, far_date, &index, start, end) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(index == SIZE_MAX && start[0] == -5.0 && start[1] == -6.0);
+        JPL_TEST_CHECK(end[0] == -7.0 && end[1] == -8.0);
+        JPL_TEST_CHECK(jpl_test_select_record(e, inside, &index, start, end) == JPL_OK);
+        JPL_TEST_CHECK(index == 0 && start[0] == 8000016.5 && end[0] == 8000017.5);
+        JPL_TEST_CHECK(jpl_get_state(e, inside, JPL_MARS, 0, state) == JPL_OK);
+    }
+
     /* Output sentinels stay unchanged on failure. */
     {
         double s[6], want[6], sec = 9.0, rate = 9.0;

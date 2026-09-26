@@ -76,13 +76,14 @@ jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2]
   *       jpl_planet_position(). Unknown, dynamical-1950, and
   *       dynamical-2000 frames are rejected with JPL_ERROR_UNSUPPORTED;
   *       no historical-frame transformation is applied.
-  * @note Moon+Earth vector addition mixes legs with different emission
- *       epochs and aberration corrections; it is approximate (km-level for
- *       moving centers). Adding apparent legs is an approximate
- *       convenience, not a consistent single-epoch apparent place: for
- *       consistent apparent geometry use geometric jpl_get_state() legs
- *       at a common epoch plus manual light-time/aberration, and note
- *       state[3..5] below are retarded-epoch, unaberrated velocities.
+  * @note This is one Earth-observer-to-Moon light-time leg with one
+  *       aberration correction, using jpl_planet_position(). The velocity
+  *       state[3..5] is retarded-epoch and unaberrated.
+  * @note If a caller adds this result to a separate apparent leg to
+  *       construct a third-body direction, the independently corrected
+  *       legs have different emission epochs; that sum is only an
+  *       approximation. For consistent geometry, start with geometric
+  *       jpl_get_state() legs and apply the desired corrections explicitly.
  */
 jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
 /** @brief Convert velocity from AU/day to km/s.
@@ -99,7 +100,7 @@ jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_
  * @param au Output distance in AU (km divided by 149597870.7); left
  *        unchanged when the call fails, including on NULL output.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL output or nonfinite
- *         input, JPL_ERROR_NUMERIC on unrepresentable output.
+ *         input.
  * @note Output is unchanged on failure. Uses the modern AU definition. */
 jpl_status jpl_km_to_au(double km, double *au);
 #ifdef __cplusplus

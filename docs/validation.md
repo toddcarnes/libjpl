@@ -12,6 +12,48 @@ See LICENSE in the project root for the full license text.
 > closure; unrun configurations stay explicitly pending (a skipped tier
 > is never a pass).
 
+## Review follow-up acceptance (2026-09-25)
+
+Evidence for [F1-F7](reviews/2026-09-25-review-followup-resolution.md)
+was collected on `bugfix/review-followup-fixes`, forked from revision
+`05e9c6f`. Earlier T22/T23 evidence below describes older
+worktrees and does not supersede these runs.
+
+- Windows MSVC 19.51 / Visual Studio 18 2026, fresh offline
+  `build/followup-accept`: Debug **42/42**, Release **42/42**; zero
+  compiler warnings. `jpl_install` checks both the tests-ON installed
+  archive and the tests-OFF custom-destination archive for defined
+  `jpl_test_*` symbols. The archive check was first run against the
+  pre-fix build and failed on both leaked hooks.
+- Doxygen 1.17.0 with `WARN_AS_ERROR=YES`: `docs` builds; docs symbols,
+  paths with spaces, and docs-only matrix pass **3/3** in
+  `build/followup-docs`.
+- Ubuntu WSL GCC 15.2, source copied once from the Windows worktree to
+  `/home/todd/libjpl-review` (native Linux filesystem), native Debug
+  `build/followup-linux-debug` **42/42**, native Release
+  `build/followup-linux-release` **42/42**, both with
+  `-Werror=implicit-function-declaration`, zero compiler warnings.
+  The **whole** offline suite ran in each configuration, including
+  `jpl_install`, `jpl_licenses`, `jpl_largefile`, `jpl_threads`,
+  `jpl_mmap`, and `jpl_docs_only`. Nothing was built or tested on
+  `/mnt/d`. The initial Debug run stopped at `jpl_docs_only` because
+  Ubuntu had Doxygen but lacked Graphviz `dot`; after installing Graphviz
+  14.1.2 inside Ubuntu, a fresh full run passed. This explains the
+  historical cross-OS mount-related subset/timeout notes below rather
+  than silently treating them as a full pass.
+- Ubuntu native ASan/UBSan/float-cast-overflow **40/40** applicable offline
+  tests (install/docs-only omitted from this sanitizer-only run; both
+  passed in the unsanitized full runs). Native TSan `jpl_threads` and
+  `jpl_mmap` **2/2**. Python-free proof: with `PATH=/nonexistent` and no
+  Python executable discoverable, the four fixture-tool/integrity tests
+  passed **4/4**. All five C mutation modes and canonical copies were
+  compared byte-for-byte against the former Python outputs before its
+  removal.
+
+These checks cover the current Windows MSVC and Ubuntu GCC paths. This
+follow-up did not run clang-cl, macOS, or the optional real-ephemeris
+download tier; no pass is inferred for those configurations.
+
 ## Frame-source table (T12, R04)
 
 Classification is content-derived from the header DENUM via an explicit

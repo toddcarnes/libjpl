@@ -5,14 +5,16 @@
 # Validates the committed fixture against manifest hashes. Variables:
 # MANIFEST (tests/data/MANIFEST.txt path), BINARY_FIXTURE
 # (de441_2000_2010.eph path), TEXT_FIXTURE (testpo_441_slice.txt path),
-# ROWS_FIXTURE (fixture_rows.txt identity-list path). Manifest and the
+# ROWS_FIXTURE (fixture_rows.txt identity-list path), FIXTURE_TOOL (test-only
+# C executable), WORK (owned canonical-copy directory). Manifest and the
 # checker run on LF checkouts and CRLF checkouts because the reference
 # text (and the identity list) is hashed after CRLF-to-LF normalization
 # only; no other whitespace is discarded. Fails loudly on any mismatch.
 # Manifest keys are parsed here from MANIFEST (see below), so the hashes
 # live in exactly one place.
-if(NOT DEFINED MANIFEST OR NOT DEFINED BINARY_FIXTURE OR NOT DEFINED TEXT_FIXTURE OR NOT DEFINED ROWS_FIXTURE)
-  message(FATAL_ERROR "check_fixture.cmake needs MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE and ROWS_FIXTURE")
+if(NOT DEFINED MANIFEST OR NOT DEFINED BINARY_FIXTURE OR NOT DEFINED TEXT_FIXTURE OR NOT DEFINED ROWS_FIXTURE
+    OR NOT DEFINED WORK OR "${WORK}" STREQUAL "" OR NOT DEFINED FIXTURE_TOOL OR NOT EXISTS "${FIXTURE_TOOL}")
+  message(FATAL_ERROR "check_fixture.cmake needs MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE, ROWS_FIXTURE, FIXTURE_TOOL and WORK")
 endif()
 foreach(required IN ITEMS MANIFEST BINARY_FIXTURE TEXT_FIXTURE ROWS_FIXTURE)
   if(NOT EXISTS "${${required}}")
@@ -20,12 +22,19 @@ foreach(required IN ITEMS MANIFEST BINARY_FIXTURE TEXT_FIXTURE ROWS_FIXTURE)
   endif()
 endforeach()
 file(SHA256 "${BINARY_FIXTURE}" actual_binary)
-file(READ "${TEXT_FIXTURE}" text)
-string(REPLACE "\r\n" "\n" canonical "${text}")
-string(SHA256 actual_text "${canonical}")
-file(READ "${ROWS_FIXTURE}" rows_text)
-string(REPLACE "\r\n" "\n" rows_canonical "${rows_text}")
-string(SHA256 actual_rows "${rows_canonical}")
+file(MAKE_DIRECTORY "${WORK}")
+execute_process(COMMAND "${FIXTURE_TOOL}" canon-copy "${TEXT_FIXTURE}" "${WORK}/text.canonical"
+  RESULT_VARIABLE text_rc ERROR_VARIABLE text_err)
+if(NOT "${text_rc}" STREQUAL "0")
+  message(FATAL_ERROR "fixture text canonicalization failed: ${TEXT_FIXTURE}\n${text_err}")
+endif()
+execute_process(COMMAND "${FIXTURE_TOOL}" canon-copy "${ROWS_FIXTURE}" "${WORK}/rows.canonical"
+  RESULT_VARIABLE rows_rc ERROR_VARIABLE rows_err)
+if(NOT "${rows_rc}" STREQUAL "0")
+  message(FATAL_ERROR "fixture rows canonicalization failed: ${ROWS_FIXTURE}\n${rows_err}")
+endif()
+file(SHA256 "${WORK}/text.canonical" actual_text)
+file(SHA256 "${WORK}/rows.canonical" actual_rows)
 file(STRINGS "${MANIFEST}" manifest_lines)
 set(expected_binary "")
 set(expected_text "")

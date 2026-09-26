@@ -7,8 +7,8 @@
 # Canonicalization: CRLF replaced with LF only; remaining bare CR fails.
 # On failure emits expected vs actual values.
 # Variables: MANIFEST (required manifest path), HEADER (required reference
-# header path), GENERATOR (required generator source path), WORK (required
-# build-tree work path for canonical copies).
+# header path), GENERATOR (required generator source path), FIXTURE_TOOL
+# (test-only C binary), WORK (required build-tree path for canonical copies).
 if(NOT DEFINED MANIFEST OR "${MANIFEST}" STREQUAL "")
   message(FATAL_ERROR "check_numerical_reference.cmake needs MANIFEST")
 endif()
@@ -20,6 +20,9 @@ if(NOT DEFINED GENERATOR OR "${GENERATOR}" STREQUAL "")
 endif()
 if(NOT DEFINED WORK OR "${WORK}" STREQUAL "")
   message(FATAL_ERROR "check_numerical_reference.cmake needs WORK")
+endif()
+if(NOT DEFINED FIXTURE_TOOL OR NOT EXISTS "${FIXTURE_TOOL}")
+  message(FATAL_ERROR "check_numerical_reference.cmake needs FIXTURE_TOOL")
 endif()
 foreach(_f IN ITEMS "${MANIFEST}" "${HEADER}" "${GENERATOR}")
   if(NOT EXISTS "${_f}")
@@ -44,20 +47,9 @@ if("${_gen_expected}" STREQUAL "")
   message(FATAL_ERROR "manifest lacks numerical.generator.sha256: ${MANIFEST}")
 endif()
 file(MAKE_DIRECTORY "${WORK}")
-# Canonicalize CRLF to LF with byte-exact replacement: read raw bytes in
-# binary mode (file(READ) alone decodes newlines per-platform and would
-# hash the decoded form, not the canonical source bytes). Python is
-# available in this project's test tooling (fixture mutator); CMake has
-# no binary-safe read primitive in 3.20.
-find_package(Python3 COMPONENTS Interpreter)
-if(NOT Python3_Interpreter_FOUND)
-  message(FATAL_ERROR "numerical reference check needs a Python3 interpreter for binary-safe canonicalization")
-endif()
+# The test-only C tool reads raw bytes, converts CRLF, and rejects bare CR.
 function(jpl_canonical_sha256 out_var src_path work_path)
-  get_filename_component(_base "${work_path}" NAME)
-  execute_process(COMMAND "${Python3_EXECUTABLE}"
-      "-c" "import sys; d=open(sys.argv[1],'rb').read().replace(b'\\r\\n',b'\\n'); assert b'\\r' not in d, 'bare CR'; open(sys.argv[2],'wb').write(d)"
-      "${src_path}" "${work_path}"
+  execute_process(COMMAND "${FIXTURE_TOOL}" canon-copy "${src_path}" "${work_path}"
     RESULT_VARIABLE _canon_rc OUTPUT_VARIABLE _canon_out ERROR_VARIABLE _canon_err)
   if(NOT _canon_rc EQUAL 0)
     message(FATAL_ERROR "canonicalization failed for ${src_path}:\n${_canon_out}\n${_canon_err}")

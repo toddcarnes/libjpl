@@ -12,13 +12,12 @@
 # list is checked inside the duplicate and retarget families (mutated
 # rows files verified against the intact text), proving the list is
 # actually compared; there is no separate sixth mutation.
-# The mutator runs under a portable Python 3 interpreter (PYTHON
-# variable when provided, else python3/python from PATH); a missing
-# interpreter fails loudly as an explicit prerequisite.
+# The mutator is a test-only C17 executable; the default suite needs no
+# Python interpreter.
 # Variables: MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE, ROWS_FIXTURE,
 # CHECKER (check_fixture.cmake path), FIXTURE_RUNNER
 # (jpl_fixture_tests binary), WORK (unique build-tree directory),
-# PYTHON (optional Python 3 interpreter path).
+# FIXTURE_TOOL (path to jpl_fixture_tool).
 # Failure reporting: each case records exit code plus stderr; the first
 # failing expectation aborts with FATAL_ERROR naming the case.
 function(jpl_fixture_case label expect_fail)
@@ -34,25 +33,14 @@ function(jpl_fixture_case label expect_fail)
     endif()
   endif()
 endfunction()
-if(NOT DEFINED MANIFEST OR NOT DEFINED BINARY_FIXTURE OR NOT DEFINED TEXT_FIXTURE OR NOT DEFINED ROWS_FIXTURE OR NOT DEFINED CHECKER OR NOT DEFINED FIXTURE_RUNNER OR NOT DEFINED WORK)
-  message(FATAL_ERROR "test_fixture_integrity.cmake needs MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE, ROWS_FIXTURE, CHECKER, FIXTURE_RUNNER and WORK")
+if(NOT DEFINED MANIFEST OR NOT DEFINED BINARY_FIXTURE OR NOT DEFINED TEXT_FIXTURE OR NOT DEFINED ROWS_FIXTURE OR NOT DEFINED CHECKER OR NOT DEFINED FIXTURE_RUNNER OR NOT DEFINED WORK OR NOT DEFINED FIXTURE_TOOL)
+  message(FATAL_ERROR "test_fixture_integrity.cmake needs MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE, ROWS_FIXTURE, CHECKER, FIXTURE_RUNNER, FIXTURE_TOOL and WORK")
 endif()
-foreach(required IN ITEMS MANIFEST BINARY_FIXTURE TEXT_FIXTURE ROWS_FIXTURE CHECKER FIXTURE_RUNNER)
+foreach(required IN ITEMS MANIFEST BINARY_FIXTURE TEXT_FIXTURE ROWS_FIXTURE CHECKER FIXTURE_RUNNER FIXTURE_TOOL)
   if(NOT EXISTS "${${required}}")
     message(FATAL_ERROR "test_fixture_integrity.cmake: ${required} does not exist: ${${required}}")
   endif()
 endforeach()
-# Portable Python 3 discovery: an explicit -DPYTHON=<path> wins; otherwise
-# fall back to python3/python from PATH. Fails loudly when absent.
-if(NOT DEFINED PYTHON OR "${PYTHON}" STREQUAL "")
-  find_program(LIBJPL_FIXTURE_PYTHON NAMES python3 python)
-  if(NOT LIBJPL_FIXTURE_PYTHON)
-    message(FATAL_ERROR "test_fixture_integrity.cmake needs a Python 3 interpreter (pass -DPYTHON=<path> or put python3/python on PATH)")
-  endif()
-  set(PYTHON "${LIBJPL_FIXTURE_PYTHON}")
-elseif(NOT EXISTS "${PYTHON}")
-  message(FATAL_ERROR "test_fixture_integrity.cmake: PYTHON does not exist: ${PYTHON}")
-endif()
 # Build-tree scratch only; the committed source files stay untouched.
 file(MAKE_DIRECTORY "${WORK}")
 file(COPY_FILE "${BINARY_FIXTURE}" "${WORK}/case_binary.eph")
@@ -74,6 +62,7 @@ jpl_fixture_case("intact copies pass" 0
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/case_text.txt"
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_intact"
   -P "${CHECKER}")
 jpl_fixture_case("intact runner passes" 0
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/case_text.txt" "${WORK}/case_rows.txt")
@@ -82,14 +71,13 @@ jpl_fixture_case("intact runner passes" 0
 # Offset 18855 is the high byte of an Earth-rotation (T12) coefficient
 # inside data record 1 (which starts at 2*8144 = 16288; the LE double
 # 32831107.1005468 at 18848 feeds row 1 at JD 2451544.5). Read/write via
-# the PYTHON interpreter above so the script stays byte-exact across
-# platforms.
+# the test-only C tool in binary mode so the edit stays byte-exact.
 execute_process(COMMAND "${CMAKE_COMMAND}" -E copy "${BINARY_FIXTURE}" "${WORK}/flip.eph"
                 RESULT_VARIABLE rc)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture negative setup failed to copy binary for flip case")
 endif()
-execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/mutate_fixture.py" flip "${WORK}/flip.eph"
+execute_process(COMMAND "${FIXTURE_TOOL}" flip "${WORK}/flip.eph"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture flip mutation failed: ${rc}\n${out}\n${err}")
@@ -100,6 +88,7 @@ jpl_fixture_case("flipped binary byte fails" 1
   "-DBINARY_FIXTURE=${WORK}/flip.eph"
   "-DTEXT_FIXTURE=${WORK}/case_text.txt"
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_flip"
   -P "${CHECKER}")
 jpl_fixture_case("flipped binary runner fails" 1
   "${FIXTURE_RUNNER}" "${WORK}/flip.eph" "${WORK}/case_text.txt" "${WORK}/case_rows.txt")
@@ -108,7 +97,7 @@ jpl_fixture_case("flipped binary runner fails" 1
 # The identity-list hash (and, for the mutated text, the text hash too)
 # must fail; the runner alone keeps passing, which is exactly why the
 # ordered identity list exists.
-execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/mutate_fixture.py" dup "${TEXT_FIXTURE}" "${WORK}/dup.txt" "${ROWS_FIXTURE}" "${WORK}/dup_rows.txt"
+execute_process(COMMAND "${FIXTURE_TOOL}" dup "${TEXT_FIXTURE}" "${WORK}/dup.txt" "${ROWS_FIXTURE}" "${WORK}/dup_rows.txt"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture dup mutation failed: ${rc}\n${out}\n${err}")
@@ -119,6 +108,7 @@ jpl_fixture_case("duplicated interior rows fail text hash" 1
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/dup.txt"
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_dup_text"
   -P "${CHECKER}")
 jpl_fixture_case("duplicated interior rows fail rows hash" 1
   "${CMAKE_COMMAND}"
@@ -126,10 +116,11 @@ jpl_fixture_case("duplicated interior rows fail rows hash" 1
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/case_text.txt"
   "-DROWS_FIXTURE=${WORK}/dup_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_dup_rows"
   -P "${CHECKER}")
 
 # Case 3: alter one target/component pair (row 61: T1 C9 -> T2 C9).
-execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/mutate_fixture.py" retarget "${TEXT_FIXTURE}" "${WORK}/retarget.txt" "${ROWS_FIXTURE}" "${WORK}/retarget_rows.txt"
+execute_process(COMMAND "${FIXTURE_TOOL}" retarget "${TEXT_FIXTURE}" "${WORK}/retarget.txt" "${ROWS_FIXTURE}" "${WORK}/retarget_rows.txt"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture retarget mutation failed: ${rc}\n${out}\n${err}")
@@ -140,6 +131,7 @@ jpl_fixture_case("altered target fails text hash" 1
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/retarget.txt"
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_retarget_text"
   -P "${CHECKER}")
 jpl_fixture_case("altered target fails rows hash" 1
   "${CMAKE_COMMAND}"
@@ -147,13 +139,14 @@ jpl_fixture_case("altered target fails rows hash" 1
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/case_text.txt"
   "-DROWS_FIXTURE=${WORK}/retarget_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_retarget_rows"
   -P "${CHECKER}")
 jpl_fixture_case("altered target runner fails" 1
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/retarget.txt" "${WORK}/case_rows.txt")
 
 # Case 4: alter one coordinate (row 90: fractional digit 6 -> 7, +1e-9,
 # far above the 5e-13 reference tolerance).
-execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/mutate_fixture.py" recoord "${TEXT_FIXTURE}" "${WORK}/recoord.txt"
+execute_process(COMMAND "${FIXTURE_TOOL}" recoord "${TEXT_FIXTURE}" "${WORK}/recoord.txt"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture recoord mutation failed: ${rc}\n${out}\n${err}")
@@ -164,12 +157,13 @@ jpl_fixture_case("altered coordinate fails text hash" 1
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/recoord.txt"
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_recoord"
   -P "${CHECKER}")
 jpl_fixture_case("altered coordinate runner fails" 1
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/recoord.txt" "${WORK}/case_rows.txt")
 
 # Case 5: CRLF line endings must still pass (canonicalization is LF-only).
-execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/mutate_fixture.py" crlf "${TEXT_FIXTURE}" "${WORK}/crlf.txt" "${ROWS_FIXTURE}" "${WORK}/crlf_rows.txt"
+execute_process(COMMAND "${FIXTURE_TOOL}" crlf "${TEXT_FIXTURE}" "${WORK}/crlf.txt" "${ROWS_FIXTURE}" "${WORK}/crlf_rows.txt"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture crlf mutation failed: ${rc}\n${out}\n${err}")
@@ -180,6 +174,22 @@ jpl_fixture_case("CRLF text still passes" 0
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
   "-DTEXT_FIXTURE=${WORK}/crlf.txt"
   "-DROWS_FIXTURE=${WORK}/crlf_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_crlf"
   -P "${CHECKER}")
 jpl_fixture_case("CRLF runner still passes" 0
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/crlf.txt" "${WORK}/crlf_rows.txt")
+
+# Bare CR is not CRLF. The checker must reject it explicitly instead of
+# treating it as an ordinary hash mismatch or silently normalizing it.
+file(WRITE "${WORK}/bare_cr.txt" "A\rB")
+execute_process(COMMAND "${CMAKE_COMMAND}"
+  "-DMANIFEST=${WORK}/intact_manifest.txt"
+  "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
+  "-DTEXT_FIXTURE=${WORK}/bare_cr.txt"
+  "-DROWS_FIXTURE=${WORK}/case_rows.txt"
+  "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_bare_cr"
+  -P "${CHECKER}"
+  RESULT_VARIABLE bare_rc ERROR_VARIABLE bare_err)
+if("${bare_rc}" STREQUAL "0" OR NOT bare_err MATCHES "bare CR")
+  message(FATAL_ERROR "fixture checker did not reject bare CR: ${bare_rc}\n${bare_err}")
+endif()

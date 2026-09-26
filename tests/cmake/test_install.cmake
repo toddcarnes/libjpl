@@ -30,6 +30,22 @@ function(run_checked)
     message(FATAL_ERROR "install case failed (${rc}): ${ARGV}\n${out}\n${err}")
   endif()
 endfunction()
+
+function(check_archive_symbols libdir)
+  set(lib_msvc "${libdir}/jpl.lib")
+  set(lib_posix "${libdir}/libjpl.a")
+  if(EXISTS "${lib_msvc}" AND NOT EXISTS "${lib_posix}")
+    set(archive "${lib_msvc}")
+  elseif(EXISTS "${lib_posix}" AND NOT EXISTS "${lib_msvc}")
+    set(archive "${lib_posix}")
+  else()
+    message(FATAL_ERROR "expected exactly one installed jpl archive in ${libdir}")
+  endif()
+  run_checked("${CMAKE_COMMAND}"
+    "-DARCHIVE=${archive}" "-DSYMBOL_TOOL=${SYMBOL_TOOL}"
+    "-DTOOL_IS_DUMPBIN=${TOOL_IS_DUMPBIN}"
+    -P "${SOURCE}/tests/cmake/check_archive_symbols.cmake")
+endfunction()
 if(NOT DEFINED SOURCE OR "${SOURCE}" STREQUAL ""
     OR NOT DEFINED BUILD OR "${BUILD}" STREQUAL ""
     OR NOT DEFINED CONFIG OR "${CONFIG}" STREQUAL ""
@@ -151,6 +167,7 @@ file(READ "${config_dir}/libjplTargets.cmake" targets_content)
 if(NOT targets_content MATCHES "INTERFACE_INCLUDE_DIRECTORIES")
   message(FATAL_ERROR "installed targets export carries no include interface")
 endif()
+check_archive_symbols("${PREFIX}/${LIBDIR}")
 
 # --- Case 3: default-prefix consumer, exact current version. ---
 # Search roots are plain prefixes: find_package appends lib/cmake etc.
@@ -224,6 +241,7 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/lib-custom"
 set(CUSTOM_PREFIX "${WORK}/custom prefix")
 run_checked("${CMAKE_COMMAND}" --install "${WORK}/lib-custom"
   --prefix "${CUSTOM_PREFIX}" --config "${CONFIG}")
+check_archive_symbols("${CUSTOM_PREFIX}/custom-lib")
 file(GLOB custom_headers RELATIVE "${CUSTOM_PREFIX}/headers/jpl" "${CUSTOM_PREFIX}/headers/jpl/*.h")
 list(SORT custom_headers)
 if(NOT custom_headers STREQUAL "jpl.h;jpl_convenience.h;jpl_frames.h")

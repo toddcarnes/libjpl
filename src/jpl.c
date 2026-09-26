@@ -602,12 +602,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                 }
                 tentative = reparsed.tt_tdb_pointer;
                 memset(&reparsed.tt_tdb_pointer, 0, sizeof reparsed.tt_tdb_pointer);
-                /* Span end is the 1-based count (start-1)+coeff*sub; end <=
-                 * width accepts the boundary equality (end == width). Slot
-                 * width itself holds no coefficient, so an accepted triple
-                 * whose span ends exactly at the width still evaluates as
-                 * absent downstream (no coefficient bytes to interpolate);
-                 * only a strictly interior span yields usable TT-TDB. */
+                /* Span end (start-1)+coeff*sub is the exclusive upper index
+                 * in zero-based record doubles. A span ending at width is
+                 * valid: its last coefficient occupies slot width-1 and is
+                 * interpolated. */
                 if (tail_inside &&
                     tt_tdb_span_end(&tentative, &end) == 0 &&
                     end <= reparsed.record_double_count) {
@@ -1212,6 +1210,8 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     /* Final advertised endpoint maps to the last covered interval. */
     status = jpl_date_normalize(e->header.end_jd, boundary);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
+    if (jpl_date_compare(norm, cov_start) < 0 || jpl_date_compare(norm, boundary) > 0)
+        return JPL_ERROR_RANGE;
     if (jpl_date_compare(norm, boundary) == 0) {
         candidate = e->covered_record_count - 1;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
@@ -1232,8 +1232,10 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
      * nonpositive spans map to FORMAT/RANGE as checked below. */
     quotient_d = (diff[0] + diff[1]) / e->header.step_days;
     if (!isfinite(quotient_d) || quotient_d < 0.0) return JPL_ERROR_RANGE;
-    candidate = (size_t)quotient_d;
-    if (candidate >= e->covered_record_count) candidate = e->covered_record_count - 1;
+    /* A rounded quotient can reach the covered count at a valid endpoint;
+     * clamp before converting, including for extreme finite quotients. */
+    candidate = quotient_d >= (double)e->covered_record_count ?
+        e->covered_record_count - 1 : (size_t)quotient_d;
     for (;;) {
         int below = 0, above = 0;
         status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, boundary);
@@ -1324,6 +1326,13 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     }
     return JPL_ERROR_RANGE;
 }
+
+#ifdef LIBJPL_TESTING
+jpl_status jpl_test_select_record(const jpl_ephemeris *e, const double jd[2],
+                                  size_t *index, double start[2], double end[2]) {
+    return select_record(e, jd, index, start, end);
+}
+#endif
 
 /* Body-code validation for state-taking APIs (F04): target and center
  * combinations are rejected before date normalization, coverage, dataset
@@ -1431,8 +1440,8 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
     if (status != JPL_OK) { free(record); return JPL_ERROR_FORMAT; }
     { double qd = (from_start[0] + from_start[1]) / substep;
       if (!isfinite(qd) || qd < 0.0) { free(record); return JPL_ERROR_FORMAT; }
-      subinterval = (size_t)qd;
-      if (subinterval >= nsub) subinterval = nsub - 1;
+      /* The last boundary can round to nsub: clamp before integer conversion. */
+      subinterval = qd >= (double)nsub ? nsub - 1 : (size_t)qd;
       /* Verify the candidate against two-part subinterval boundaries and
        * correct by one neighbor; interior boundaries select the following
        * subinterval. */

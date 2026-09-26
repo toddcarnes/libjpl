@@ -94,6 +94,11 @@ jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
  * nonzero (0 disables). Production builds without LIBJPL_TESTING bypass it
  * entirely; the hook is test-only and never declared in installed headers. */
 void jpl_test_set_parser_read_limit(size_t max_bytes);
+
+/* Exercise the selector's own range checks without interpolate's outer
+ * coverage guard. This hook exists only in the private testing archive. */
+jpl_status jpl_test_select_record(const jpl_ephemeris *ephemeris,
+    const double jd[2], size_t *index, double start[2], double end[2]);
 #endif
 
 #endif

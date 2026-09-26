@@ -65,6 +65,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/data/MANIFEST.txt"
   "tests/data/PROVENANCE.md"
   "tools/generate_numerical_reference.c"
+  "tools/fixture_tool.c"
   "tests/license_inventory.cmake"
   "cmake/libjplConfig.cmake.in"
   "cmake/LibjplTestData.cmake"
@@ -83,9 +84,10 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/cmake/test_fetch_cache.cmake"
   "tests/cmake/check_workflows.cmake"
   "tests/cmake/check_numerical_reference.cmake"
+  "tests/cmake/check_archive_symbols.cmake"
+  "tests/cmake/test_fixture_tool.cmake"
   "tests/cmake/test_docs_only.cmake"
   "tests/cmake/test_install.cmake"
-  "tests/cmake/mutate_fixture.py"
 )
 # Exempt files and why:
 #   LICENSE - the full MIT grant itself (checked separately for completeness).

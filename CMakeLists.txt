@@ -11,9 +11,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-add_library(jpl STATIC
-    src/jpl.c
-)
+set(JPL_CORE_SOURCES src/jpl.c src/jpl_frames.c src/jpl_convenience.c src/jpl_date.c)
+add_library(jpl STATIC ${JPL_CORE_SOURCES})
 add_library(jpl::jpl ALIAS jpl)
 
 target_compile_features(jpl PUBLIC c_std_17)
@@ -40,9 +39,6 @@ target_include_directories(jpl PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_
 # below. Downstream users never need erfa.h (frames API hides it), so the
 # PUBLIC include stays build-interface-only. Revisit only if a public header
 # ever includes erfa.h.
-target_sources(jpl PRIVATE src/jpl_frames.c)
-target_sources(jpl PRIVATE src/jpl_convenience.c)
-target_sources(jpl PRIVATE src/jpl_date.c)
 # erfaversion.c expects version macros from generated config.h (see configure.ac
 # in the ERFA release); define them here since we build without autotools.
 target_compile_definitions(jpl PRIVATE
@@ -155,15 +151,53 @@ install(FILES src/erfa/LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/li
 
 option(LIBJPL_BUILD_TESTS "Build libjpl tests" ON)
 if(LIBJPL_BUILD_TESTS)
+    add_executable(jpl_fixture_tool tools/fixture_tool.c)
+    target_compile_features(jpl_fixture_tool PRIVATE c_std_17)
+    set_target_properties(jpl_fixture_tool PROPERTIES C_EXTENSIONS OFF)
+    add_test(NAME jpl_fixture_tool
+        COMMAND ${CMAKE_COMMAND}
+            "-DTOOL=$<TARGET_FILE:jpl_fixture_tool>"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/fixture_tool_unit"
+            "-DBINARY=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
+            "-DTEXT=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/testpo_441_slice.txt"
+            "-DROWS=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/fixture_rows.txt"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_fixture_tool.cmake")
+    # The installed archive must not contain private parser/solver test hooks.
+    # Only tests that exercise those hooks link this separate build of the
+    # same sources; all other tests continue to exercise the shipped jpl.
+    add_library(jpl_testing STATIC ${JPL_CORE_SOURCES} ${ERFA_SOURCES})
+    target_compile_features(jpl_testing PUBLIC c_std_17)
+    set_target_properties(jpl_testing PROPERTIES C_EXTENSIONS OFF)
+    if(LIBJPL_PIC)
+        set_target_properties(jpl_testing PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+    target_include_directories(jpl_testing PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    target_include_directories(jpl_testing PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
+    target_compile_definitions(jpl_testing PRIVATE
+        PACKAGE_VERSION=\"2.0.1\"
+        PACKAGE_VERSION_MAJOR=2
+        PACKAGE_VERSION_MINOR=0
+        PACKAGE_VERSION_MICRO=1
+        SOFA_VERSION=\"20231011\"
+        LIBJPL_TESTING
+    )
+    if(MSVC)
+        target_compile_definitions(jpl_testing PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(jpl_testing PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(jpl_testing PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(JPL_NEED_M_LIB)
+        target_link_libraries(jpl_testing PUBLIC "${JPL_NEED_M_LIB}")
+    endif()
     add_executable(jpl_tests tests/test_jpl.c)
     target_link_libraries(jpl_tests PRIVATE jpl)
     target_compile_features(jpl_tests PRIVATE c_std_17)
     add_test(NAME jpl_tests COMMAND jpl_tests)
     add_executable(jpl_lighttime_tests tests/test_lighttime.c)
-    target_link_libraries(jpl_lighttime_tests PRIVATE jpl)
+    target_link_libraries(jpl_lighttime_tests PRIVATE jpl_testing)
     target_compile_features(jpl_lighttime_tests PRIVATE c_std_17)
     target_include_directories(jpl_lighttime_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
-    target_compile_definitions(jpl PRIVATE LIBJPL_TESTING)
     target_compile_definitions(jpl_lighttime_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_lighttime COMMAND jpl_lighttime_tests)
     add_executable(jpl_aberration_tests tests/test_aberration.c)
@@ -196,13 +230,13 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_tt_tdb_tests PRIVATE c_std_17)
     add_test(NAME jpl_tt_tdb COMMAND jpl_tt_tdb_tests)
     add_executable(jpl_parser_tests tests/test_parser.c)
-    target_link_libraries(jpl_parser_tests PRIVATE jpl)
+    target_link_libraries(jpl_parser_tests PRIVATE jpl_testing)
     target_compile_features(jpl_parser_tests PRIVATE c_std_17)
     target_include_directories(jpl_parser_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_definitions(jpl_parser_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_parser COMMAND jpl_parser_tests)
     add_executable(jpl_api_errors_tests tests/test_api_errors.c)
-    target_link_libraries(jpl_api_errors_tests PRIVATE jpl)
+    target_link_libraries(jpl_api_errors_tests PRIVATE jpl_testing)
     target_compile_features(jpl_api_errors_tests PRIVATE c_std_17)
     target_include_directories(jpl_api_errors_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_definitions(jpl_api_errors_tests PRIVATE LIBJPL_TESTING)
@@ -218,7 +252,7 @@ if(LIBJPL_BUILD_TESTS)
     # beyond-INT32 last-record offset; 32-bit address-space cases stay
     # inside the test as explicit skips/rejections, not omissions.
     add_executable(jpl_largefile tests/test_largefile.c)
-    target_link_libraries(jpl_largefile PRIVATE jpl)
+    target_link_libraries(jpl_largefile PRIVATE jpl_testing)
     target_compile_features(jpl_largefile PRIVATE c_std_17)
     target_include_directories(jpl_largefile PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_definitions(jpl_largefile PRIVATE LIBJPL_TESTING)
@@ -234,7 +268,7 @@ if(LIBJPL_BUILD_TESTS)
     target_include_directories(jpl_testpo_parser_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     add_test(NAME jpl_testpo_parser COMMAND jpl_testpo_parser_tests)
     add_executable(jpl_numeric_tests tests/test_numeric.c)
-    target_link_libraries(jpl_numeric_tests PRIVATE jpl)
+    target_link_libraries(jpl_numeric_tests PRIVATE jpl_testing)
     target_compile_features(jpl_numeric_tests PRIVATE c_std_17)
     target_include_directories(jpl_numeric_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
     target_compile_definitions(jpl_numeric_tests PRIVATE LIBJPL_TESTING)
@@ -288,6 +322,8 @@ if(LIBJPL_BUILD_TESTS)
             "-DBINARY_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
             "-DTEXT_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/testpo_441_slice.txt"
             "-DROWS_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/fixture_rows.txt"
+            "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
+            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/fixture_integrity"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_fixture.cmake")
     # Negative fixture integrity (T17): disposable build-tree copies with a
     # flipped binary byte, duplicated interior rows, altered
@@ -302,6 +338,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DROWS_FIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/fixture_rows.txt"
             "-DCHECKER=${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_fixture.cmake"
             "-DFIXTURE_RUNNER=$<TARGET_FILE:jpl_fixture_tests>"
+            "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_FIXTURE_NEGATIVE_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_fixture_integrity.cmake")
     # Numerical-reference provenance (F16): canonical-LF hashes for the
@@ -314,6 +351,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"
             "-DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/numerical_reference.h"
             "-DGENERATOR=${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_numerical_reference.c"
+            "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
     # jpl_testpo_tests builds whenever tests are enabled (T15): only its
@@ -705,7 +743,7 @@ if(LIBJPL_BUILD_TESTS)
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.
-    foreach(tgt IN ITEMS jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    foreach(tgt IN ITEMS jpl_fixture_tool jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()
@@ -747,6 +785,19 @@ if(LIBJPL_BUILD_TESTS)
     else()
         set(JPL_INSTALL_NEED_M "")
     endif()
+    if(MSVC)
+        get_filename_component(JPL_AR_DIR "${CMAKE_AR}" DIRECTORY)
+        get_filename_component(JPL_LINKER_DIR "${CMAKE_LINKER}" DIRECTORY)
+        find_program(JPL_INSTALL_SYMBOL_TOOL NAMES dumpbin.exe dumpbin
+            HINTS "${JPL_AR_DIR}" "${JPL_LINKER_DIR}")
+        set(JPL_INSTALL_TOOL_IS_DUMPBIN 1)
+    else()
+        set(JPL_INSTALL_SYMBOL_TOOL "${CMAKE_NM}")
+        set(JPL_INSTALL_TOOL_IS_DUMPBIN 0)
+    endif()
+    if(NOT JPL_INSTALL_SYMBOL_TOOL OR NOT EXISTS "${JPL_INSTALL_SYMBOL_TOOL}")
+        message(FATAL_ERROR "libjpl install test requires a symbol-table tool (dumpbin or nm)")
+    endif()
     add_test(NAME jpl_install
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
@@ -764,6 +815,8 @@ if(LIBJPL_BUILD_TESTS)
             "-DINCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}"
             "-DDATADIR=${JPL_INSTALL_DATADIR}"
             "-DNEED_M=${JPL_INSTALL_NEED_M}"
+            "-DSYMBOL_TOOL=${JPL_INSTALL_SYMBOL_TOOL}"
+            "-DTOOL_IS_DUMPBIN=${JPL_INSTALL_TOOL_IS_DUMPBIN}"
             "-DPIC_IS_ON=${JPL_INSTALL_PIC_IS_ON}"
             "-DCHECKER=${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_licenses.cmake"
             "-DINVENTORY=${CMAKE_CURRENT_SOURCE_DIR}/tests/license_inventory.cmake"

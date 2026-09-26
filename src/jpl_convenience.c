@@ -10,9 +10,9 @@
 /* DE coefficient records are Cartesian in the ICRS equatorial frame, so
  * jpl_get_state output is already ICRS: no rotation is applied here. The
  * frames module stays for user-side ecliptic conversion. */
-/* Modern-AU unit conversions: status-returning, transactional locals.
- * Reject NULL/nonfinite inputs and unrepresentable outputs; leave outputs
- * unchanged on failure. Exact input/output aliasing is supported. */
+/* Modern-AU unit conversions leave outputs unchanged on failure.
+ * Velocity scaling can overflow and supports exact input/output aliasing;
+ * distance division cannot overflow after rejecting nonfinite km. */
 jpl_status jpl_au_per_day_to_km_per_s(const double v[3], double o[3]) {
     double tmp[3];
     size_t i;
@@ -27,12 +27,9 @@ jpl_status jpl_au_per_day_to_km_per_s(const double v[3], double o[3]) {
     return JPL_OK;
 }
 jpl_status jpl_km_to_au(double km, double *au) {
-    double tmp;
     if (!au) return JPL_ERROR_ARGUMENT;
     if (!isfinite(km)) return JPL_ERROR_ARGUMENT;
-    tmp = km / JPL_AU_KM;
-    if (!isfinite(tmp)) return JPL_ERROR_NUMERIC;
-    *au = tmp;
+    *au = km / JPL_AU_KM;
     return JPL_OK;
 }
 jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], int planet, int center, double st[6]) {

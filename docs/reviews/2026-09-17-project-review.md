@@ -617,3 +617,8 @@ Fix: uncommitted (T03/T15 tree). Tests: `jpl_testpo_parser`, all
 ## Prior log
 
 No findings have been resolved by this report. Future sessions should append the finding ID, fix revision, regression test, and fresh verification result here. Do not mark an issue resolved solely because an implementation plan exists.
+
+The new F1-F7 findings from the 2026-09-25 follow-up review and their
+implementation evidence are recorded in
+[`2026-09-25-review-followup-resolution.md`](2026-09-25-review-followup-resolution.md).
+They are separate from this report's R00-R15/L01-L06 history.

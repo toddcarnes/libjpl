@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Kept private parser and light-time test hooks out of the installed static
+  library. Install tests now inspect defined archive symbols.
+- Replaced Python-dependent fixture mutation and integrity checks with a
+  C17 test tool that canonicalizes CRLF byte-for-byte and rejects bare CR.
+- Guarded record/subinterval quotient-to-integer casts before conversion.
+- Clarified the single-leg Moon apparent-position contract and the valid
+  TT-TDB record-width boundary; removed an unreachable km-to-AU error path.
+
 ## [0.3.0] - 2026-09-25
 
 ### Changed

@@ -4,8 +4,9 @@ SPDX-License-Identifier: MIT
 See LICENSE in the project root for the full license text.
 -->
 
-Small, dependency-free C17 library for reading JPL Development Ephemeris
-(DE) binaries. Static lib `jpl` + three public headers.
+Small C17 library for reading JPL Development Ephemeris (DE) binaries.
+Bundles ERFA v2.0.1; no separate third-party library installation is
+required. Static lib `jpl` + three public headers.
 
 ## Protocol deviations
 
@@ -70,8 +71,8 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ## Conventions
 
-- The library has no outside dependencies: ERFA is vendored under `src/erfa/`,
-  used via `file(GLOB)` + test-driver exclusion + version defines in CMake.
+- ERFA sources under `src/erfa/` are built via `file(GLOB)` with
+  test-driver exclusion and version defines in CMake.
 - Library features build unconditionally; docs and tests have options.
   Test-only `jpl_testing` and `jpl_fixture_tool` are not installed.
 - Append, don't rewrite: public headers accumulate Doxygen + decls; use

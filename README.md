@@ -6,8 +6,9 @@ See LICENSE in the project root for the full license text.
 
 # libjpl
 
-`libjpl` is a small, dependency-free (ERFA vendored under `src/erfa/`) C17 library for reading JPL Development
-Ephemeris (DE) binary files. It targets Windows, macOS, and Linux.
+`libjpl` is a small C17 library for reading JPL Development Ephemeris
+(DE) binary files. It bundles ERFA v2.0.1, so no separate third-party
+library installation is required. It targets Windows, macOS, and Linux.
 
 It opens standard DE binaries in either byte order, exposes headers/constants,
 reads raw Chebyshev coefficient records, and interpolates planetary state

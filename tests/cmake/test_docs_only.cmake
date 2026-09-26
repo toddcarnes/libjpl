@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Docs-only configure matrix (test-only, F15).
+# Docs-only configure matrix (test-only).
 # Creates a disposable nested build with docs ON / tests OFF, builds the
 # docs target, lists its tests, and requires exactly jpl_docs_symbols and
 # jpl_docs_paths while rejecting ordinary executables (jpl_tests,

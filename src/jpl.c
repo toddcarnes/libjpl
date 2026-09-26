@@ -243,10 +243,10 @@ static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
     return 0;
 }
 
-/* Optional 24-byte TT-TDB tail decoder (F06): parses exactly the T14/T15
- * triplets at their checked offset. Reads T15 from offset 12, checks
- * integer bounds, and leaves has_tt_tdb == 0 until span validation in the
- * caller. Extra constant names are skipped by offset, never copied. */
+/* Optional 24-byte TT-TDB tail decoder: skips the T14 words, reads the
+ * T15 triplet at offset 12, checks integer bounds, and leaves
+ * has_tt_tdb == 0 until the caller validates the span. Extra constant
+ * names are skipped by offset, never copied. */
 static void parse_optional_tt_tdb(jpl_header *header,
                                   const unsigned char tail[24],
                                   jpl_byte_order order) {
@@ -296,7 +296,7 @@ typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_m
 typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 
 #ifdef LIBJPL_TESTING
-/* F06 bounded-read test hook: nonzero limit fails any parser source read
+/* Bounded-read test hook: a nonzero limit fails any parser source read
  * requesting more bytes. Production builds compile to the direct read.
  * Declared before the byte-source callbacks so every parser read,
  * including the 16-byte record-endpoint probes, routes through it. */
@@ -334,9 +334,8 @@ static jpl_status file_read_bytes(void *context, size_t offset,
 
 /* Scheduled data-record endpoint as a normalized two-part date: the
  * advertised coverage start pair plus index*step, computed with the private
- * compensated helpers. The decoded scalar header epochs are promoted to
- * {encoded_value, 0.0} only here at the decoding boundary; every query
- * comparison below carries both parts. */
+ * compensated helpers. parse_header already promoted the scalar header
+ * epochs to {encoded_value, 0.0}; query comparisons keep both parts. */
 static jpl_status scheduled_endpoint(const double start[2], double step, size_t index,
                                      double out[2]) {
     double coverage[2];
@@ -351,7 +350,7 @@ static jpl_status scheduled_endpoint(const double start[2], double step, size_t 
 }
 
 /* Reconstructed endpoints are compared to encoded file endpoints with a
- * magnitude-aware binary64 allowance (F13): derive it from the ULPs
+ * magnitude-aware binary64 allowance: derive it from the ULPs
  * adjacent to the encoded endpoint and the scheduled high part, not from a
  * fixed modern-epoch bound. Take the maximum finite adjacent spacing around
  * both values via nextafter() in both directions, multiplied by four. The
@@ -427,7 +426,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
     /* Initial header reads use the classic required size, not an
      * unconditional extension-sized read. Parse into the candidate-local
      * header, never the published header. Overflow-name bytes are skipped
-     * by offset (F06): the tail offset is computed with checked arithmetic
+     * by offset: the tail offset is computed with checked arithmetic
      * but extra names are never copied into a heap window. */
     status = parser_read_bytes(source, 0, classic, sizeof classic);
     if (status != JPL_OK) return status;
@@ -452,10 +451,9 @@ static jpl_status validate_layout(const jpl_byte_source *source,
       span_days = cov_span[0];
       span_lo = cov_span[1];
       if (!isfinite(candidate.step_days) || candidate.step_days <= 0.0) return JPL_ERROR_FORMAT;
-      /* Encoded coverage endpoints are whole/half-day values; their span is
-       * exactly representable, so combining the normalized parts is safe
-       * here for the interval-count estimate only. All query indexing
-       * below keeps both parts. */
+      /* Collapse the compensated coverage duration only to estimate the
+       * interval count. File geometry bounds that estimate, and the
+       * selected record endpoints are verified against two-part dates. */
       span_days += span_lo; }
     if (!isfinite(span_days) || span_days <= 0.0) return JPL_ERROR_FORMAT;
     span_records = span_days / candidate.step_days;
@@ -483,7 +481,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
     if (required_bytes < (size_t)MIN_RECORD_BYTES) required_bytes = (size_t)MIN_RECORD_BYTES;
     record_bytes = 0;
     total_records = 0;
-    /* Width search order matters for the R06b trailing-record case:
+    /* Width search order matters for trailing-record files:
      * each divisor width is checked with its own extra count (3 for
      * the trailing split, 2 for the plain split), trailing split
      * first. A width is accepted only when its candidate offsets carry
@@ -495,8 +493,8 @@ static jpl_status validate_layout(const jpl_byte_source *source,
         /* Each split is an independent width hypothesis: extra=3 first
          * (trailing-record files), then extra=2 (plain files). At most
          * one split may validate; both validating means the file
-         * admits two physical readings (different totals, hence
-         * different record counts) and is materially ambiguous (R06b).
+          * admits two physical readings (different totals, hence
+          * different record counts) and is materially ambiguous.
          * A plain valid file validates exactly the extra=2 split; a
          * trailing-record file exactly the extra=3 split. */
         static const size_t extras[2] = {3, 2};
@@ -536,9 +534,8 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                                                     first, second);
                 if (ep_status != JPL_OK) continue;
             }
-            /* Interior-corrupt files (T04 three-record case) carry a NaN
-             * MIDDLE record with clean first/last records: they validate
-             * normally below. */
+            /* Open checks boundary records only; interior corruption is
+             * detected on read or by the full-record validation sweep. */
             if (scheduled_endpoint(candidate.start_jd, candidate.step_days, 0, sched_first) != JPL_OK) continue;
             if (scheduled_endpoint(candidate.start_jd, candidate.step_days, 1, sched_last) != JPL_OK) continue;
             if (endpoints_match(sched_first, first[0]) != JPL_OK) continue;
@@ -561,7 +558,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                  * to advertised coverage (checked as ordered/finite). */
             }
             /* Optional TT-TDB tail is parsed from 24 bytes read directly at
-             * its checked offset (F06): after the candidate width is
+             * its checked offset: after the candidate width is
              * established, locate 2856+6*extra with checked arithmetic and
              * read the tail only when it fits inside the candidate header
              * record. No overflow-name window and no full-record allocation.
@@ -625,8 +622,8 @@ static jpl_status validate_layout(const jpl_byte_source *source,
         }
         /* At most one split may validate: both splits validated means
          * the file admits two physical readings (different totals, so
-         * necessarily different record counts) and is materially
-         * ambiguous (R06b) -> FORMAT. A plain valid file validates
+          * necessarily different record counts) and is materially
+          * ambiguous -> FORMAT. A plain valid file validates
          * exactly one split. */
         if (split_ok[0] && split_ok[1]) return JPL_ERROR_FORMAT;
         if (split_ok[0] && !split_ok[1]) {
@@ -876,7 +873,7 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
     return JPL_OK;
 }
 
-/* Frame classification from the content-derived DENUM (T12/R04).
+/* Frame classification from the content-derived DENUM.
  * Explicit cited allowlist from JPL's export information
  * (https://ssd.jpl.nasa.gov/planets/eph_export.html): DE102 is referred
  * to the dynamical equator/equinox of 1950, DE200/DE202 to the dynamical
@@ -902,7 +899,7 @@ static jpl_byte_order native_order(void) {
 static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
     unsigned char *bytes; size_t i;
     if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
-    /* Zero-count raw reads succeed without backend access (F14): no seek,
+    /* Zero-count raw reads succeed without backend access: no seek,
      * mapping-base evaluation, malloc(0), read, or copy. Argument and
      * handle validation above still applies. */
     if (count == 0) return JPL_OK;
@@ -1223,13 +1220,10 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
     }
     status = jpl_date_subtract(norm, cov_start, diff);
     if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
-    /* Scalar span/quotient/normalized math: record spans are whole-day
-     * values, so collapsing the compensated two-part difference
-     * (rec_span/from_start/local from jpl_date_subtract) into one scalar
-     * for the rate divisor, candidate quotient, or Chebyshev argument is
-     * a small-offset candidate/rate computation. The inputs are already
-     * FINITE normalized pairs; nonfinite quotients (NUMERIC) and
-     * nonpositive spans map to FORMAT/RANGE as checked below. */
+    /* Subtract the coverage start as a two-part date before reducing the
+     * nearby duration to a scalar candidate quotient. Bound the quotient
+     * before casting, then validate the candidate against the two-part
+     * scheduled endpoints below. */
     quotient_d = (diff[0] + diff[1]) / e->header.step_days;
     if (!isfinite(quotient_d) || quotient_d < 0.0) return JPL_ERROR_RANGE;
     /* A rounded quotient can reach the covered count at a valid endpoint;
@@ -1334,7 +1328,7 @@ jpl_status jpl_test_select_record(const jpl_ephemeris *e, const double jd[2],
 }
 #endif
 
-/* Body-code validation for state-taking APIs (F04): target and center
+/* Body-code validation for state-taking APIs: target and center
  * combinations are rejected before date normalization, coverage, dataset
  * availability, record I/O, or body shortcuts. Invalid combinations return
  * JPL_ERROR_ARGUMENT regardless of date or file contents. Target 0 is
@@ -1419,13 +1413,10 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
         free(record);
         return JPL_ERROR_FORMAT;
     }
-    /* Scalar span/quotient/normalized math: record spans are whole-day
-     * values, so collapsing the compensated two-part difference
-     * (rec_span/from_start/local from jpl_date_subtract) into one scalar
-     * for the rate divisor, candidate quotient, or Chebyshev argument is
-     * a small-offset candidate/rate computation. The inputs are already
-     * FINITE normalized pairs; nonfinite quotients (NUMERIC) and
-     * nonpositive spans map to FORMAT/RANGE as checked below. */
+    /* The scalar span, subinterval rate, and Chebyshev argument are nearby
+     * durations obtained after compensated date subtraction, not full
+     * Julian epochs. The candidate subinterval is verified against
+     * two-part boundaries below; invalid record spans report FORMAT. */
     status = jpl_date_subtract(file_end, file_start, rec_span);
     if (status != JPL_OK) { free(record); return JPL_ERROR_FORMAT; }
     span = rec_span[0] + rec_span[1];
@@ -1544,7 +1535,7 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     double norm[2], cov_start[2], cov_end[2];
     double divisor;
     /* SSB-to-SSB dates validate normally: normalize and check coverage
-     * before returning the zero vector (L03). */
+     * before returning the zero vector. */
     if (!e || !jd || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     status = jpl_date_normalize(jd, norm);
@@ -1591,10 +1582,10 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
 jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target, int center, double state[6]) {
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
-    /* Target zero is consistently invalid; center zero is the SSB alias
-     * (L05). Validate target/center combinations before date normalization
-     * or data access (F04): invalid codes report ARGUMENT regardless of
-     * date or file contents. Do not call barycentric_state() with an
+    /* Target zero is invalid; center zero is the SSB alias. Validate
+     * target/center combinations before date normalization or data access:
+     * invalid codes report ARGUMENT regardless of date or file contents.
+     * Do not call barycentric_state() with an
      * invalid code. */
     if (!valid_state_target(target) || !valid_state_center(target, center)) return JPL_ERROR_ARGUMENT;
     if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) {
@@ -1685,7 +1676,7 @@ static jpl_status lighttime_evaluate(const jpl_ephemeris *e, int target,
  * as a two-part pair. Fast fixed-point iteration handles ordinary cases;
  * whenever an estimate crosses coverage or fails to settle, a sign-checked
  * bisection over emission epochs in [coverage_start, receive] recovers
- * valid near-start solutions (R11) and reports genuinely pre-coverage
+ * valid near-start solutions and reports genuinely pre-coverage
  * roots as RANGE. State and delay are published only from one accepted
  * emission evaluation, so they always satisfy the residual within
  * JPL_LIGHTTIME_TOL_DAYS. Exhaustion of both budgets without an accepted
@@ -1705,7 +1696,7 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
     /* Nutations/librations are angles with no light-time meaning; reject.
      * Bodies 1-13 plus center 0-13 only; target 0 is consistently invalid
      * here, matching jpl_get_state. Validate before date normalization or
-     * data access (F04). */
+     * data access. */
     if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
     st = jpl_date_normalize(jd, norm);
     if (st != JPL_OK) return st;
@@ -1854,7 +1845,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
     if (!e->header.has_tt_tdb) return JPL_ERROR_UNSUPPORTED;
     /* Span end is the 1-based slot count (start-1)+coeff*sub, so equality
      * with the record width means the final subinterval ends exactly in
-     * the last slot (e.g. DE440t start 1019 + 13*8 = 1122 in 1122
+     * the last slot (e.g. DE440t (1019-1) + 13*8 = 1122 in 1122
      * doubles). Only a span past the width is absent. */
     tt = &e->header.tt_tdb_pointer;
     if (tt_tdb_span_end(tt, &span_end) != 0 || span_end > e->header.record_double_count)
@@ -1966,7 +1957,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     } else {
         w2 = 0.0;
     }
-    /* Second normalization uses the shared scale-safe norm (F05): build
+    /* Second normalization uses the shared scale-safe norm: build
      * all three finite p[i] values first, then normalize without
      * accumulating p[i]*p[i]. Finite large intermediates with a
      * representable direction stay representable; a genuinely overflowing

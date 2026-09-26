@@ -235,7 +235,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, INFINITY, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
     }
-    /* T16: pinned apparent-oracle velocity slot. The oracle's
+    /* Pinned apparent-oracle velocity slot. The oracle's
      * velocity is V-W by construction (mixed-epoch difference passed
      * through aberration); the first pinned case uses W directly. */
     {
@@ -257,13 +257,14 @@ int main(void) {
         JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, 1e-320, oo) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
     }
-    /* F05: finite tiny-Sun regression. A unit-scale nonradial state with a
+    /* Finite tiny-Sun regression: a unit-scale nonradial state with a
      * finite subluminal observer velocity and sun_distance_au = 1e-200
      * must succeed with finite output, preserved distance, unchanged
      * velocity, and exact in-place aliasing. The expected direction is an
-     * independent scale-safe normalization of the same published expression
-     * (cf. ERFA eraAb), compared within 1e-12. Before the fix, direct
-     * squaring of the large p vector returned JPL_ERROR_NUMERIC. */
+      * independent scale-safe normalization of the same published expression
+      * (cf. ERFA eraAb), compared within 1e-12. Squaring the large
+      * intermediate directly would overflow even though its direction is
+      * representable. */
     {
         static const double tiny_state[6] = {0.6, -0.8, 0.0, 1.0, 2.0, 3.0};
         static const double tiny_vel[3] = {0.0, 0.01, 0.0};

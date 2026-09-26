@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# License inventory checker (test-only, owned by T18).
+# License inventory checker (test-only).
 # Verifies the root MIT grant, every first-party notice enumerated in
 # tests/license_inventory.cmake, sweep coverage so new eligible files
 # cannot sit silently outside the inventory, and (optionally) installed
@@ -11,9 +11,8 @@
 # SOURCE/tests/license_inventory.cmake), INSTALL_PREFIX (optional
 # installed prefix to verify), DATADIR (optional install data dir
 # beneath the prefix; defaults to "share", matching the default
-# CMAKE_INSTALL_DATADIR. The CTest driver stages under "share"; T19
-# must forward the real CMAKE_INSTALL_DATADIR here when it consumes
-# the install-path handoff instead of duplicating literals).
+# CMAKE_INSTALL_DATADIR. CTest passes the configured data directory for
+# installed-package checks rather than assuming "share").
 if(NOT DEFINED SOURCE OR "${SOURCE}" STREQUAL "")
   message(FATAL_ERROR "check_licenses.cmake needs SOURCE")
 endif()
@@ -40,7 +39,7 @@ foreach(required IN ITEMS "MIT License" "Copyright \\(c\\) 2026 Todd Carnes" "Pe
 endforeach()
 
 # 1b. The LICENSES.md project-license link must resolve inside the source
-# root to an existing regular file (F18: ../LICENSE escapes the root).
+# root to an existing regular file (../LICENSE would escape the root).
 # The link text uses backticks ([`LICENSE`](...)): capture group 2 holds
 # the target (group 1 is the tick-quoted text). A later MATCH overwrites
 # CMAKE_MATCH_*, so copy the target out immediately and use only the copy.

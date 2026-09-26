@@ -143,7 +143,7 @@ int main(void) {
         back_sec = (tt2[0] - tt[0]) + (tt2[1] - tt[1]);
         JPL_TEST_CHECK(fabs(back_sec) <= 1e-15);
     }
-    /* T16: pinned time/frame references consumed as orientation truth.
+    /* Pinned time/frame references consumed as orientation truth.
      * jpl_frame_rotation_matrix returns ecliptic->ICRS, the transpose of
      * the pinned ICRS->ecliptic matrix; the correction seconds come back
      * through the small pair difference. */

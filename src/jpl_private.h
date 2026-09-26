@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* Internal shared constants and helpers for libjpl sources.
- * NOT installed; tests use tests/jpl_test_util.h instead. */
+/* Internal shared constants and helpers, not installed. Hook-dependent
+ * tests include this header; mock builders live in tests/jpl_test_util.h. */
 #ifndef LIBJPL_PRIVATE_H
 #define LIBJPL_PRIVATE_H
 
@@ -18,7 +18,7 @@
 #define JPL_DAYSEC 86400.0
 #define JPL_C_KM_PER_SECOND 299792.458
 #define JPL_C_AU_PER_DAY (JPL_C_KM_PER_SECOND * JPL_DAYSEC / JPL_AU_KM)
-/* Two-part Julian-date split used by ERFA-style calls. */
+/* MJD zero-point; never use it to split an already-rounded Julian date. */
 #define JPL_DJM0 2400000.5
 
 /* File-slot index (0-based) of the EMB coefficients in header.pointers.
@@ -76,10 +76,9 @@ jpl_status jpl_date_partition(const double begin[2], const double end[2],
                               size_t count, size_t index, double out[2]);
 int jpl_date_compare(const double a[2], const double b[2]);
 
-/* Private deterministic light-time iteration-budget hook for tests (T10).
- * Declared/defined only when LIBJPL_TESTING is set by the build for the
- * library plus its light-time tests; never declared in an installed
- * header and never exported from tests-OFF builds. The public solver
+/* Private deterministic light-time iteration-budget hook for tests.
+ * Defined in the non-installed jpl_testing archive under LIBJPL_TESTING;
+ * absent from the installed jpl archive. The public solver
  * calls the same internal implementation with JPL_LIGHTTIME_FAST_MAX_ITER
  * and JPL_LIGHTTIME_SAFE_MAX_ITER. Budgets count that iteration family
  * only (zero fast + zero safeguarded forces CONVERGENCE on non-root
@@ -90,7 +89,7 @@ jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
     const double jd[2], int target, int center, double state[6], double *delay,
     int fast_iterations, int safeguarded_iterations);
 
-/* Bounded-read test hook (F06): caps parser source reads at max_bytes when
+/* Bounded-read test hook: caps parser source reads at max_bytes when
  * nonzero (0 disables). Production builds without LIBJPL_TESTING bypass it
  * entirely; the hook is test-only and never declared in installed headers. */
 void jpl_test_set_parser_read_limit(size_t max_bytes);

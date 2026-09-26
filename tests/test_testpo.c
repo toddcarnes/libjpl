@@ -2,9 +2,9 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* Strict full-file testpo validator (test-only, owned by T15).
+/* Strict full-file testpo validator (test-only).
  * Usage: test_testpo <eph-path> <testpo-path>
- * Replaces the lenient runner: shared T03 row parser/tolerance, explicit
+ * Uses shared row parser/tolerance, explicit
  * header/EOT framing, DENUM validation, in-coverage errors always fail,
  * angular skips only on header-proven absence, and counted exclusions. */
 #include "jpl.h"
@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     size_t tested = 0, skipped_range = 0, skipped_absent = 0, skipped_t16 = 0;
     size_t count_body[18] = {0};
     size_t count_comp[8] = {0};
-    /* F10 coverage matrix: successful rows by target and component. Ordinary
+    /* Coverage matrix: successful rows by target and component. Ordinary
      * targets use components 1-6, nutation 1-4, libration 1-6, TT-TDB 1-2.
      * Angular rows never satisfy ordinary-body component requirements. */
     size_t body_component[18][7] = {{0}};
@@ -239,7 +239,7 @@ int main(int argc, char **argv) {
             }
             actual = state[slot];
             tolerance = jpl_testpo_tolerance(&row);
-            /* Body-only reference conversion (T08): public output is modern
+            /* Body-only reference conversion: public output is modern
              * AU while historical references are file AU. Convert the
              * actual value back into reference units so the reference
              * tolerance stays in its original units. Never rescale
@@ -291,7 +291,7 @@ int main(int argc, char **argv) {
         jpl_close(ephemeris);
         return 1;
     }
-    /* F10 coverage requirements: the 100-row minimum is only a truncation
+    /* Coverage requirements: the 100-row minimum is only a truncation
      * guard. Additionally require, for every dataset present in the binary
      * and represented by the supported validator contract, each valid
      * component at least once: at least one available ordinary body 1-13

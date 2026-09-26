@@ -35,7 +35,7 @@ extern "C" {
  *        header.constant_count may exceed it, so size value buffers from
  *        header.constant_count, not from this macro. */
 #define JPL_MAX_CONSTANTS JPL_MAX_CONSTANT_NAMES
-/** @brief Number of coefficient-layout targets (12). */
+/** @brief Number of coefficient-layout file slots (12, including nutations). */
 #define JPL_TARGET_COUNT 12
 
 /**
@@ -127,7 +127,7 @@ typedef struct jpl_header {
     int constant_count; /**< @brief Number of numeric constants in the constants record. */
     double astronomical_unit_km; /**< @brief Original header AU in km (metadata only; public body states use the modern AU 149597870.7 km, not this field). */
     double earth_moon_mass_ratio; /**< @brief Earth-Moon mass ratio (used to derive Earth and Moon states). */
-    jpl_pointer pointers[JPL_TARGET_COUNT]; /**< @brief Coefficient layout for targets 1-12 (nutations reuse the last entry). */
+    jpl_pointer pointers[JPL_TARGET_COUNT]; /**< @brief File slots Mercury through Sun (including EMB in slot 3) followed by nutations in slot 12; these are not the public body-code indices. */
     int ephemeris_number; /**< @brief DE ephemeris number (e.g. 441 for DE441). */
     jpl_reference_frame reference_frame; /**< @brief Orientation family derived from ephemeris_number via an explicit cited allowlist (ICRF, dynamical 1950/2000, or unknown). Core readers accept every frame natively; ICRS convenience requires ICRF. */
     jpl_pointer libration_pointer; /**< @brief Coefficient layout for librations (target 15). */
@@ -150,17 +150,20 @@ const char *jpl_status_string(jpl_status status);
 /**
  * @brief Opens a standard JPL DE binary file.
  * @param path Filesystem path to DE binary (e.g. "DE441.eph").
- * @param out_ephemeris Receives allocated handle on success, NULL on failure.
+ * @param out_ephemeris Receives allocated handle on success; set to NULL
+ *        on failure after non-NULL arguments are validated. If path is
+ *        NULL, an existing value is left unchanged.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if path/out is NULL,
- *         JPL_ERROR_IO on file errors, JPL_ERROR_FORMAT on bad header.
+ *         JPL_ERROR_IO on file errors, JPL_ERROR_FORMAT on bad header,
+ *         JPL_ERROR_MEMORY on allocation failure.
  * @note Byte order is auto-detected. Close with jpl_close().
- * @note The path is resolved to an absolute reopen path before fopen and
- *       that resolved path backs later clones, so changing the working
- *       directory after open cannot redirect a clone. File identity is
- *       captured from the open stream (POSIX device+inode, Windows
- *       volume/file index) with its size. Ephemeris contents must stay
- *       immutable while any reader is active: identity checks reject a
- *       replaced file but do not snapshot-isolate in-place edits.
+ * @note The open path is resolved to an absolute reopen path when possible,
+ *       so changing the working directory cannot redirect a clone. If
+ *       resolution fails, a clone still checks the reopened file's identity
+ *       and size against the original stream (POSIX device+inode, Windows
+ *       volume/file index), rejecting a different file with JPL_ERROR_IO.
+ *       Contents must stay immutable while readers are active: identity
+ *       checks do not snapshot-isolate in-place edits.
  */
 jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
 
@@ -225,14 +228,15 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
  * @param seconds Output TT-TDB in seconds. Must be non-NULL.
  * @param rate_per_day Optional output rate of change in seconds/day, may be NULL.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds is NULL
- *         or either part of jd_tdb is nonfinite,
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds/jd_tdb
+ *         is NULL or either date part is nonfinite,
  *         JPL_ERROR_RANGE if jd_tdb is outside coverage (coverage bounds
  *         query validity, not model accuracy),
  *         JPL_ERROR_UNSUPPORTED if the file carries no TT-TDB dataset
- *         (check jpl_has_tt_tdb()), JPL_ERROR_FORMAT for nonfinite file
- *         coefficients, JPL_ERROR_NUMERIC when finite inputs produce an
- *         unrepresentable result, JPL_ERROR_IO/MEMORY from the record read.
+ *         (check jpl_has_tt_tdb()), JPL_ERROR_FORMAT for malformed record
+ *         metadata or nonfinite file coefficients, JPL_ERROR_NUMERIC when
+ *         finite inputs produce an unrepresentable result, JPL_ERROR_IO
+ *         or JPL_ERROR_MEMORY from the record read.
  * @note Computed outputs are transactional: on failure *seconds and
  *       *rate_per_day (when non-NULL) are left unchanged.
  * @note Coefficients are stored in seconds and the record span is in days,
@@ -254,51 +258,53 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_
 int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
 
 /**
-  * @brief Interpolates a JPL target at a TDB Julian date.
-  * @param ephemeris Open handle.
-  * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
-  * @param target Target body as a jpl_target value (1-15, except TT-TDB 17
-  *        which is served by jpl_get_tt_minus_tdb()).
-  * @param center Center body as a jpl_target value; may also be 0 for the
-  *        solar-system barycenter.
-  * @param state Output array of 6 slots receiving the relative state.
-  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/state/jd_tdb is NULL,
-  *         either part of jd_tdb is nonfinite, or the target/center combination
-  *         is invalid (target 0 is always invalid; only 0 and 1-15 are
-  *         accepted here, and 17 must use jpl_get_tt_minus_tdb()),
-  *         JPL_ERROR_RANGE if jd_tdb is outside coverage (the coverage
-  *         interval is the file span, not a model-accuracy guarantee),
-  *         JPL_ERROR_UNSUPPORTED if the requested
-  *         dataset is absent (valid in-coverage query for missing data),
-  *         JPL_ERROR_FORMAT for nonfinite file coefficients,
-  *         JPL_ERROR_NUMERIC when finite validated inputs produce an
-  *         unrepresentable result (including a finite two-part date whose
-  *         mathematical sum is unrepresentable),
-  *         JPL_ERROR_IO on file errors, JPL_ERROR_MEMORY on allocation failure.
-  * @note Computed outputs are transactional: on failure the caller's state
-  *       array is left unchanged, and no partial component is published.
-  *       Failed interpolations never poison the FILE-path record cache.
-  *       Raw record/constant reads are the exception: jpl_read_record() and
-  *       jpl_read_constants() destination buffers may be partially written
-  *       after an I/O failure.
-   * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day)
-   *       in the modern AU (149597870.7 km), independent of the header AU.
-   *       Nutations (14) return dpsi, deps in state[0], state[1] and their
-   *       rates in state[3], state[4]; state[2] and state[5] are zero.
-   *       Librations (15) return three angles and three rates. Both require
-   *       center 0. For TT-TDB (17) use jpl_get_tt_minus_tdb().
-  *       A single handle must not be shared across threads on the FILE
-  *       path: reads update a per-handle record cache, so sharing is a
-  *       data race. The mmap path performs no per-handle mutation and is
-  *       safe for concurrent reads on one handle; either way,
-  *       jpl_ephemeris_clone() per thread is always safe.
+ * @brief Interpolates a JPL target at a TDB Julian date.
+ * @param ephemeris Open handle.
+ * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
+ * @param target Target body as a jpl_target value (1-15; TT-TDB 17 is served
+ *        by jpl_get_tt_minus_tdb()).
+ * @param center Center 0 (SSB alias) or a body code 1-13 for ordinary
+ *        targets; nutations (14) and librations (15) require center 0.
+ * @param state Output array of 6 slots receiving the relative state.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/state/jd_tdb
+ *         is NULL, either date part is nonfinite, or the target/center
+ *         combination is invalid (target 0 and center 14/15 are invalid;
+ *         target 17 must use jpl_get_tt_minus_tdb());
+ *         JPL_ERROR_RANGE if jd_tdb is outside coverage (the file span is
+ *         not a model-accuracy guarantee); JPL_ERROR_UNSUPPORTED if the
+ *         requested dataset is absent for a valid in-coverage query;
+ *         JPL_ERROR_FORMAT for malformed record metadata or nonfinite file
+ *         coefficients;
+ *         JPL_ERROR_NUMERIC when finite validated inputs produce an
+ *         unrepresentable result (including a finite two-part date whose
+ *         mathematical sum is unrepresentable); JPL_ERROR_IO on file
+ *         errors, JPL_ERROR_MEMORY on allocation failure.
+ * @note Computed outputs are transactional: on failure the caller's state
+ *       array is left unchanged, and no partial component is published.
+ *       Failed interpolations never poison the FILE-path record cache.
+ *       Raw record/constant reads are the exception: jpl_read_record() and
+ *       jpl_read_constants() destination buffers may be partially written
+ *       after an I/O failure.
+ * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day)
+ *       in the modern AU (149597870.7 km), independent of the header AU.
+ *       Nutations (14) return dpsi, deps in state[0], state[1] and their
+ *       rates (rad/day) in state[3], state[4]; state[2] and state[5] are
+ *       zero. Librations (15) return three angles (rad) and three rates
+ *       (rad/day). Both require center 0. For TT-TDB (17) use
+ *       jpl_get_tt_minus_tdb().
+ * @note A single handle must not be shared across threads on the FILE
+ *       path: reads update a per-handle record cache, so sharing is a
+ *       data race. The mmap path performs no per-handle mutation and is
+ *       safe for concurrent reads on one handle; clones can be used on
+ *       separate threads if the file stays immutable. Synchronize cloning
+ *       against closing the source (see jpl_ephemeris_clone()).
  */
 jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
                           int target, int center, double state[6]);
 
 /**
- * @brief Interpolates apparent geometric state corrected for light-time.
- * @param ephemeris Open handle from jpl_open().
+ * @brief Interpolates a light-time-corrected relative state without aberration.
+ * @param ephemeris Open handle from jpl_open(), jpl_open_mmap(), or a clone.
  * @param jd_tdb TDB Julian date of observation as a two-part array.
  * @param target Target jpl_target (1-13).
  * @param center Center jpl_target (1-13), or 0 for SSB.
@@ -314,7 +320,8 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
  *         JPL_ERROR_FORMAT for nonfinite file coefficients or nonphysical
  *         (superluminal) evaluated file motion; JPL_ERROR_NUMERIC when
  *         finite inputs produce an unrepresentable result;
- *         JPL_ERROR_UNSUPPORTED/IO/MEMORY from the underlying state reads.
+ *         JPL_ERROR_UNSUPPORTED, JPL_ERROR_IO, or JPL_ERROR_MEMORY from
+ *         the underlying state reads.
  * @note Holds the observer barycentric state fixed at reception and solves
  *       tau = range(target(receive - tau), observer(receive))/c with the
  *       emission epoch as a two-part pair. Up to 10 fast fixed-point
@@ -334,6 +341,8 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
  *       of apparent position with respect to reception time. Aberration is
  *       not applied (use jpl_apply_aberration_full with the observer
  *       velocity at reception).
+ * @note Computed state and optional light-time output are unchanged on
+ *       failure.
  */
 jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
                                     int target, int center, double state[6], double *out_light_time);
@@ -385,24 +394,30 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
 /**
  * @brief Opens a DE file via read-only memory mapping.
  * @param path Filesystem path.
- * @param out_ephemeris Receives handle.
- * @return JPL_OK or JPL_ERROR_ARGUMENT/IO/FORMAT/MEMORY.
+ * @param out_ephemeris Receives handle on success; set to NULL on failure
+ *        after non-NULL arguments are validated. If path is NULL, an
+ *        existing value is left unchanged.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT for NULL path/output,
+ *         JPL_ERROR_IO for file or mapping errors, JPL_ERROR_FORMAT for
+ *         invalid file layout, JPL_ERROR_MEMORY on allocation failure.
  * @note The file must not change while mapped (size is re-checked after
  *       mapping, but concurrent truncation may still fault on access).
  *       The mmap path performs no per-handle mutation, so a single mmap
  *       handle is shareable for concurrent reads; clones (via
  *       jpl_ephemeris_clone()) are still safe, and each handle must be
  *       closed. Concurrent reads on distinct handles are safe; external
- *       sync required for clone-vs-close races. Contents must stay
- *       immutable while any reader is active: identity checks reject a
- *       replaced file for new clones but do not snapshot-isolate
- *       in-place edits.
+ *       sync required for clone-vs-close races. An mmap clone shares
+ *       the existing mapping without reopening the path. Contents must
+ *       stay immutable while any reader is active; in-place edits are
+ *       not snapshot-isolated.
  */
 jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
 /**
  * @brief Clones a handle for concurrent read access.
  * @param ephem Source handle.
- * @param out_clone Receives new handle sharing mapped data.
+ * @param out_clone Receives a new handle on success; NULL on failure.
+ *        Mmap clones share the mapping, while FILE clones reopen an
+ *        independent stream.
  * @return JPL_OK or JPL_ERROR_ARGUMENT (NULL args, corrupt handle),
  *         JPL_ERROR_MEMORY on allocation failure, or JPL_ERROR_IO if the
  *         FILE-handle clone cannot re-open the path (including after the

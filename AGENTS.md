@@ -4,8 +4,9 @@ SPDX-License-Identifier: MIT
 See LICENSE in the project root for the full license text.
 -->
 
-Small, dependency-free C17 library for reading JPL Development Ephemeris
-(DE) binaries. Static lib `jpl` + three public headers.
+Small C17 library for reading JPL Development Ephemeris (DE) binaries.
+Bundles ERFA v2.0.1; no separate third-party library installation is
+required. Static lib `jpl` + three public headers.
 
 ## Protocol deviations
 
@@ -26,8 +27,9 @@ Verify the merged result before removing the branch or its worktree.
 ## Layout
 
 - `include/` — public API: `jpl.h` (core), `jpl_frames.h` (ICRS frames),
-  `jpl_convenience.h` (planet/moon helpers). All public decls need Doxygen
-  (`@brief/@param/@return/@note`); keep `WARN_AS_ERROR=YES` clean.
+  `jpl_convenience.h` (planet/moon helpers). Document all public declarations;
+  functions need Doxygen `@brief`, each `@param`, applicable `@return` and
+  `@note`. Keep `WARN_AS_ERROR=YES` clean.
 - `src/` — `jpl.c`, `jpl_date.c`, `jpl_frames.c`, `jpl_convenience.c`,
   `jpl_private.h` (internal, NOT installed),
   `src/erfa/` (vendored ERFA v2.0.1, BSD-3 — never modify sources here).
@@ -70,8 +72,8 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ## Conventions
 
-- The library has no outside dependencies: ERFA is vendored under `src/erfa/`,
-  used via `file(GLOB)` + test-driver exclusion + version defines in CMake.
+- ERFA sources under `src/erfa/` are built via `file(GLOB)` with
+  test-driver exclusion and version defines in CMake.
 - Library features build unconditionally; docs and tests have options.
   Test-only `jpl_testing` and `jpl_fixture_tool` are not installed.
 - Append, don't rewrite: public headers accumulate Doxygen + decls; use

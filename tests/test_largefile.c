@@ -129,7 +129,7 @@ int main(void) {
     }
     JPL_TEST_CHECK(fclose(f) == 0);
 
-    /* F06: no parser read may exceed 2880 bytes, even for this 4096-byte
+    /* No parser read may exceed 2880 bytes, even for this 4096-byte
      * record width. The hook reports over-limit requests as I/O failures,
      * so a passing open under the limit proves bounded header reads. */
     jpl_test_set_parser_read_limit(2880);

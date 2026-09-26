@@ -2,11 +2,11 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* Validator data generator (test-only, owned by T15).
+/* Validator data generator (test-only).
  * Usage: jpl_validator_data <output-dir>
  * Generates small valid mock ephemerides plus full-file runner inputs
  * (recognized header/EOT framing) covering every negative branch the
- * strict validators must reject. Uses the T04 mock writer only.
+ * strict validators must reject. Uses the shared mock writer.
  * Exit 0 on success, 1 on any failure. */
 #include "jpl_test_util.h"
 
@@ -130,7 +130,7 @@ static int write_full_mock(const char *path, int denum, int with_jupiter) {    s
     mock.start[0] = 2451545.0;
     mock.end[0] = 2451550.0;
     mock.step_days = 1.0;
-    /* Nonmodern file AU (T08): reference rows stay file-AU while public
+    /* Nonmodern file AU: reference rows stay file-AU while public
      * output is modern AU, exercising the runner conversion. Angular and
      * TT-TDB rows are never rescaled, so their values stay valid. */
     mock.au_km = JPL_TEST_NONMODERN_AU_KM;
@@ -236,7 +236,7 @@ static void tb_append(textbuf *tb, const char *text) {
 int main(int argc, char **argv) {
     const char *out = NULL;
     char path[1024];
-    /* Reference rows live in file AU (nonmodern T08 fixture), exactly as
+    /* Reference rows live in file AU (nonmodern mock), exactly as
      * historical testpo rows do; the runners convert actuals back. */
     double au = JPL_TEST_NONMODERN_AU_KM;
     textbuf good, nan_rows, missing, angular, denum, malformed, badcomp;
@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "could not write %s\n", path);
         goto done;
     }
-    /* F11 interior-corruption sweep fixture: three covered records with
+    /* Interior-corruption sweep fixture: three covered records with
      * clean first/last endpoints and a NaN date in record one. Lives in
      * its own directory so open succeeds but the sweep must fail. */
     JOIN(path, "sweep_corrupt");
@@ -481,13 +481,13 @@ int main(int argc, char **argv) {
         }
         /* Token-form spot checks: identical epochs in 6-token and
          * 5-token fused forms, exercising all three grammars in both
-         * fixture-capable (T4/T15) and full-file (T17) paths. */
+          * fixture and full-file validator paths. */
         snprintf(row, sizeof row, "441 -9999.01.01-1931076.5 4 0 1 %.17g\n", 5.0 / au);
         tb_append(&good, row);
         snprintf(row, sizeof row, "441-13200.09.01-3099998.5 15 0 1 %.17g\n", 0.1);
         tb_append(&good, row);
     }
-    /* F10 duplicate-only negative: 120 identical valid Mars X1 rows exceed
+    /* Duplicate-only negative: 120 identical valid Mars X1 rows exceed
      * the 100-row minimum but fail the diversity check. */
     tb_append(&duponly, header_block());
     {
@@ -500,7 +500,7 @@ int main(int argc, char **argv) {
     }
     /* 100 NaN TT-TDB rows with proper framing so the failure is the NaN
      * reference, not missing framing. NaN COORD never parses as a valid
-     * row (T03: nonfinite expected is invalid), so provoke the NaN
+      * row (nonfinite expected is invalid), so provoke the NaN
      * diagnostic separately: the first row carries NaN, and the runner
      * must report it as an invalid row (nonfinite reference). */
     tb_append(&nan_rows, header_block());
@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
     tb_append(&opos, "441 2000.01.01 2451545.5 4 0 1 1e999\n");
     tb_append(&oneg, header_block());
     tb_append(&oneg, "441 2000.01.01 2451545.5 4 0 1 -1e999\n");
-    /* Trailing-EOT content stays ignored: T15 runners stop comparing at
+    /* Trailing-EOT content stays ignored: validators stop comparing at
      * the closing EOT; a valid row after it must not fail. */
     tb_append(&oneg, "EOT\n");
     tb_append(&oneg, "441 2000.01.01 2451545.5 4 0 1 1e-999\n");
@@ -579,7 +579,7 @@ int main(int argc, char **argv) {
     /* Far-epoch libration psi perturbation at an in-coverage epoch: the
      * mock carries 0.3 at X3 while the reference claims a 1e6-rad
      * offset (negative perturbation the corrected absolute tolerance
-     * must reject; T03 documents the 1e-3 old-policy acceptance bound). */
+      * must reject; a magnitude-relative tolerance would hide it). */
     tb_append(&farpsi, header_block());
     {
         char row[256];

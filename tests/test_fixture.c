@@ -4,7 +4,7 @@
  */
 /* Always-on fixture validation for the committed 2000-2010 DE441 slice.
  * Usage: test_fixture <eph-path> <testpo-slice-path> <identity-list-path>
- * Strict data-only mode: shared T03 row parser/tolerance, seven/six/five
+ * Strict data-only mode: shared row parser/tolerance, seven/six/five
  * token coverage, DENUM and target/center/component validation, in-coverage
  * errors fail, angular skips only on header-proven absence, nutation X1-4
  * through state indices 0,1,3,4, explicit read/close error checks, and an
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     size_t count_body[18] = {0};
     size_t count_comp[8] = {0};
     double first_jd[2] = {0.0, 0.0}, last_jd[2] = {0.0, 0.0};
-    /* Ordered interior-identity capture (G08): every parsed row's decimal
+    /* Ordered interior-identity capture: every parsed row's decimal
      * JD text plus target/center/component is recorded here in file order
      * so the committed identity list can be compared against all rows,
      * not just endpoints or the total count. */
@@ -242,7 +242,7 @@ int main(int argc, char **argv) {
         }
         actual = state[slot];
         tolerance = jpl_testpo_tolerance(&row);
-        /* Body-only reference conversion (T08): public output is modern AU
+        /* Body-only reference conversion: public output is modern AU
          * while historical references are file AU. Convert the actual value
          * back into reference units; never rescale angular rows (T#14/15). */
         if (row.target >= 1 && row.target <= 13) {
@@ -297,7 +297,7 @@ int main(int argc, char **argv) {
     FIXTURE_CHECK(tested == 121);
     FIXTURE_CHECK(have_first && jpl_date_compare(first_jd, (const double[2]){2451544.5, 0.0}) == 0 &&
                   jpl_date_compare(last_jd, (const double[2]){2455197.5, 0.0}) == 0);
-    /* Interior identity check (G08): count and endpoint dates alone cannot
+    /* Interior identity check: count and endpoint dates alone cannot
      * detect duplicated or replaced interior rows, so every parsed row's
      * decimal-JD/target/center/component identity must match the committed
      * ordered identity list in tests/data/fixture_rows.txt row for row.
@@ -305,9 +305,8 @@ int main(int argc, char **argv) {
      * tests/cmake/check_fixture.cmake; this comparison binds the numerical
      * run to the same approved sequence. Uniqueness (121 distinct
      * identities) is implied by equality with the pinned list, whose own
-     * hash pins its exact contents. Corrects the old comment that
-     * parsed == tested == 121 alone proves byte-verbatim provenance: it
-     * does not; the ordered identity plus hash checks below do. */
+      * hash pins its exact contents. Neither the count nor this numerical
+      * comparison alone proves upstream provenance; see PROVENANCE.md. */
     {
         FILE *rows = fopen(argv[3], "rb");
         static char expected[256];

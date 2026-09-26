@@ -7,9 +7,9 @@
 #include "jpl_frames.h"
 #include <math.h>
 #include <string.h>
-/* DE coefficient records are Cartesian in the ICRS equatorial frame, so
- * jpl_get_state output is already ICRS: no rotation is applied here. The
- * frames module stays for user-side ecliptic conversion. */
+/* Only ICRF-aligned files pass the frame check below. Their native
+ * equatorial states need no ecliptic-to-ICRS rotation here; core
+ * jpl_get_state still reads legacy files in their native frames. */
 /* Modern-AU unit conversions leave outputs unchanged on failure.
  * Velocity scaling can overflow and supports exact input/output aliasing;
  * distance division cannot overflow after rejecting nonfinite km. */
@@ -41,7 +41,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
     if(!e||!st||!jd_tt) return JPL_ERROR_ARGUMENT;
     if(!isfinite(jd_tt[0])||!isfinite(jd_tt[1])) return JPL_ERROR_ARGUMENT;
     /* Targets 1-11 (Mercury..Sun, incl. Earth 3) or EMB 13. Target zero
-     * is consistently invalid (L05); SSB 12 and the nutation (14) /
+     * is invalid; SSB 12 and the nutation (14) /
      * libration (15) sensitivities plus out-of-range codes are rejected. */
     if(!((planet>=1&&planet<=11)||planet==JPL_EARTH_MOON_BARYCENTER)) return JPL_ERROR_ARGUMENT;
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
@@ -60,14 +60,14 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
     s = jpl_date_normalize(header->end_jd, cov_end);
     if(s!=JPL_OK) return JPL_ERROR_FORMAT;
     if(jpl_date_compare(tdb, cov_start)<0||jpl_date_compare(tdb, cov_end)>0) return JPL_ERROR_RANGE;
-    /* ICRS convenience requires ICRF-aligned metadata (R04), checked even
+    /* ICRS convenience requires ICRF-aligned metadata, checked even
      * for identical-body calls so a zero vector cannot imply support for
      * a legacy frame. Core jpl_get_state stays available for native reads. */
     if(header->reference_frame!=JPL_FRAME_ICRF) return JPL_ERROR_UNSUPPORTED;
-    /* Center 0 is the SSB alias (L05, R02); normalize to 12 wherever a
+    /* Center 0 is the SSB alias; normalize to 12 wherever a
      * target code is required because target 0 is invalid in core getters. */
     eff_center = center==JPL_SSB ? JPL_SOLAR_SYSTEM_BARYCENTER : center;
-    /* Identical-body shortcut (R15): validate the required body at
+    /* Identical-body shortcut: validate the required body at
      * reception, then return zero without touching unrelated Sun data. */
     if(planet==center) {
         s = jpl_get_state(e, tdb, planet, center, tmp);
@@ -75,7 +75,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
         memset(st, 0, sizeof tmp);
         return JPL_OK;
     }
-    /* SSB-observer shortcut (R02): the barycentric observer velocity is
+    /* SSB-observer shortcut: the barycentric observer velocity is
      * zero by definition, so no aberration/Sun lookup is needed. */
     if(eff_center==JPL_SOLAR_SYSTEM_BARYCENTER) {
         s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);

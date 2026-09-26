@@ -6,8 +6,9 @@ See LICENSE in the project root for the full license text.
 
 # libjpl
 
-`libjpl` is a small, dependency-free (ERFA vendored under `src/erfa/`) C17 library for reading JPL Development
-Ephemeris (DE) binary files. It targets Windows, macOS, and Linux.
+`libjpl` is a small C17 library for reading JPL Development Ephemeris
+(DE) binary files. It bundles ERFA v2.0.1, so no separate third-party
+library installation is required. It targets Windows, macOS, and Linux.
 
 It opens standard DE binaries in either byte order, exposes headers/constants,
 reads raw Chebyshev coefficient records, and interpolates planetary state
@@ -104,7 +105,7 @@ The `jpl_examples` CTest suite compiles and runs these patterns from
 First-party code and documentation are MIT licensed, copyright
 (c) 2026 Todd Carnes; see [`LICENSE`](LICENSE) and
 [`LICENSES.md`](LICENSES.md), which also records ERFA and JPL test-data
-provenance. Frame conversions use [ERFA](https://github.com/liberfa/erfa)
+provenance. Frame and time conversions use [ERFA](https://github.com/liberfa/erfa)
 v2.0.1, Copyright (c) NumFOCUS Foundation, BSD-3-Clause; see
 `src/erfa/LICENSE`. Both complete license texts install unconditionally
 as `LICENSE` (project MIT) and `ERFA-LICENSE` (ERFA BSD-3).
@@ -112,12 +113,12 @@ as `LICENSE` (project MIT) and `ERFA-LICENSE` (ERFA BSD-3).
 ## Test data
 
 Always-on fixture (no network): `tests/data/de441_2000_2010.eph` is a
-931 KB DE441 sub-ephemeris sliced with `sub_eph DE441.eph <out> 2000 2010`
-(JD 2451536.5-2455216.5), and `tests/data/testpo_441_slice.txt` holds the
-in-span `testpo.441` lines listed in `tests/data/MANIFEST.txt`
-(`fixture.testpo`/`fixture.rows` keys). The `jpl_fixture` suite asserts this
-provenance (DENUM 441, exact coverage) plus all in-span cross-checks, so a
-fresh clone is green with no downloads.
+931 KB DE441 sub-ephemeris covering JD 2451536.5-2455216.5, and
+`tests/data/testpo_441_slice.txt` holds 121 in-span reference rows.
+`jpl_fixture` checks the file header and every reference row;
+`jpl_fixture_integrity` checks manifest-pinned hashes. These tests do not
+prove the original slicing command. See [fixture provenance](tests/data/PROVENANCE.md)
+for source evidence and its limits.
 
 Opt-in fetch tier: `-DLIBJPL_FETCH_EPHEMERIDES=ON` (default OFF, approx
 210 MB) downloads DE440/DE440t binaries plus `testpo.440`/`testpo.440t`

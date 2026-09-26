@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 See LICENSE in the project root for the full license text.
 -->
 
-# libjpl fixture provenance (test data, owned by T17).
+# libjpl fixture provenance
 
 Committed artifacts (hashes pinned in `tests/data/MANIFEST.txt`):
 
@@ -18,8 +18,8 @@ Committed artifacts (hashes pinned in `tests/data/MANIFEST.txt`):
   `2010.01.01` (JD 2455197.5). Canonical LF SHA-256
   `15b15ef811df9d2d7e054f6ebcdefae33c0c89467ef9d2fa5bd9cc386d8e93f4`
   (raw checkout bytes differ under CRLF; only CRLF-to-LF normalization
-  is applied before hashing). The working file carries CRLF in this
-  checkout; the git blob is LF.
+  is applied before hashing). Checkout line endings may differ by
+  platform; the git blob is LF.
 - `tests/data/fixture_rows.txt`: ordered identity list, one
   `JD target center component` quadruple per slice row in file order
   (121 lines). Canonical LF SHA-256

@@ -101,9 +101,9 @@ SSB alias, equivalent to 12.
   result. `JPL_ERROR_IO` / `JPL_ERROR_MEMORY` keep their usual meaning.
 - Computed outputs (states, dates, rotations, aberration, units,
   light-time/delay, TT-TDB seconds/rate) are transactional: unchanged
-  on failure, with exact input/output aliasing supported. Raw
-  record/constant destination buffers may be partially written after
-  I/O failure.
+  on failure. Exact input/output aliasing is supported where the relevant
+  API function documents it. Raw record/constant destination buffers may
+  be partially written after I/O failure.
 - Tolerances such as `1e-15`-day conversion residuals and `1e-12`-day
   light-time residuals are solver stopping criteria, not astronomical
   accuracy claims. The TT-TDB correction amplitude is roughly 1.7 ms;

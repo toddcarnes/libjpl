@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* Directory sweep over named DE binaries (test-only, owned by T15).
+/* Directory sweep over named DE binaries (test-only).
  * Usage: test_all_ephemerides <directory>
  * ENOENT/ENOTDIR classify as absent (skip); permission/other stat errors
  * fail; any existing path whose open/read fails fails. */
@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
             jpl_close(ephemeris);
             return 1;
         }
-        /* F11: decode and validate every physical record, not just record
+        /* Decode and validate every physical record, not just record
          * zero. Each record needs finite ordered encoded dates; covered
          * records anchor at coverage start/end with continuity, and one
          * trailing record may start at coverage end staying ordered. */

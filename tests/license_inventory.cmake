@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# First-party license inventory (owned by T18).
+# First-party license inventory.
 # Every path below is relative to the source root, must exist, and must
 # carry "Copyright .*Todd Carnes" plus "SPDX-License-Identifier: MIT" in
 # its native comment syntax (C block, "#" script, or HTML comment).

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Public-symbol documentation checker (test-only, owned by T21).
+# Public-symbol documentation checker (test-only).
 # Requires every name listed in EXPECTED (tests/public_symbols.txt, one
 # per line) to appear as <name>SYMBOL</name> in the generated Doxygen XML
 # under XML_DIR, and requires all three file reference pages (not only

@@ -16,6 +16,13 @@ and infrastructure only; ordinary implementation judgment calls
 stay with the implementer (record them in the commit message or
 task ledger, don't stall on them).
 
+## Merging into main
+
+Merge a branch into `main` only with explicit maintainer approval. Use
+`git merge --no-ff <branch>` to create a merge commit and preserve branch
+history; never fast-forward, rebase, or squash the branch into `main`.
+Verify the merged result before removing the branch or its worktree.
+
 ## Layout
 
 - `include/` — public API: `jpl.h` (core), `jpl_frames.h` (ICRS frames),

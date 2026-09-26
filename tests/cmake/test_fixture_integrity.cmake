@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Negative fixture-integrity driver (test-only, owned by T17).
+# Negative fixture-integrity driver (test-only).
 # Copies the committed fixture into the build tree and applies five
 # disposable mutations there; the source fixture is never modified.
 # Four mutation families must fail (wrong bytes must not verify):
@@ -11,7 +11,7 @@
 # pass: canonicalization changes CRLF to LF only. The ordered identity
 # list is checked inside the duplicate and retarget families (mutated
 # rows files verified against the intact text), proving the list is
-# actually compared; there is no separate sixth mutation.
+# actually compared. A separate bare-CR case checks malformed line endings.
 # The mutator is a test-only C17 executable; the default suite needs no
 # Python interpreter.
 # Variables: MANIFEST, BINARY_FIXTURE, TEXT_FIXTURE, ROWS_FIXTURE,
@@ -68,9 +68,10 @@ jpl_fixture_case("intact runner passes" 0
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/case_text.txt" "${WORK}/case_rows.txt")
 
 # Case 1: flip one binary byte in a data record. The hash check must fail.
-# Offset 18855 is the high byte of an Earth-rotation (T12) coefficient
-# inside data record 1 (which starts at 2*8144 = 16288; the LE double
-# 32831107.1005468 at 18848 feeds row 1 at JD 2451544.5). Read/write via
+# Offset 18855 is the high byte of a coefficient used by the first
+# reference row (T12/C4/X5: SSB relative to Mars, y velocity), inside the
+# first data record (starting at 2*8144 = 16288). The LE double 32831107.1005468
+# at 18848 feeds that row at JD 2451544.5. Read/write via
 # the test-only C tool in binary mode so the edit stays byte-exact.
 execute_process(COMMAND "${CMAKE_COMMAND}" -E copy "${BINARY_FIXTURE}" "${WORK}/flip.eph"
                 RESULT_VARIABLE rc)

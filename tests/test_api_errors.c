@@ -4,7 +4,7 @@
  */
 /* API error-matrix tests: NULL dates, nonfinite parts, invalid bodies,
  * out-of-coverage queries, output sentinels, equivalent splits, and the
- * trailing-record endpoint policy. T09: missing-dataset queries report
+ * trailing-record endpoint policy. Missing-dataset queries report
  * UNSUPPORTED after valid checks; finite nonfinite-coefficient and
  * DBL_MAX-overflow states report FORMAT vs NUMERIC without partial output. */
 #include "jpl.h"
@@ -117,7 +117,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(NULL, (double[3][3]){{0}}) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_ecliptic_to_icrs(NULL, cov_start, s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_icrs_to_ecliptic(s, NULL, s) == JPL_ERROR_ARGUMENT);
-        /* T11: standalone aberration/frame validation and transactional
+        /* Standalone aberration/frame validation and transactional
          * outputs. Invalid velocities and nonfinite Sun distance are
          * ARGUMENT; nonfinite states are ARGUMENT; failures leave the
          * caller buffers unchanged. */
@@ -159,11 +159,9 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 99, 0, s, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 0, 0, s, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s, NULL) == JPL_OK);
-        /* F04 precedence: invalid bodies beat out-of-range dates and
-         * missing datasets, with outputs unchanged. Before the fix, an
-         * invalid target with an out-of-range date returned RANGE, and a
-         * valid target with an invalid center but missing data returned
-         * UNSUPPORTED. */
+        /* Invalid bodies take precedence over out-of-range dates and
+         * missing datasets, with outputs unchanged. This prevents an
+         * invalid code from being reported as RANGE or UNSUPPORTED. */
         fill_state(sentinel, 7.0);
         memcpy(before, sentinel, sizeof before);
         memcpy(s, before, sizeof s);
@@ -183,10 +181,9 @@ int main(void) {
         JPL_TEST_CHECK(check_unchanged(s, before));
     }
 
-    /* F12: finite-overflow dates report NUMERIC with outputs unchanged.
+    /* Finite-overflow dates report NUMERIC with outputs unchanged.
      * {DBL_MAX, DBL_MAX} is finite in both parts but unrepresentable as a
-     * sum; {NAN, 0} and {INFINITY, 0} stay ARGUMENT. Before the fix, the
-     * finite pair collapsed to ARGUMENT. */
+      * sum; {NAN, 0} and {INFINITY, 0} stay ARGUMENT. */
     {
         static const double overflow[2] = {DBL_MAX, DBL_MAX};
         double s[6], before[6], sec = 9.0, rate = 9.0, lt = -7.0;
@@ -213,7 +210,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_apply_aberration_full(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
     }
 
-    /* T09: missing datasets report UNSUPPORTED after valid checks.
+    /* Missing datasets report UNSUPPORTED after valid checks.
      * Valid in-coverage queries for absent Venus/Jupiter/nutation/
      * libration/TT-TDB datasets are UNSUPPORTED, not RANGE; invalid
      * bodies, NULL dates, nonfinite dates and out-of-coverage queries
@@ -239,7 +236,7 @@ int main(void) {
          * over the missing-dataset report. */
         JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_VENUS, 0, s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_VENUS, 0, s) == JPL_ERROR_RANGE);
-        /* T09 round 1: coverage precedes the absent-dataset report in the
+        /* Coverage precedes the absent-dataset report in the
          * shared engine too, so out-of-coverage angular queries stay RANGE
          * even though the nutation/libration datasets are absent. */
         JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_NUTATIONS, 0, s) == JPL_ERROR_RANGE);
@@ -249,7 +246,7 @@ int main(void) {
         JPL_TEST_CHECK(check_unchanged(s, before));
     }
 
-    /* T09: NaN used coefficient reports FORMAT with no partial output,
+    /* A NaN used coefficient reports FORMAT with no partial output,
      * on both backends and both endiannesses; the cache is never
      * poisoned by the failure. Layout: three advertised one-day records
      * over 8000016.5-8000019.5 so the corrupt middle record (index 1)
@@ -327,7 +324,7 @@ int main(void) {
                 JPL_TEST_CHECK(jpl_get_state(fe, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, good) == JPL_OK);
                 JPL_TEST_CHECK(jpl_get_state(fmap, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, good) == JPL_OK);
                 JPL_TEST_CHECK(good[0] == 2.0 && good[1] == 3.0);
-                /* Corrupt interior record: sentinel idiom from the plan. */
+                /* Sentinels detect writes before the corrupt-record error. */
                 memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
                 memcpy(before, out, sizeof out);
                 JPL_TEST_CHECK(jpl_get_state(fe, q, JPL_NUTATIONS, 0, out) == JPL_ERROR_FORMAT);
@@ -345,7 +342,7 @@ int main(void) {
         }
     }
 
-    /* T09: finite-coefficient DBL_MAX overflow reports NUMERIC with no
+    /* Finite-coefficient DBL_MAX overflow reports NUMERIC with no
      * partial output, on both backends and both endiannesses. The
      * 360-double geometry rejects a {3,2,1} nutation span at open, so
      * this uses a dedicated 984-double record with {3,2,1} and DBL_MAX
@@ -420,7 +417,7 @@ int main(void) {
         }
     }
 
-    /* T09: angular getters publish nothing on partial failure. A NaN in
+    /* Angular getters publish nothing on partial failure. A NaN in
      * the second component's used coefficient must fail without writing
      * the first component to the caller. */
     {
@@ -468,7 +465,7 @@ int main(void) {
         JPL_TEST_CHECK(remove("jpl_test_api_angular.bin") == 0);
     }
 
-    /* T09 round 1: libration third-slot NaN atomicity. A 3-component
+    /* Libration third-slot NaN atomicity: a 3-component
      * libration where only the third component's used coefficient is NaN
      * must fail FORMAT without publishing the first two components. */
     {
@@ -517,7 +514,7 @@ int main(void) {
         JPL_TEST_CHECK(remove("jpl_test_api_libration.bin") == 0);
     }
 
-    /* T09: Earth/Moon reconstruction, invalid EMRAT, and I/O failure
+    /* Earth/Moon reconstruction, invalid EMRAT, and I/O failure
      * paths leave outputs unchanged. */
     {
         /* Earth/Moon formula check against the two mock legs. */
@@ -682,7 +679,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s) == JPL_ERROR_ARGUMENT);
     }
 
-    /* T10: light-time status matrix. Non-convergence after the iteration
+    /* Light-time status matrix: non-convergence after the iteration
      * budget is CONVERGENCE (never RANGE or a silent estimate); a
      * genuinely pre-coverage root is RANGE. Both leave outputs
      * unchanged. The private budget hook supplies deterministic
@@ -735,7 +732,7 @@ int main(void) {
         fill_state(s, 3.0);
         JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(check_unchanged(s, want));
-        /* T09: the api-errors mock carries no TT-TDB dataset, so a valid
+        /* The api-errors mock carries no TT-TDB dataset, so a valid
          * in-coverage query reports UNSUPPORTED while an out-of-coverage
          * query stays RANGE; both leave outputs unchanged. */
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, cov_start, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
@@ -817,7 +814,7 @@ int main(void) {
         JPL_TEST_CHECK(s[0] == 2.0);
     }
 
-    /* F02: a trailing record stays raw-readable but never serves a date.
+    /* A trailing record stays raw-readable but never serves a date.
      * The covered Mars coefficient is 2.0*AU, the trailing one is 99.0*AU;
      * the exact coverage end must still return the covered value, and the
      * trailing record must be visible through jpl_read_record. */
@@ -882,7 +879,7 @@ int main(void) {
         JPL_TEST_CHECK(a[0] == b[0] && a[3] == b[3]);
     }
 
-    /* T13: clone lifetime contracts. NULL outputs/sources, deterministic
+    /* Clone lifetime contracts: NULL outputs/sources, deterministic
      * open-failure cleanup, and multiple-sibling survivorship for FILE
      * and mmap. In-place content mutation is unsupported; identity
      * validation is not snapshot isolation. */
@@ -934,7 +931,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK && e != NULL);
     }
 
-    /* T16: untouched outputs for the time/frame error categories (NULL
+    /* Untouched outputs for the time/frame error categories (NULL
      * date, nonfinite part) plus equivalent-split agreement. */
     {
         double tdb[2] = {9.0, 9.0};

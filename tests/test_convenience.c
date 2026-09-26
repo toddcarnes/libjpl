@@ -50,10 +50,9 @@ int main(void) {
     JPL_TEST_CHECK(jpl_planet_position(NULL,jd_null,1,11,st)==JPL_ERROR_ARGUMENT);
     JPL_TEST_CHECK(jpl_moon_position(NULL,jd_null,st)==JPL_ERROR_ARGUMENT);
     JPL_TEST_CHECK(jpl_planet_position(NULL,jd_null,99,11,st)==JPL_ERROR_ARGUMENT);
-    /* T12/RED: pre-fix zero-DENUM mocks classify as UNKNOWN, so an ICRF
-     * convenience call that should succeed instead reports UNSUPPORTED.
-     * Every synthetic convenience mock below must therefore declare
-     * DENUM 441 explicitly. */
+    /* Convenience calls require an ICRF-aligned DENUM. Synthetic mocks
+     * that test successful ICRS output must declare DENUM 441 explicitly;
+     * zero-DENUM mocks classify as UNKNOWN. */
     {
         const char *path = "jpl_test_convenience_frame.bin";
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
@@ -250,7 +249,7 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path)==0);
     }
-    /* T12 DENUM matrix: core states succeed in their native frame for
+    /* DENUM matrix: core states succeed in their native frame for
      * 102/200/202/441/999; convenience requires ICRF, so legacy/unknown
      * frames return UNSUPPORTED with outputs preserved. */
     {
@@ -312,7 +311,7 @@ int main(void) {
             JPL_TEST_CHECK(remove(path) == 0);
         }
     }
-    /* T12/R02: centers 0 and 12 are equivalent. A no-Sun SSB-observer mock
+    /* Centers 0 and 12 are equivalent. A no-Sun SSB-observer mock
      * (Sun coefficients absent, so Sun work must not be attempted) matches
      * the committed DE441 fixture behavior exercised below. */
     {
@@ -348,7 +347,7 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* T12/R15: EMB/EMB with EMB coefficients but no Sun returns zero OK
+    /* EMB/EMB with EMB coefficients but no Sun returns zero OK
      * without Sun work; invalid dates on that same shortcut report
      * RANGE/ARGUMENT before any dataset question. */
     {
@@ -383,11 +382,10 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* T12/R02 on the committed DE441 fixture: centers 0 and 12 agree
+    /* On the committed DE441 fixture, centers 0 and 12 agree
      * exactly through the ICRF convenience path. The fixture ships with
      * the repo; probe the standard relative locations and skip only when
-     * the binary is genuinely absent (default CTest runs from
-     * build/remediation, where the first candidate resolves). */
+      * the binary is genuinely absent. */
     {
         static const char *candidates[] = {
             "../../tests/data/de441_2000_2010.eph",
@@ -452,7 +450,7 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* T16: pinned apparent oracle through the convenience wrapper. The
+    /* Pinned apparent oracle through the convenience wrapper. The
      * linear-mock legs below reproduce case 0 of the independent
      * analytic oracle (P/V target, O/W observer, Sun at origin); the
      * wrapper must match the pinned state and delay path. */
@@ -502,7 +500,7 @@ int main(void) {
             JPL_TEST_CHECK(isfinite(conv[k]));
             JPL_TEST_CHECK(fabs(conv[k] - ref->state[k]) < 1e-9);
         }
-        /* F12: a finite but unrepresentable date pair reports NUMERIC
+        /* A finite but unrepresentable date pair reports NUMERIC
          * with outputs unchanged. */
         {
             static const double overflow[2] = {DBL_MAX, DBL_MAX};

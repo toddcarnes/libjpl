@@ -77,7 +77,7 @@ int main(void) {
      * output divides by the modern AU while the header keeps file metadata.
      * File AU 150000000 km with a 149597870.7 km coefficient reads exactly
      * x == 1 modern AU; light-time is physical (km / SI c / day).
-     * Pre-T08 code divides by the file AU and fails the x == 1 check. */
+      * Dividing by the header's file AU instead would fail x == 1. */
     {
         const char *path = "jpl_test_lighttime_au.bin";
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
@@ -115,7 +115,7 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* 40-AU delay regression: the old rounded c literal errs by ~1.125 us
+    /* 40-AU delay regression: a rounded c literal errs by ~1.125 us
      * at 40 AU, so the 5e-12-day (~0.43 us) tolerance rejects it while the
      * exact-derived light speed passes. Expected delay is computed from
      * kilometres and SI light speed, never the production literal. */
@@ -207,7 +207,7 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* T16: pinned analytic delay for the oracle mock. The linear
+    /* Pinned analytic delay for the oracle mock. The linear
      * target/observer legs reproduce case 0 of the independent oracle;
      * the public solver must match the pinned delay and satisfy the
      * independent range/c residual. */
@@ -315,12 +315,12 @@ static int write_linear_mock(const char *path, double start, double end,
 }
 
 static int lighttime_t10_cases(void) {
-    /* R11 receding-target boundary: x(t)=1+0.01*(t-S) AU, S=2451545,
+    /* Receding-target boundary: x(t)=1+0.01*(t-S) AU, S=2451545,
      * SSB observer, receive {2451545.0, 0.0057756184}. The analytic
      * delay solves tau = (1+0.01*dt)/(c+0.01), not the retarded delay;
-     * state must satisfy the independent range/c residual too. The old
-     * fixed-point solver rejected this with RANGE (first trial ~20 ms
-     * before coverage). */
+      * state must satisfy the independent range/c residual too. The
+      * reception-time initial trial falls ~20 ms before coverage even
+      * though the solved emission epoch is inside it. */
     {
         const char *path = "jpl_test_lighttime_r11.bin";
         const double c = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
@@ -343,7 +343,7 @@ static int lighttime_t10_cases(void) {
     }
     /* Genuinely pre-coverage root: receive slightly below 1/c with the
      * same linear model. The equation root precedes coverage, so RANGE
-     * with unchanged outputs is required (contrast with the R11 case
+      * with unchanged outputs is required (contrast with the in-coverage case
      * above, which must succeed). */
     {
         const char *path = "jpl_test_lighttime_preco.bin";

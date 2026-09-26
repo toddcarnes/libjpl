@@ -1,12 +1,11 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Offline cross-platform CI (owned by T22, covers G09/R03/R12/R13d/R14b/G03/G10).
+# Offline cross-platform CI.
 # Default CI remains offline with respect to ephemeris data:
 # LIBJPL_FETCH_EPHEMERIDES=OFF everywhere here. Opt-in real-data execution
-# lives in ephemerides.yml (workflow_dispatch only). Workflow execution/push
-# is not authorized merely by writing this YAML; actual CI run results must
-# be recorded before T23 marks platform findings closed.
+# lives in ephemerides.yml (workflow_dispatch only). Workflow definitions
+# alone do not establish platform coverage; record results from actual runs.
 name: ci
 
 permissions:

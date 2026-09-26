@@ -1,12 +1,13 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Opt-in real-data execution (owned by T22, covers the real tier).
+# Opt-in real-data execution.
 # workflow_dispatch only: never runs on push/PR, never runs by default.
 # Hosted CI is not assumed to own the maintainer's local ephemerides and
 # maintainer-local files are never transmitted as artifacts. The local
 # legacy/long-span sweep runs only on a configured maintainer runner
-# (label `self-hosted`); hosted execution uses downloads plus cache only.
+# (labels `self-hosted` and `libjpl-ephemerides`); hosted execution uses
+# downloads plus cache only.
 name: ephemerides
 
 permissions:

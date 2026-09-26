@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* README-compiled usage examples (test-only, owned by T21).
+/* README-compiled usage examples (test-only).
  * Every snippet below also appears in README.md; CTest runs this
  * executable with the committed fixture path so the examples stay
  * buildable and status-checked. Never compute a scalar full epoch and

@@ -81,7 +81,7 @@ static int open_both_must_fail(const char *path) {
     return 0;
 }
 
-/* T06: optional-tail policy on a 360-double record. The raw T15 words
+/* Optional-tail policy on a 360-double record. The raw T15 words
  * at byte 2868 are tentative until geometry is known: anything but a
  * fully positive, checked, in-record span means absent, and the
  * classic file stays readable with usable states. Words are passed as
@@ -160,9 +160,8 @@ int main(void) {
 
     /* Baseline write/open/read: the writer produces a readable file and
      * both opens decode it. */
-    /* T12/RED: pre-fix headers expose no reference_frame field, so this
-     * assertion fails to compile/run before the enum exists. DENUM 441
-     * classifies as ICRF; the BE DENUM-102 case below covers 1950. */
+    /* DENUM 441 classifies as ICRF through both open paths; the big-endian
+     * DENUM-102 case below also checks dynamical-1950 classification. */
     {
         jpl_ephemeris *e = NULL, *m = NULL;
         const jpl_header *h;
@@ -276,8 +275,8 @@ int main(void) {
         /* Nonfinite low part is ARGUMENT too, not RANGE. */
         JPL_TEST_CHECK(jpl_get_state(e, q_nonfinite_lo, JPL_NUTATIONS, 0, state) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_state(e, q_lo, JPL_NUTATIONS, 0, state) == JPL_ERROR_RANGE);
-        /* Normalized pair comparisons replace the old scalar coverage tests:
-         * the far-apart low parts below still compare correctly. */
+        /* Normalized pair comparisons retain a sub-ULP low part when
+         * deciding whether a query lies inside coverage. */
         { static const double cov_start[2] = {2451545.0, 0.0};
           static const double cov_end[2] = {2451546.0, 0.0};
           static const double inside[2] = {2451545.0, 0x1p-40};
@@ -336,10 +335,9 @@ int main(void) {
         jpl_close(m);
     }
 
-    /* T05: 360-double mock with Mars {3,1,1}, two constants, one
-     * advertised interval plus one trailing record. The old width loop
-     * selected 480 doubles (11520/3) and read constants at the wrong
-     * offset; full candidate validation must select 360 doubles. */
+    /* A 360-double mock with one covered interval plus a trailing record
+     * also admits a 480-double file-size divisor. Complete candidate
+     * validation must select 360 doubles so constants use the right offset. */
     {
         static unsigned char hdr360[PARSER_BYTES];
         static double const360[PARSER_DOUBLES];
@@ -360,7 +358,7 @@ int main(void) {
             for (i = 0; i < PARSER_DOUBLES; ++i) rec360[r * PARSER_DOUBLES + i] = 0.0;
             rec360[r * PARSER_DOUBLES + 0] = 2451545.0 + (double)r;
             rec360[r * PARSER_DOUBLES + 1] = 2451546.0 + (double)r;
-            /* F02: covered vs trailing coefficients must differ so the
+            /* Covered vs trailing coefficients must differ so the
              * final-endpoint query proves which record was selected. */
             rec360[r * PARSER_DOUBLES + 2] = (r == 0) ? 5.0 : 99.0;
             rec360[r * PARSER_DOUBLES + 3] = 6.0;
@@ -398,7 +396,7 @@ int main(void) {
         JPL_TEST_CHECK(state[1] == 6.0 / JPL_TEST_AU_KM && state[2] == 7.0 / JPL_TEST_AU_KM);
         JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
         JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[3] == 0.0);
-        /* F02: the exact coverage end selects the covered interval, never
+        /* The exact coverage end selects the covered interval, never
          * the physical trailing record. */
         JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
         JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
@@ -408,7 +406,7 @@ int main(void) {
         jpl_close(e);
     }
 
-    /* T05: header-only 2880-byte file must fail on both opens. */
+    /* A header-only 2880-byte file must fail on both opens. */
     {
         FILE *f;
         JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
@@ -423,7 +421,7 @@ int main(void) {
         JPL_TEST_CHECK(open_both_must_fail(path) == 0);
     }
 
-    /* T05: genuine classic 2856-byte-record file must succeed without
+    /* A classic 2856-byte-record file must succeed without
      * reading extension bytes from its constants record. The constants
      * record opens with raw words {0,0,0,1000,1,1}, which would decode
      * as a positive TT-TDB triple {1000,1,1} if misread as a header
@@ -493,7 +491,7 @@ int main(void) {
         jpl_close(e);
     }
 
-    /* F03: a numeric constant equal to the record start date is valid data,
+    /* A numeric constant equal to the record start date is valid data,
      * not evidence of a phantom layout. One-record little-endian Mars mock
      * with constant_count = 2, constants[0] == start_jd, valid distinct
      * record endpoints and coefficients: both opens must succeed, constants
@@ -545,7 +543,7 @@ int main(void) {
         jpl_close(e);
     }
 
-    /* F13: large-epoch rounding regression. A valid mock near JD 80000000
+    /* Large-epoch rounding regression. A valid mock near JD 80000000
      * with a non-binary step must open via FILE and mmap when its scheduled
      * data endpoints are independently encoded as binary64; perturbing one
      * endpoint by at least eight local ULPs must fail both opens. Before
@@ -627,7 +625,7 @@ int main(void) {
         JPL_TEST_CHECK(m == NULL);
     }
 
-    /* F14: zero-constant foreign-endian coverage. A valid big-endian
+    /* Zero-constant foreign-endian coverage. A valid big-endian
      * zero-constant mock must read constants with a non-NULL one-element
      * destination through FILE and mmap, leaving the sentinel unchanged. */
     {
@@ -673,7 +671,7 @@ int main(void) {
         jpl_close(e);
     }
 
-    /* T05: saved ambiguous-preliminary BE case ([0,1], step 1, DENUM
+    /* A preliminary LE reading of this BE case ([0,1], step 1, DENUM
      * 102, two constants, {3,1,1}) must succeed as big-endian after
      * full LE-candidate validation fails. */
     {
@@ -731,7 +729,7 @@ int main(void) {
         jpl_close(e);
     }
 
-    /* T05: deliberately ambiguous file must fail rather than select
+    /* A deliberately ambiguous file must fail rather than select
      * whichever width validates first. Two intervals [S,S+2] with a
      * 14400-byte file admit both W=3600/extra=2 and W=2880/extra=3,
      * with matching dates planted at every candidate offset. Geometry and
@@ -778,14 +776,14 @@ int main(void) {
         JPL_TEST_CHECK(open_both_must_fail(path) == 0);
     }
 
-    /* T06: legacy padding {1000,1,1} at the optional TT-TDB slot of a
+    /* Legacy padding {1000,1,1} at the optional TT-TDB slot of a
      * 360-double record must leave the file readable with
      * has_tt_tdb == 0; likewise zeros, partial triples,
      * INT_MAX-exceeding words, overflowing products, and spans beyond
      * the record. The equality boundary {358,3,1} (end 360 == width
      * 360) is the usable present case covered by the boundary-present
      * TT-TDB test in test_tt_tdb.c. The tail-absent-at-boundary 357-double
-     * (2856-byte effective width) case is covered by the T05
+      * (2856-byte effective width) case is covered by the
      * classic-2856 constants-trap test above, which keeps the 24-byte
      * tail outside the 2856-byte header record so {1000,1,1}
      * extension bytes in the constants record stay ignored. */
@@ -799,7 +797,7 @@ int main(void) {
     JPL_TEST_CHECK(check_360_t15_absent(path, 359u, 3u, 1u) == 0);
     JPL_TEST_CHECK(check_360_t15_absent(path, 2u, 173u, 14u) == 0);
 
-    /* F06: safe wide-record regression. A valid mock with a 1 MiB record
+    /* Wide-record regression. A valid mock with a 1 MiB record
      * width, one advertised interval, and ordinary fixed header/endpoints.
      * With the parser read limit at 2880 bytes, both opens must succeed
      * (no parser read exceeds 2880 bytes). Before the fix, full-record
@@ -842,10 +840,8 @@ int main(void) {
         wm.constants = wconst;
         wm.records = wrec;
         JPL_TEST_CHECK(test_write_mock(path, &wm) == 0);
-        /* Pre-fix behavior: with the read limit set, both opens fail here
-         * because full-record parsing requests 1 MiB. Post-fix they must
-         * succeed; verified by running this block against the reverted
-         * parser during development. */
+        /* The parser read limit proves opening never requests the full
+         * 1 MiB record. Both backends must succeed below the 2880-byte cap. */
         jpl_test_set_parser_read_limit(2880);
         {
             jpl_status se = jpl_open(path, &e);
@@ -866,7 +862,7 @@ int main(void) {
         free(whdr);
     }
 
-    /* T12: DENUM allowlist classification sampled through complete
+    /* DENUM allowlist classification sampled through complete
      * open paths (unknown values stay readable by core). DENUM 200/202
      * map to dynamical-2000, 999 maps to unknown. */
     {

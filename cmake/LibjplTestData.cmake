@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Shared JPL test-data manifest/resolver (owned by T20, covers L06).
+# Shared JPL test-data manifest/resolver.
 # Included by CMakeLists.txt (production fetch tier) and by
 # tests/cmake/test_fetch_cache.cmake (offline script tests), so both use
 # the exact same code. Consumes LIBJPL_EPHEMERIS_DIR (download/cache
@@ -12,8 +12,8 @@
 # tests/data/MANIFEST.txt resolved relative to this module, never to the
 # caller's current directory. Callers whose build tree may live outside the
 # source checkout must set LIBJPL_TEST_DATA_DIR to the source root before
-# including this module (the T20 real-tier reconfigure caught the module
-# path resolving outside the checkout).
+# including this module so an out-of-tree build cannot resolve the wrong
+# manifest.
 #
 # Cache policy: a cached destination is reused only when its exact byte
 # size matches (when a size is supplied) and its SHA-256 matches (when a
@@ -25,7 +25,7 @@
 # transactionally only after status, size and hash validation succeed: any
 # existing destination is first moved to "<dest>.replace-backup", the temp
 # is renamed into place through checked operations, and the backup is
-# restored on publish failure (F07). A pre-existing backup fails loudly
+# restored on publish failure. A pre-existing backup fails loudly
 # without touching either file. A failed fetch removes only the temporary
 # file: an existing destination stays intact, and maintainer-local redirect
 # sources are never deleted. Every failure is FATAL_ERROR naming the file
@@ -34,8 +34,8 @@
 # Test-only switch LIBJPL_TEST_FORCE_PUBLISH_FAILURE (default false):
 # when true, the publish step is skipped and a nonzero result synthesized
 # so the rollback path is exercised without platform races. The flag is
-# read from the LIBJPL_TEST_FORCE_PUBLISH_FAILURE cache/environment entry
-# so `cmake -P` drivers (which forward -D as script variables) see it.
+# supplied as a CMake variable (cache or `-D` script argument), so
+# `cmake -P` drivers exercise the same path.
 
 # Reads one "<key>=<value>" pair from tests/data/MANIFEST.txt, which is
 # the single authoritative source for download URLs/sizes/hashes (no
@@ -168,7 +168,7 @@ function(libjpl_resolve_fetch_file out_var src_dir src_name url dest_name expect
                 "If JPL re-cut the file, update tests/data/MANIFEST.txt and re-run configure.")
         endif()
     endif()
-    # Transactional publication (F07): back up any existing destination,
+    # Transactional publication: back up any existing destination,
     # then publish the verified temp through checked renames (CMake 3.20
     # inspects execute_process RESULT_VARIABLE; bare file(RENAME) cannot).
     # On publish failure restore the backup; if the rollback itself fails,

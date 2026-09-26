@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# libjpl fixture integrity checker (test-only, owned by T17).
+# libjpl fixture integrity checker (test-only).
 # Validates the committed fixture against manifest hashes. Variables:
 # MANIFEST (tests/data/MANIFEST.txt path), BINARY_FIXTURE
 # (de441_2000_2010.eph path), TEXT_FIXTURE (testpo_441_slice.txt path),

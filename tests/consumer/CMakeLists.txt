@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Separate installed-package consumer (test-only, owned by T19).
+# Separate installed-package consumer (test-only).
 # Configures against an installed prefix via CMAKE_PREFIX_PATH, never
 # against the source/build checkout. Builds both a C and a C++ executable
 # linking jpl::jpl so C/C++ inclusion and static math/ERFA linkage are
@@ -10,9 +10,8 @@ cmake_minimum_required(VERSION 3.20)
 project(libjpl_consumer LANGUAGES C CXX)
 # libjpl_DIR (exact config directory, needed for nonstandard install
 # layouts) wins over CMAKE_PREFIX_PATH; REQUEST_VERSION selects an
-# exact-version request (default: unversioned discovery). Extra guard
-# beyond the T19 plan template: the install driver always passes
-# -Dlibjpl_DIR (empty for default layouts), so an empty cache entry is
+# exact-version request (default: unversioned discovery). The install driver
+# always passes -Dlibjpl_DIR (empty for default layouts), so an empty entry is
 # removed here and prefix-path search is not shadowed by a stale
 # NOTFOUND value.
 if(DEFINED libjpl_DIR AND "${libjpl_DIR}" STREQUAL "")

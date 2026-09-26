@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Docs path-with-spaces verifier (test-only, owned by T21).
+# Docs path-with-spaces verifier (test-only).
 # Copies an explicit source-file/directory whitelist into a unique owned
 # "source tree" path containing spaces, configures a tests-OFF/docs-ON
 # child build in a "build tree" path containing spaces, builds target

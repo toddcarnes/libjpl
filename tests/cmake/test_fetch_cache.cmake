@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Verified download-cache reuse tests (test-only, owned by T20, covers L06).
+# Verified download-cache reuse tests (test-only).
 # Uses the production resolver from cmake/LibjplTestData.cmake (included via
 # RESOLVER, which the CMakeLists registration sets to the source-tree
 # module) against disposable build-tree directories only. All artifacts are

@@ -11,8 +11,8 @@
 
 int main(void) {
     const char *path = "jpl_test_tttdb.bin";
-    /* Absent dataset: header with zero TT-TDB pointer must report
-     * has == 0 and RANGE on get. */
+    /* Absent dataset: a valid in-coverage query reports UNSUPPORTED;
+     * out-of-coverage stays RANGE. */
     {
         unsigned char rec[2880] = {0};
         FILE *f;
@@ -39,7 +39,7 @@ int main(void) {
         JPL_TEST_CHECK(h != NULL && h->has_tt_tdb == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e) == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(NULL) == 0);
-        /* T09: a valid in-coverage query for a missing dataset reports
+        /* A valid in-coverage query for a missing dataset reports
          * UNSUPPORTED, while an out-of-coverage query stays RANGE. */
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0 - 10.0, 0.0}, &sec, &rate) == JPL_ERROR_RANGE);
@@ -78,7 +78,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e) != 0);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, &sec, NULL) == JPL_OK);
-        /* T16: exact independent value/rate for the first linear mock:
+        /* Exact independent value/rate for the first linear mock:
          * c0=0.001, c1=0.00002 per unit Chebyshev argument, so at the
          * midpoint (x=0) the value is c0 and the daily rate is
          * 2*c1/substep with substep=1 day. Finiteness alone is not the
@@ -201,7 +201,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_header(e)->has_tt_tdb == 1);
         /* Chebyshev value/rate at each subinterval midpoint:
          * value = c0, rate = 2*c1/substep with substep = 0.25 day.
-         * T16: low-part observability -- the same midpoint reached via a
+          * Low-part observability: the same midpoint reached via a
          * split pair ({hi,lo} with tiny lo) must agree, and each end of
          * every subinterval plus low-part offsets around each interior
          * boundary selects the expected neighbor. */
@@ -227,7 +227,7 @@ int main(void) {
         JPL_TEST_CHECK(fabs(sec - 0.003) < 1e-15 && fabs(rate - 8.0 * -0.00001) < 1e-12);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.004) < 1e-15 && fabs(rate - 8.0 * 0.00005) < 1e-12);
-        /* T16: equivalent split of the first midpoint plus both ends of
+        /* Equivalent split of the first midpoint plus both ends of
          * every subinterval. Neighbor offsets around each interior
          * boundary assert the selected side by value: just below a
          * boundary the evaluation stays in the left subinterval near
@@ -235,10 +235,8 @@ int main(void) {
          * x=-1 (value c0-c1). The 1e-9-day offset exceeds the
          * ~4.7e-10-day ulp of 2451545, so both sides are representable;
          * 2^-40 day alone is not. The mmap handle duplicates the
-         * representative split/boundary checks on identical bytes (byte
-         * order is a file property decoded by the shared swap-aware
-         * read path); a byte-swapped file would fail open as FORMAT,
-         * so no separate BE truth file is asserted here. */
+          * representative split/boundary checks on identical bytes. The
+          * separately encoded BE mock above checks foreign byte order. */
         {
             double s2 = 0.0, r2 = 0.0;
             JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
@@ -271,8 +269,8 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* Boundary-equality TT-TDB span: start 358 + 3 coeff * 1 sub ends
-     * exactly at the 360-double record width (slot 360). The final
+    /* Boundary-equality TT-TDB span: (start 358 - 1) + 3 coeff * 1 sub
+     * equals the 360-double record width. The final
      * subinterval is fully populated, so an in-coverage query must
      * succeed (regression for the DE440t-class off-by-one where
      * span_end == width was rejected as absent). */
@@ -420,7 +418,7 @@ int main(void) {
         JPL_TEST_CHECK(fabs(sec - 0.007) < 1e-15 && fabs(rate - 8.0 * 0.00006) < 1e-12);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.008) < 1e-15 && fabs(rate - 8.0 * 0.00007) < 1e-12);
-        /* T16: representative split/endpoint/low-part cases on the
+        /* Representative split/endpoint/low-part cases on the
          * overflow-names layout, both backends. */
         {
             double s2 = 0.0, r2 = 0.0;

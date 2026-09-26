@@ -27,7 +27,8 @@ extern "C" {
  *       transpose of the IAU 2006 ICRS-to-ecliptic matrix (eraEcm06) at jd_tt,
  *       combining frame bias + precession (eraPmat06) with mean obliquity
  *       (eraObl06).
- * @note Aliasing-safe: position/velocity are rotated via locals before store.
+ * @note Aliasing-safe: position/velocity are rotated via locals before store;
+ *       out_state is unchanged on failure.
  * @note Velocity is rotated as a direction at fixed jd_tt (R.v);
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
@@ -42,7 +43,8 @@ jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], do
  *         date parts or nonfinite state slots, JPL_ERROR_NUMERIC when finite
  *         inputs produce an unrepresentable result.
  * @note Inverse of jpl_ecliptic_to_icrs; same equinox-of-date convention.
- * @note Aliasing-safe: position/velocity are rotated via locals before store.
+ * @note Aliasing-safe: position/velocity are rotated via locals before store;
+ *       out_state is unchanged on failure.
  * @note Velocity is rotated as a direction at fixed jd_tt (R.v);
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
@@ -57,6 +59,7 @@ jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], do
  *         unrepresentable result.
  * @note Equinox-of-date convention: transpose of eraEcm06 at jd_tt
  *       (bias + precession + mean obliquity, IAU 2006).
+ * @note R is unchanged on failure.
  */
 jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
 /**
@@ -75,10 +78,11 @@ jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
  *       precision: normalized two-part dates and compensated duration
  *       helpers keep rounding far below the model envelope inside the
  *       validated interval. Outside 1950-2050 no high-accuracy promise
- *       is made. Ephemeris-interpolated TT-TDB from *t files
- *       (jpl_get_tt_minus_tdb) is the definitive source when present.
- *       For interpolated dataset TT-TDB from *t files see
- *       jpl_get_tt_minus_tdb().
+ *       is made. For a file-interpolated correction when *t data are
+ *       present, use jpl_get_tt_minus_tdb(); it returns TT-TDB in seconds,
+ *       not a converted two-part TDB epoch.
+ * @note jd_tdb is unchanged on failure; exact input/output aliasing is
+ *       supported.
  */
 jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
 /**
@@ -91,8 +95,12 @@ jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
  *         unrepresentable arithmetic.
  * @note Bounded iteration on two-part epochs; residual target 1e-15 day,
  *       at most 10 iterations. The 1e-15-day residual target is an
- *       arithmetic stopping criterion, far below the millisecond-scale
- *       ERFA model envelope; it is not a physical accuracy claim.
+ *       arithmetic stopping criterion, not a physical accuracy claim.
+ *       The TT-TDB correction has millisecond-scale amplitude; ERFA cites
+ *       better than +/-3 ns geocentric model accuracy over 1950-2050
+ *       relative to DE405 (see jpl_tt_to_tdb()).
+ * @note jd_tt is unchanged on failure; exact input/output aliasing is
+ *       supported.
  */
 jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
 #ifdef __cplusplus

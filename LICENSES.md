@@ -10,18 +10,16 @@ See LICENSE in the project root for the full license text.
 
 `libjpl` first-party code and documentation are licensed under the MIT
 License, copyright Todd Carnes (2026). The complete grant lives in
-[`LICENSE`](LICENSE); every first-party source, header, test, script,
-build, and documentation file carries a short copyright notice plus
-`SPDX-License-Identifier: MIT` in its native comment syntax. The
+[`LICENSE`](LICENSE); inventoried first-party source, header, test, script,
+build, and documentation files carry a short copyright notice plus
+`SPDX-License-Identifier: MIT` in their native comment syntax. The
 enumerated file list is `tests/license_inventory.cmake` (the list
 itself is the single source of truth for the count; no duplicated
 count lives here), enforced by
 `tests/cmake/check_licenses.cmake` (CTest `jpl_licenses`).
 
-Git history (initial commit 2026-09-15 through the remediation worktree,
-sole author Todd Carnes) establishes 2026 as the verified first-party
-creation year, so all notices use the single year 2026. No earlier year
-is claimed and no contributor attribution was found to preserve.
+Git history verifies 2026 as the first-party creation year. First-party
+notices use that year; no earlier year is claimed.
 
 ## Third-party: ERFA
 
@@ -30,10 +28,9 @@ library) under `src/erfa/`, copyright NumFOCUS Foundation, BSD-3-Clause.
 Its complete terms are in `src/erfa/LICENSE`, which is inspected but
 never modified. Both texts install unconditionally to
 `${CMAKE_INSTALL_DATADIR}/licenses/libjpl/` as `LICENSE` (project MIT)
-and `ERFA-LICENSE` (ERFA BSD-3). The CTest `jpl_licenses` handoff
-(`JPL_NOTICE_DATADIR` in `CMakeLists.txt`) derives from
-`CMAKE_INSTALL_DATADIR`; T19 must pass that datadir through to
-`check_licenses.cmake -DDATADIR=` rather than assuming `share`.
+and `ERFA-LICENSE` (ERFA BSD-3). `jpl_install` passes the configured
+data directory to the license checker, so custom layouts are checked
+without assuming `share`.
 
 ## Test data provenance
 

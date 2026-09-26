@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* T14 concurrent-reader tests: shared mmap reads and FILE-clone lifetimes.
+/* Concurrent-reader tests: shared mmap reads and FILE-clone lifetimes.
  * Mock: 8 one-day records over 2451545..2451553, linear Mars x(t),
  * constant-per-record nutations and TT-TDB, all analytically checkable
  * without calling the library as an oracle. */

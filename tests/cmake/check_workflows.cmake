@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Workflow policy checker (test-only, F08/F17).
+# Workflow policy checker (test-only).
 # Reads .github/workflows/ci.yml and ephemerides.yml as text (no YAML
 # dependency) and enforces: dedicated local-runner labels, nonempty
 # JPLEPH/JPL_TESTPO variable guards with directory checks, explicit local
@@ -18,11 +18,11 @@ foreach(_wf IN ITEMS ci ephemerides)
   endif()
   file(READ "${_path}" _content)
   string(REPLACE "\r\n" "\n" _content "${_content}")
-  # Least privilege (F17): explicit top-level read-only permissions.
+  # Least privilege: explicit top-level read-only permissions.
   if(NOT _content MATCHES "(^|\n)permissions:[ \t]*\n[ \t]+contents:[ \t]*read")
     message(FATAL_ERROR "${_wf}.yml: missing top-level 'permissions: contents: read'")
   endif()
-  # Immutable actions (F17): no mutable @vN tags; every external uses:
+  # Immutable actions: no mutable @vN tags; every external uses:
   # reference ends in exactly 40 lowercase hex chars before an optional
   # comment; only the four approved owner/repository pairs appear.
   string(REGEX MATCHALL "(^|\n)[ \t]*uses:[ \t]*[^ \t\n]+" _uses_lines "${_content}")

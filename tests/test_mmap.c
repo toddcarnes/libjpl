@@ -4,10 +4,8 @@
  */
 #include "jpl.h"
 #include "jpl_test_util.h"
-/* T14 ownership note (waiver): the validation plan lists this file for T14,
- * but T13 sibling/close-order and shareability coverage above stands as-is;
- * concurrent-reader and clone-lifetime concurrency lives in
- * tests/test_threads.c, so T14 intentionally adds no behavioral hunk here. */
+/* This file checks mmap and FILE clone identity, close order, and
+ * sequential mmap shareability. Concurrent reads are in test_threads.c. */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -75,9 +73,9 @@ static int t13_read_marker(jpl_ephemeris *e, double *marker) {
     return 0;
 }
 
-/* T13 cwd regression: a/probe.eph holds 11, b/probe.eph holds 99. Open
+/* Cwd regression: a/probe.eph holds 11, b/probe.eph holds 99. Open
  * the relative path from a, move to b, clone, and require 11 from both
- * handles. The pre-fix clone stored the relative path and read 99.
+ * handles. A clone that reopens the caller's relative path would read 99.
  * Runs in a dedicated runtime sandbox and restores cwd on every exit;
  * never changes the agent's shell directory (only this process). */
 static int t13_cwd_clone(void) {
@@ -131,7 +129,7 @@ done:
     return rc;
 }
 
-/* T13 path-replacement test: after opening marker-11, replace the path
+/* Path-replacement test: after opening marker-11, replace the path
  * with marker-99 content. The clone must either keep the original
  * identity (reads 11) or fail cleanly with IO + NULL output; it must
  * never surface replacement data (99). A platform that refuses to
@@ -177,7 +175,7 @@ done:
     return rc;
 }
 
-/* T13 symlink-retarget test (POSIX; Windows attempts once and skips when
+/* Symlink-retarget test (POSIX; Windows skips when
  * the OS disallows symlinks). Same oracle as replacement: original
  * identity or clean IO, never replacement data. */
 static int t13_symlink(void) {
@@ -229,7 +227,7 @@ done:
 #endif
 }
 
-/* T13 close-order lifetimes for FILE and mmap: close the original
+/* Close-order lifetimes for FILE and mmap: close the original
  * before the clone and require valid survivor headers + record reads.
  * Sibling order is extended in test_api_errors.c. */
 static int t13_lifetimes(void) {
@@ -298,9 +296,9 @@ int main(void){
     JPL_TEST_CHECK(jpl_ephemeris_clone(e,&c)==JPL_OK);
     JPL_TEST_CHECK(jpl_read_record(e,0,vals,360)==JPL_OK && vals[0]==2451545.0 && vals[356]==356.0);
     JPL_TEST_CHECK(jpl_read_record(c,0,vals,360)==JPL_OK && vals[1]==2451546.0);
-    /* mmap handle must be shareable: interleaved state reads on one handle
-     * equal reads on a distinct clone (pins no-per-handle-mutation).
-     * NOTE: uses a dedicated mock whose record bounds match header
+    /* Sequentially interleaved state reads on an mmap handle match a clone;
+     * concurrent reads are exercised separately in test_threads.c.
+     * Uses a dedicated mock whose record bounds match header
      * coverage (the main mock above stores 0..356 as data, so its bounds
      * 0..1 cannot satisfy the jd window). */
     {

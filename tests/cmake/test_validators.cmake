@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Negative validator driver (test-only, owned by T15).
+# Negative validator driver (test-only).
 # Requires the right failure (exit 1 + diagnostic category), not just any
 # nonzero exit. Variables: RUNNER, FAULT_RUNNER (optional), EPH, TESTPO,
 # EXPECT (regex matched against stderr, empty means success expected),
@@ -24,7 +24,7 @@ endif()
 
 # Consumes the corpus generated once per run by the CTest fixture setup test
 # jpl_validator_data_setup (FIXTURES_SETUP jpl_validator_corpus); this driver
-# never regenerates or truncates it (F01). Every case requires
+# never regenerates or truncates it. Every case requires
 # FIXTURES_REQUIRED jpl_validator_corpus via CMakeLists.txt. WORK only
 # supplies paths. Fail immediately when the expected corpus file is absent,
 # except the fixture read-error case (ROWS set), whose EPH/TESTPO/ROWS are

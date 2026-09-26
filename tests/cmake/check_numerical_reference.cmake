@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Numerical-reference integrity checker (test-only, F16).
+# Numerical-reference integrity checker (test-only).
 # Verifies canonical-LF SHA-256 values for tests/data/numerical_reference.h
 # and tools/generate_numerical_reference.c against tests/data/MANIFEST.txt.
 # Canonicalization: CRLF replaced with LF only; remaining bare CR fails.

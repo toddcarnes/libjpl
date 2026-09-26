@@ -1,18 +1,18 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# License test driver (test-only, owned by T18).
+# License test driver (test-only).
 # Passes the intact source and a staged install, then requires failure
 # for a missing root license, a stripped SPDX header, and a missing
-# installed ERFA notice. All mutations use disposable build-tree copies;
+# installed ERFA notice. An ignored nested worktree must pass. All mutations
+# use disposable build-tree copies;
 # the source tree is never modified.
 # Variables: SOURCE (required source root), CHECKER (required
 # check_licenses.cmake path), INVENTORY (required inventory path),
 # WORK (required build-tree scratch dir), DATADIR (optional install
 # data dir beneath the prefix; defaults to "share", matching the
-# default CMAKE_INSTALL_DATADIR. The CTest driver forwards the real
-# CMAKE_INSTALL_DATADIR; T19 must do the same instead of assuming
-# "share").
+# default CMAKE_INSTALL_DATADIR. CTest forwards the configured value,
+# rather than assuming "share").
 function(jpl_license_case label expect_fail)
   execute_process(COMMAND ${CMAKE_COMMAND} ${ARGN}
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)

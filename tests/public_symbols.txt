@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Expected public symbol inventory (test-only, owned by T21).
+# Expected public symbol inventory (test-only).
 # One symbol per line: every public function, enum, struct, and macro
 # documented by Doxygen across the three installed headers. The checker
 # (tests/cmake/check_docs.cmake) requires each name to appear as

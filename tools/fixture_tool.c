@@ -105,8 +105,8 @@ static int flip(const char *path) {
     return failed;
 }
 
-/* read_lines() in the former Python mutator normalized CRLF and split the
- * reference into 121 lines without including the trailing empty line. */
+/* Parse exactly 121 reference rows after CRLF normalization, without a
+ * trailing empty row for the final newline. */
 static int fixture_lines(const char *path, unsigned char **storage,
                          line_view lines[FIXTURE_ROWS]) {
     unsigned char *raw, *data;

@@ -18,7 +18,7 @@
 #define JPL_TEST_HEADER_BYTES 2880
 #define JPL_TEST_AU_KM 149597870.7
 #define JPL_TEST_MASS_RATIO 81.30056
-/* Independent exact inputs for physical expectations (T08): kilometre
+/* Independent exact inputs for physical expectations: kilometre
  * distance and SI light speed. Tests derive light speed as
  * C_KM_PER_SECOND * DAYSEC / AU_KM and never use a rounded c literal. */
 #define JPL_TEST_C_KM_PER_SECOND 299792.458
@@ -82,10 +82,9 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
 }
 
 /* Standard mock header prologue: coverage, step, constant count, AU, EM ratio.
- * Scalar inputs only: callers pass whole-day header epochs, which are
- * exactly representable; test_write_mock serializes two-part start/end by
- * summation at the wire-format boundary (the on-disk scalar cannot preserve
- * an arbitrary residual). */
+ * Scalar header epochs are written as supplied; test_write_mock serializes
+ * two-part start/end by summation at the wire-format boundary (the on-disk
+ * scalar cannot preserve an arbitrary residual). */
 static inline void test_mock_header(unsigned char *rec, double start_jd, double end_jd,
                              double step_days, uint32_t nconst) {
     test_put_f64(rec + 2652, start_jd);
@@ -125,7 +124,7 @@ static inline double test_norm3(const double v[3]) {
  * to bound record-count conversions by file geometry. */
 #define JPL_TEST_MIN_RECORD_BYTES 2856
 
-/* Configurable mock-ephemeris writer (owned by T04). The caller owns all
+/* Configurable mock-ephemeris writer. The caller owns all
  * buffers. `header` is exactly `record_doubles * 8` bytes and carries raw
  * pointer/name mutations in final byte order; the writer overwrites only
  * the standard prologue fields (coverage, step, constant count, AU,

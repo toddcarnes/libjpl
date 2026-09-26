@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  * See LICENSE in the project root for the full license text.
  */
-/* Installed-package C consumer (test-only, owned by T19). Includes all
+/* Installed-package C consumer (test-only). Includes all
  * three public headers and references symbols that pull math/ERFA objects
  * from the installed static archive. Never includes private headers. */
 #include <jpl.h>

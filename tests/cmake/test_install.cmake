@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
-# Installed-package driver (test-only, owned by T19).
+# Installed-package driver (test-only).
 # Installs the already-built primary configuration to unique build-tree
 # prefixes and verifies separate C/C++ consumers against them: default
 # paths with an exact-version match, a deliberately incompatible version
@@ -19,8 +19,8 @@
 # forwarding; empty means omit), LIBDIR/INCLUDEDIR/DATADIR (optional
 # install-layout names; default lib/include/share), NEED_M (optional "m"
 # when the toolchain needs libm), PIC_IS_ON (optional 1/0; gates the
-# POSIX shared-link check), CHECKER/INVENTORY (optional license checker
-# plus ownership inventory for installed-notice verification).
+# POSIX shared-link check); CHECKER/INVENTORY (required license checker
+# and ownership inventory), SYMBOL_TOOL/TOOL_IS_DUMPBIN (symbol audit).
 # Failure reporting: each case records exit code plus stdout/stderr; the
 # first failing expectation aborts with FATAL_ERROR naming the case.
 function(run_checked)
@@ -187,7 +187,7 @@ run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
   -C "${CONFIG}" --output-on-failure)
 
 # --- Case 4: deliberately incompatible versions fail for the version reason.
-# Exact 0.2.0 and 0.3.1 requests must both fail (F09: the 0.3.0 breaking API
+# Exact 0.2.0 and 0.3.1 requests must both fail (the 0.3.0 breaking API
 # is distinct from tagged 0.2.0 and from any newer version). ---
 foreach(_bad_version IN ITEMS 0.2.0 0.3.1 9999.0.0)
   string(REPLACE "." "_" _bad_tag "${_bad_version}")

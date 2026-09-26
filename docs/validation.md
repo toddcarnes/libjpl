@@ -4,13 +4,11 @@ SPDX-License-Identifier: MIT
 See LICENSE in the project root for the full license text.
 -->
 
-# Validation notes (T22 procedures and evidence)
+# Validation notes
 
-> Owned incrementally: T12 contributes the frame-source table below; T21
-> owns the scientific contracts; T22 owns the complete validation
-> procedures and per-configuration evidence below. T23 records final
-> closure; unrun configurations stay explicitly pending (a skipped tier
-> is never a pass).
+Current acceptance is recorded first. The dated 2026-09-19 results below
+remain as historical observations, including tests that were pending then;
+a skipped tier is never a pass.
 
 ## Review follow-up acceptance (2026-09-25)
 
@@ -23,8 +21,8 @@ worktrees and does not supersede these runs.
   `build/followup-accept`: Debug **42/42**, Release **42/42**; zero
   compiler warnings. `jpl_install` checks both the tests-ON installed
   archive and the tests-OFF custom-destination archive for defined
-  `jpl_test_*` symbols. The archive check was first run against the
-  pre-fix build and failed on both leaked hooks.
+  `jpl_test_*` symbols. The pre-fix archive contained both leaked hooks;
+  the new checker failed on the first one.
 - Doxygen 1.17.0 with `WARN_AS_ERROR=YES`: `docs` builds; docs symbols,
   paths with spaces, and docs-only matrix pass **3/3** in
   `build/followup-docs`.
@@ -64,7 +62,7 @@ MSVC Debug `build/merge-verify` suite **42/42** with the linked worktree
 present. After syncing the fix into the native WSL copy, the full GCC
 Debug and Release suites passed **42/42** each.
 
-## Frame-source table (T12, R04)
+## Frame-source table
 
 Classification is content-derived from the header DENUM via an explicit
 allowlist in `src/jpl.c` (`classify_frame`), exposed as
@@ -95,7 +93,7 @@ Notes:
   and by using fewer interpolation coefficients. It is not currently
   supported pending an authoritative file or layout specification.
 
-## Scientific contracts (T21)
+## Scientific contracts
 
 - Two-part dates: every computational epoch is a `double[2]` pair whose
   sum is the epoch; both parts survive arithmetic and ERFA calls
@@ -143,7 +141,11 @@ depth, but no 32-bit configuration is tested or claimed. The historical
 32-bit job, multilib instructions, and width-conditional test scaffolding
 have been removed.
 
-## Procedures and evidence (T22)
+## Procedures and historical evidence (2026-09-19 checkpoint)
+
+The commands below remain useful, but results marked “pending” or “not
+completed” describe this checkpoint only. See the current acceptance
+section above before treating an older result as the latest evidence.
 
 CI workflows: `.github/workflows/ci.yml` (offline gates: Windows MSVC
 Debug/Release, Windows clang-cl Debug/Release, Ubuntu GCC Debug/Release,
@@ -163,8 +165,8 @@ satisfy it), then runs only `jpl_all_ephemerides_local` and
 `jpl_testpo_[0-9]` local registrations.
 Default CI remains offline with respect to ephemeris data
 (`LIBJPL_FETCH_EPHEMERIDES=OFF`); workflow files alone authorize no runs.
-Actual CI run results are required before T23 marks platform findings
-closed. Hosted CI is never assumed to own the maintainer's local
+Actual CI results, not workflow definitions, establish platform coverage.
+Hosted CI is never assumed to own the maintainer's local
 ephemerides, and maintainer-local files are never transmitted as
 artifacts. Sanitizer jobs are separate: ASan/UBSan and TSan are never
 combined; `jpl_install`/`jpl_docs_paths` are excluded only from sanitizer
@@ -195,9 +197,10 @@ cmake --build build/ci-rel --config Release --parallel
 ctest --test-dir build/ci-rel -C Release --output-on-failure
 ```
 
-Prerequisites: CMake 3.20+, a C17 compiler, Doxygen 1.9+ only for the
-docs job (`-DLIBJPL_BUILD_DOCS=ON`). No network access is needed for the
-default offline tier. Paths with spaces must stay quoted.
+Prerequisites: CMake 3.20+, a C17 compiler, and Doxygen 1.9+ for the docs
+job (`-DLIBJPL_BUILD_DOCS=ON`); Linux docs checks also need Graphviz `dot`
+with the tested Doxygen setup. No network access is needed for the default
+offline tier. Paths with spaces must stay quoted.
 
 ### Windows MSVC (Debug and Release)
 
@@ -223,8 +226,8 @@ ctest --test-dir build/ci -C Debug --output-on-failure
 ```
 
 The `jpl_install` consumer runs in this job and proves there is no `m.lib`
-dependency. Latest observed result: pending (no local clang-cl; CI run
-required before T23).
+dependency. At this 2026-09-19 checkpoint, clang-cl was pending (no local
+compiler; a CI run was required).
 
 ### Linux GCC / Clang, strict C17 (Debug and Release)
 
@@ -245,9 +248,9 @@ pass on the subset excluding `jpl_install`/`jpl_licenses`/
 `jpl_threads` binary `threads tests passed`, `jpl_mmap` binary `mmap
 tests passed`, `jpl_largefile` binary `largefile tests passed`
 (oversize case skipped with `SIZE_MAX == UINT64_MAX`).
-`jpl_install`/`jpl_licenses`/`jpl_fetch_cache` on Linux: not completed
-locally (the combined selection hung past successive 240-850 s
-timeouts; CI run required before closure of G09/G10). Full-suite
+`jpl_install`/`jpl_licenses`/`jpl_fetch_cache` on Linux were not completed
+at this checkpoint (the combined selection hung past successive 240-850 s
+timeouts). Full-suite
 `ctest --test-dir build/t23-wsl` without exclusions also exceeded the
 900 s tool timeout and is recorded as incomplete, not a pass.
 Supersedes the older T22 filtered-run note.
@@ -261,12 +264,11 @@ ctest --test-dir build/ci -C Debug --output-on-failure
 ```
 
 Plus the installed-consumer smoke test (`jpl_install` runs in every
-regular job). Latest observed result: pending. A local macOS Tahoe VM
-is available, but direct transfer via VMware shared folders crashed the
-guest during unzip, so no local macOS build has run. Plan: publish the
-branch, clone it inside the guest, and run the commands above there.
-A macOS pass must never be inferred from Windows compilation; a hosted
-or guest run is required before T23.
+regular job). At this checkpoint macOS was pending. A local macOS Tahoe VM
+was available, but direct transfer via VMware shared folders crashed the
+guest during unzip, so no local macOS build was recorded at the checkpoint.
+A macOS pass cannot be inferred from Windows compilation; a hosted or guest
+run is required to establish macOS coverage.
 
 ### Sanitizers (Linux, separate jobs)
 
@@ -287,17 +289,16 @@ ctest --test-dir build/tsan -R 'jpl_threads|jpl_mmap' --output-on-failure
 ```
 
 An unsupported sanitizer runtime is a blocked gate requiring a supported
-runner, not a pass or an excuse to suppress diagnostics. Latest observed
-result: pending (sanitizer sub-builds not yet run locally; CI run
-required before T23).
+runner, not a pass or an excuse to suppress diagnostics. At this checkpoint,
+sanitizer sub-builds had not yet run locally; a CI run was needed.
 
 ### Installed package (all regular jobs)
 
 Covered by `jpl_install` in every ordinary build (default, version
 mismatch, relocated/spaces prefix, custom destinations, PIC paths;
-derives notice paths from `JPL_NOTICE_DATADIR`). Latest observed result:
+derives notice paths from `JPL_NOTICE_DATADIR`). At this checkpoint:
 Windows MSVC `build/t23-clean` Debug and Release 1/1 pass each (2026-09-19,
-~144 s / ~134 s); other platforms pending CI runs.
+~144 s / ~134 s); other platforms were pending CI runs.
 
 ### Docs (Doxygen + symbols + spaces paths)
 
@@ -312,7 +313,7 @@ ctest --test-dir build/remediation -C Debug -R 'jpl_docs|jpl_examples|jpl_licens
 ```
 
 POSIX equivalent uses `-DCMAKE_BUILD_TYPE=...` single-config with
-`-DLIBJPL_BUILD_DOCS=ON`. Latest observed result: Windows MSVC T23
+`-DLIBJPL_BUILD_DOCS=ON`. At this checkpoint, Windows MSVC T23
 `build/t23-docs` Debug docs/examples/licenses focused set 4/4 pass
 (supersedes the T21 4/4 note); CI docs job re-runs the full
 symbol/spaces/license/fixture-cache selection.
@@ -324,7 +325,7 @@ ctest --test-dir build/ci -C Debug --output-on-failure -R 'jpl_fetch_cache|jpl_f
 ```
 
 Exercises the production resolver (`cmake/LibjplTestData.cmake`) against
-disposable build-tree artifacts with no network. Latest observed result:
+disposable build-tree artifacts with no network. At this checkpoint:
 T23 Windows MSVC `build/t23-clean` Debug+Release in-suite pass; Linux
 `jpl_fetch_cache` selection not completed locally (see Linux section).
 
@@ -348,7 +349,7 @@ ctest --test-dir build/remediation-real -C Debug --output-on-failure
 
 Runs DE440/DE440t testpo in both configurations, retains summary
 counts/hashes as artifacts (CI), and runs the local legacy/long-span
-sweep only on a configured maintainer runner. Latest observed result
+sweep only on a configured maintainer runner. The recorded result
 (post-checkpoint, 2026-09-19, `build/verify-real`): all five `*t` suites
 pass (DE430t/432t/436t/438t/440t, 13201 lines each) after the TT-TDB
 boundary-equality fix (`span_end > width`); `testpo.405` validates 7214

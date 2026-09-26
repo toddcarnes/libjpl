@@ -57,7 +57,7 @@ else()
 endif()
 
 # Math linkage is resolved at configure time for the actual toolchain and
-# then exported as a concrete dependency (T19/R12c). MSVC-compatible
+# then exported as a concrete dependency. MSVC-compatible
 # frontends rely on the CRT and need no m. Elsewhere, test whether sin
 # links with the current default libraries; if not, test for libm and
 # use the concrete target. Anything else is a configuration error. No
@@ -85,7 +85,7 @@ if(JPL_NEED_M_LIB)
     target_link_libraries(jpl PUBLIC "${JPL_NEED_M_LIB}")
 endif()
 
-# T18's unconditional license installs live below; GNUInstallDirs stays
+# The unconditional license installs live below; GNUInstallDirs stays
 # with them (and before the installed include construction) so directory
 # variables expand identically for library, header, notice, and export
 # destinations. The installed include interface follows the include
@@ -116,13 +116,13 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libjplConfig.cmake"
 
 option(LIBJPL_BUILD_DOCS "Build Doxygen docs" OFF)
 # CTest is enabled unconditionally so docs checks exist even when ordinary
-# tests are OFF (F15); ordinary executables stay inside the tests option.
+# tests are OFF; ordinary executables stay inside the tests option.
 enable_testing()
 if(LIBJPL_BUILD_DOCS)
   find_package(Doxygen REQUIRED)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in" "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile" @ONLY)
   add_custom_target(docs ALL COMMAND "${DOXYGEN_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile" VERBATIM)
-  # Public-symbol coverage (T21/R14b): XML plus the file-page check in
+  # Public-symbol coverage: XML plus the file-page check in
   # tests/cmake/check_docs.cmake (with an owned-copy negative control).
   # The docs path-with-spaces check (tests/cmake/test_docs_paths.cmake)
   # copies the current source whitelist and rebuilds docs there.
@@ -241,14 +241,14 @@ if(LIBJPL_BUILD_TESTS)
     target_include_directories(jpl_api_errors_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_definitions(jpl_api_errors_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_api_errors COMMAND jpl_api_errors_tests)
-    # Private date arithmetic (T02/R00): two-part helpers with sentinel
+    # Private date arithmetic: two-part helpers with sentinel
     # preservation; linked through jpl, private headers via src/.
     add_executable(jpl_dates_tests tests/test_dates.c)
     target_link_libraries(jpl_dates_tests PRIVATE jpl)
     target_compile_features(jpl_dates_tests PRIVATE c_std_17)
     target_include_directories(jpl_dates_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     add_test(NAME jpl_dates COMMAND jpl_dates_tests)
-    # Declared large-file I/O (T01/R03b): sparse 3.2 GiB fixture with a
+    # Large-file I/O: sparse 3.2 GiB fixture with a
     # beyond-INT32 last-record offset; 32-bit address-space cases stay
     # inside the test as explicit skips/rejections, not omissions.
     add_executable(jpl_largefile tests/test_largefile.c)
@@ -260,7 +260,7 @@ if(LIBJPL_BUILD_TESTS)
     # Multi-gigabyte sparse fixture: generous timeout catches hangs without
     # asserting timing.
     set_tests_properties(jpl_largefile PROPERTIES TIMEOUT 600)
-    # Checked testpo row parsing (T03): shared test-only parser plus
+    # Checked testpo row parsing: shared test-only parser plus
     # component/tolerance policy exercised before the live runners.
     add_executable(jpl_testpo_parser_tests tests/test_testpo_parser.c tests/jpl_testpo_util.c)
     target_link_libraries(jpl_testpo_parser_tests PRIVATE jpl)
@@ -273,7 +273,7 @@ if(LIBJPL_BUILD_TESTS)
     target_include_directories(jpl_numeric_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
     target_compile_definitions(jpl_numeric_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_numeric COMMAND jpl_numeric_tests)
-    # README-compiled examples (T21): ordinary usage patterns with status
+    # README-compiled examples: ordinary usage patterns with status
     # checks, run against the committed fixture.
     add_executable(jpl_examples tests/examples.c)
     target_link_libraries(jpl_examples PRIVATE jpl)
@@ -305,7 +305,7 @@ if(LIBJPL_BUILD_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/testpo_441_slice.txt"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/fixture_rows.txt")
-    # Fixture integrity (T17): CMake hash validation of the committed
+    # Fixture integrity: CMake hash validation of the committed
     # binary, canonical reference text (CRLF-to-LF only), and ordered
     # identity list against tests/data/MANIFEST.txt. No new library crypto
     # dependency; file(SHA256) is configure/test-time tooling only.
@@ -325,7 +325,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/fixture_integrity"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_fixture.cmake")
-    # Negative fixture integrity (T17): disposable build-tree copies with a
+    # Negative fixture integrity: disposable build-tree copies with a
     # flipped binary byte, duplicated interior rows, altered
     # target/component, altered coordinate (all must fail), plus a CRLF
     # re-encoding (must pass). Never mutates the source fixture.
@@ -341,7 +341,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_FIXTURE_NEGATIVE_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_fixture_integrity.cmake")
-    # Numerical-reference provenance (F16): canonical-LF hashes for the
+    # Numerical-reference provenance: canonical-LF hashes for the
     # reviewed numerical header and its independent generator, pinned in
     # the manifest and verified in the offline suite (plus a mutated-copy
     # negative control that must fail).
@@ -354,7 +354,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
-    # jpl_testpo_tests builds whenever tests are enabled (T15): only its
+    # jpl_testpo_tests builds whenever tests are enabled: only its
     # large-data registrations stay opt-in; small synthetic validator
     # data below runs offline.
     add_executable(jpl_testpo_tests tests/test_testpo.c tests/jpl_testpo_util.c)
@@ -374,7 +374,7 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_fixture_fault_tests PRIVATE c_std_17)
     target_include_directories(jpl_fixture_fault_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     target_compile_definitions(jpl_fixture_fault_tests PRIVATE JPL_TEST_READER_FAULT=1)
-    # Small synthetic validator inputs (T15): generator emits mock
+    # Small synthetic validator inputs: generator emits mock
     # ephemerides plus framed runner files; each negative case must exit
     # 1 with its diagnostic category. Bracket-argument EXPECT values keep
     # regex metacharacters (pipes, dots, stars) intact through -D.
@@ -538,7 +538,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DSWEEP_TRAILING_DIR=${JPL_VALIDATOR_WORK}/sweep_trailing"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_validators.cmake")
     # The shared corpus is generated once by jpl_validator_data_setup; every
-    # validator case consumes it read-only (F01), including the
+    # validator case consumes it read-only, including the
     # source-fixture read-error case.
     set_tests_properties(
         jpl_validator_good jpl_validator_nan jpl_validator_missing_body
@@ -558,14 +558,13 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_all_ephemerides_tests PRIVATE c_std_17)
     target_include_directories(jpl_all_ephemerides_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-    # License notices (T18): positive pass over the intact source tree,
+    # License notices: positive pass over the intact source tree,
     # plus build-tree negative cases (missing root license, stripped
     # SPDX header, missing installed ERFA notice) that must fail.
-    # The two license installs stay unconditional; the two
-    # script-variable lines below are the only install-path literals, so
-    # T19 must derive from these exact paths instead of duplicating them.
+    # The two license installs stay unconditional; the install test derives
+    # its notice path from JPL_NOTICE_DATADIR instead of duplicating it.
     # JPL_NOTICE_DATADIR derives from CMAKE_INSTALL_DATADIR (GNUInstallDirs)
-    # rather than hardcoding "share", so nonstandard datadirs flow to T19.
+    # rather than hardcoding "share", so nonstandard datadirs are checked.
     set(JPL_NOTICE_DATADIR "${CMAKE_INSTALL_DATADIR}/licenses/libjpl")
     set(JPL_LICENSE_WORK "${CMAKE_CURRENT_BINARY_DIR}/license_negative")
     add_test(NAME jpl_licenses
@@ -577,7 +576,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DDATADIR=${CMAKE_INSTALL_DATADIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_licenses.cmake")
 
-    # Workflow policy (F08/F17, offline): dedicated local-runner label,
+    # Offline workflow policy: dedicated local-runner label,
     # variable guards, registration proof, permissions, and action pins
     # read as text without a YAML dependency.
     add_test(NAME jpl_workflow_policy
@@ -585,7 +584,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_workflows.cmake")
 
-    # Docs-only configure matrix (F15): registered only in tests-enabled
+    # Docs-only configure matrix: registered only in tests-enabled
     # parent builds to avoid recursive self-registration. The nested build
     # (docs ON, tests OFF) must still register exactly the two docs checks.
     set(JPL_DOCS_ONLY_WORK "${CMAKE_CURRENT_BINARY_DIR}/docs_only")
@@ -602,7 +601,7 @@ if(LIBJPL_BUILD_TESTS)
     # resolve elsewhere).
     set(LIBJPL_TEST_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-    # Shared manifest/resolver (T20/L06): production fetch tier and the
+    # Shared manifest/resolver: production fetch tier and the
     # offline jpl_fetch_cache script tests include the exact same module.
     # Fetch OFF keeps every configure offline: no download URL is touched,
     # and no redirect directory under this block is evaluated (nothing below
@@ -687,11 +686,6 @@ if(LIBJPL_BUILD_TESTS)
             COMMAND jpl_testpo_tests "${LIBJPL_DE440T_EPH}" "${LIBJPL_TESTPO_440T_FILE}")
     endif()
 
-    # test_positions.c was superseded by the testpo harness below (Task 8):
-    # tests/de441_reference.txt never existed, so jpl_position_tests could
-    # not be wired to it. tests/test_testpo.c validates every testpo line
-    # (including DE441 geometric states) instead.
-
     # Integration suites, registered from the resolved fetch-tier files so a
     # download-only build still validates real data. jpl_real_ephemeris is the
     # DENUM-agnostic smoke test (header sanity + record read + finite state)
@@ -755,7 +749,7 @@ if(LIBJPL_BUILD_TESTS)
         endif()
     endforeach()
 
-    # Installed package (T19): relocatable find_package config plus a
+    # Installed package: relocatable find_package config plus a
     # separate-driver C/C++ consumer covering default, version-mismatch,
     # relocated/spaces, custom-destination, and PIC paths. The driver
     # derives notice paths from JPL_NOTICE_DATADIR exactly; no install-path

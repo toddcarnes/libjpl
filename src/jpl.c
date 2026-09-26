@@ -1172,6 +1172,34 @@ jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t cou
     offset = e->header.record_double_count * 8;
     return read_doubles(e, offset, values, (size_t)e->header.constant_count);
 }
+jpl_status jpl_get_constant_name(const jpl_ephemeris *e, size_t index,
+                                 char name[JPL_CONSTANT_NAME_LENGTH + 1]) {
+    unsigned char raw[JPL_CONSTANT_NAME_LENGTH];
+    size_t extra, offset, record_bytes;
+    jpl_status status;
+    if (!e || !name) return JPL_ERROR_ARGUMENT;
+    if (index >= (size_t)e->header.constant_count) return JPL_ERROR_RANGE;
+    if (index < JPL_MAX_CONSTANT_NAMES) {
+        memcpy(name, e->header.constant_names[index], JPL_CONSTANT_NAME_LENGTH + 1);
+        return JPL_OK;
+    }
+    extra = index - JPL_MAX_CONSTANT_NAMES;
+    if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH ||
+        e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_IO;
+    offset = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
+    record_bytes = e->header.record_double_count * 8;
+    if (offset > record_bytes || JPL_CONSTANT_NAME_LENGTH > record_bytes - offset) return JPL_ERROR_IO;
+    if (e->is_mmap) {
+        jpl_mmap_source source = {e->mmap_base, e->mmap_size};
+        status = mmap_read_bytes(&source, offset, raw, sizeof raw);
+    } else {
+        jpl_file_source source = {e->file, e->file_size};
+        status = file_read_bytes(&source, offset, raw, sizeof raw);
+    }
+    if (status != JPL_OK) return status;
+    copy_text(name, raw, sizeof raw);
+    return JPL_OK;
+}
 jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values, size_t count) {
     size_t offset;
     if (!e || !values || count < e->header.record_double_count) return JPL_ERROR_ARGUMENT;

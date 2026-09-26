@@ -6,11 +6,13 @@
 # documented by Doxygen across the three installed headers. The checker
 # (tests/cmake/check_docs.cmake) requires each name to appear as
 # <name>SYMBOL</name> in the generated Doxygen XML.
+# Public functions (also linked from the API landing page).
 jpl_status_string
 jpl_open
 jpl_close
 jpl_get_header
 jpl_read_constants
+jpl_get_constant_name
 jpl_read_record
 jpl_record_count
 jpl_get_tt_minus_tdb
@@ -30,6 +32,7 @@ jpl_planet_position
 jpl_moon_position
 jpl_au_per_day_to_km_per_s
 jpl_km_to_au
+# Public types, values, and constants.
 jpl_status
 JPL_OK
 JPL_ERROR_ARGUMENT

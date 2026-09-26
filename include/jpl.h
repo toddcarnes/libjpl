@@ -26,9 +26,10 @@ extern "C" {
 #define JPL_TITLE_LINE_LENGTH 84
 /** @brief Constant name length in chars (6). */
 #define JPL_CONSTANT_NAME_LENGTH 6
-/* The legacy binary header reserves 400 six-character constant-name fields.
- * Modern DE files can contain more numeric constants than named fields. */
-/** @brief Maximum number of named constants (400). */
+/* The classic binary header has 400 six-character constant-name fields.
+ * Additional names follow the classic fields in files with more constants. */
+/** @brief Number of names exposed directly in jpl_header (400).
+ *  @note Use jpl_get_constant_name() to access names beyond this limit. */
 #define JPL_MAX_CONSTANT_NAMES 400
 /** @brief Legacy alias kept for compatibility; prefer JPL_MAX_CONSTANT_NAMES.
  *  @note The constants record itself is NOT limited to 400 entries:
@@ -120,7 +121,7 @@ typedef struct jpl_pointer {
  */
 typedef struct jpl_header {
     char titles[3][JPL_TITLE_LINE_LENGTH + 1]; /**< @brief Three 84-character title lines (NUL-terminated). */
-    char constant_names[JPL_MAX_CONSTANT_NAMES][JPL_CONSTANT_NAME_LENGTH + 1]; /**< @brief Up to 400 six-character constant names (NUL-terminated). */
+    char constant_names[JPL_MAX_CONSTANT_NAMES][JPL_CONSTANT_NAME_LENGTH + 1]; /**< @brief First up to 400 six-character constant names (NUL-terminated); valid entries are limited by constant_count. Use jpl_get_constant_name() for all indices. */
     double start_jd[2]; /**< @brief Start of ephemeris coverage as a two-part Julian date (sum of both parts). */
     double end_jd[2]; /**< @brief End of ephemeris coverage as a two-part Julian date (sum of both parts). */
     double step_days; /**< @brief Span in days covered by one data record. */
@@ -198,6 +199,24 @@ const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
  *       transactional).
  */
 jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
+
+/**
+ * @brief Reads a constant name at its index in the constants record.
+ * @param ephemeris Open handle.
+ * @param index Zero-based index, less than header.constant_count; matches
+ *        values[index] returned by jpl_read_constants().
+ * @param name Output buffer of at least JPL_CONSTANT_NAME_LENGTH + 1 chars.
+ *        Receives a NUL-terminated name with trailing spaces removed.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris or name is NULL,
+ *         JPL_ERROR_RANGE if index is outside the file's constant count,
+ *         JPL_ERROR_IO if the name cannot be read from the file.
+ * @note Names below index 400 are available in jpl_header.constant_names;
+ *       later names are read from the header record. name is unchanged on
+ *       failure. On the FILE backend, use a separate cloned handle for each
+ *       concurrent reader, as with other file reads.
+ */
+jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
+                                 char name[JPL_CONSTANT_NAME_LENGTH + 1]);
 
 /**
  * @brief Reads one complete coefficient record, including its two Julian-date bounds.

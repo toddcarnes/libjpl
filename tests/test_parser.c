@@ -81,6 +81,74 @@ static int open_both_must_fail(const char *path) {
     return 0;
 }
 
+static int check_constant_names(const char *path, int big_endian) {
+    enum { NCONST = 645, RDBL = 1018, RBYTES = RDBL * 8 };
+    static unsigned char hdr[RBYTES];
+    static double constants[RDBL], records[RDBL];
+    jpl_test_mock mock;
+    jpl_ephemeris *e = NULL, *m = NULL, *clone = NULL;
+    const jpl_ephemeris *handles[3];
+    char name[JPL_CONSTANT_NAME_LENGTH + 1];
+    size_t i;
+
+    memset(hdr, 0, sizeof hdr);
+    memset(constants, 0, sizeof constants);
+    memset(records, 0, sizeof records);
+    memcpy(hdr + 252, "FIRST ", 6);
+    memcpy(hdr + 252 + 399 * 6, "EDGE39", 6);
+    memcpy(hdr + 2856, "OVER00", 6);
+    memcpy(hdr + 2856 + 6, "OVER01", 6);
+    memcpy(hdr + 2856 + (NCONST - 401) * 6, "FINAL ", 6);
+    constants[NCONST - 1] = 42.0;
+    records[0] = 2451545.0;
+    records[1] = 2451546.0;
+    memset(&mock, 0, sizeof mock);
+    mock.record_doubles = RDBL;
+    mock.advertised_records = 1;
+    mock.big_endian = big_endian;
+    mock.denum = 440;
+    mock.constant_count = NCONST;
+    mock.start[0] = 2451545.0;
+    mock.end[0] = 2451546.0;
+    mock.step_days = 1.0;
+    mock.au_km = JPL_TEST_AU_KM;
+    mock.emrat = JPL_TEST_MASS_RATIO;
+    mock.header = hdr;
+    mock.constants = constants;
+    mock.records = records;
+    JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+    JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+    JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+    JPL_TEST_CHECK(jpl_ephemeris_clone(e, &clone) == JPL_OK);
+    handles[0] = e;
+    handles[1] = m;
+    handles[2] = clone;
+    for (i = 0; i < 3; ++i) {
+        double values[NCONST];
+        JPL_TEST_CHECK(jpl_get_header(handles[i])->constant_count == NCONST);
+        JPL_TEST_CHECK(strcmp(jpl_get_header(handles[i])->constant_names[399], "EDGE39") == 0);
+        JPL_TEST_CHECK(jpl_read_constants(handles[i], values, NCONST) == JPL_OK);
+        JPL_TEST_CHECK(values[NCONST - 1] == 42.0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], 0, name) == JPL_OK && strcmp(name, "FIRST") == 0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], 399, name) == JPL_OK && strcmp(name, "EDGE39") == 0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], 400, name) == JPL_OK && strcmp(name, "OVER00") == 0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], 401, name) == JPL_OK && strcmp(name, "OVER01") == 0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], NCONST - 1, name) == JPL_OK && strcmp(name, "FINAL") == 0);
+        strcpy(name, "KEEP");
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], NCONST, name) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(strcmp(name, "KEEP") == 0);
+        JPL_TEST_CHECK(jpl_get_constant_name(handles[i], SIZE_MAX, name) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(strcmp(name, "KEEP") == 0);
+    }
+    JPL_TEST_CHECK(jpl_get_constant_name(NULL, 0, name) == JPL_ERROR_ARGUMENT);
+    JPL_TEST_CHECK(strcmp(name, "KEEP") == 0);
+    JPL_TEST_CHECK(jpl_get_constant_name(e, 0, NULL) == JPL_ERROR_ARGUMENT);
+    jpl_close(clone);
+    jpl_close(m);
+    jpl_close(e);
+    return 0;
+}
+
 /* Optional-tail policy on a 360-double record. The raw T15 words
  * at byte 2868 are tentative until geometry is known: anything but a
  * fully positive, checked, in-record span means absent, and the
@@ -893,6 +961,8 @@ int main(void) {
         }
     }
 
+    JPL_TEST_CHECK(check_constant_names(path, 0) == 0);
+    JPL_TEST_CHECK(check_constant_names(path, 1) == 0);
     JPL_TEST_CHECK(remove(path) == 0);
     puts("parser tests passed");
     return 0;

@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int main(int argc, char **argv) {
     jpl_ephemeris *ephemeris;
@@ -30,6 +31,24 @@ int main(int argc, char **argv) {
         fputs("Unexpected real-ephemeris header values.\n", stderr);
         jpl_close(ephemeris);
         return 1;
+    }
+
+    /* Local JPL ASCII headers list MA0236 at index 400 in DE430/440/441;
+     * their last names also pin the end of each overflow-name block. */
+    if (header->ephemeris_number == 430 || header->ephemeris_number == 440 ||
+        header->ephemeris_number == 441) {
+        int count = header->ephemeris_number == 430 ? 572 : 645;
+        const char *last = header->ephemeris_number == 430 ? "MA1467" : "MA8236";
+        char name[JPL_CONSTANT_NAME_LENGTH + 1];
+        if (header->constant_count != count ||
+            jpl_get_constant_name(ephemeris, 400, name) != JPL_OK ||
+            strcmp(name, "MA0236") != 0 ||
+            jpl_get_constant_name(ephemeris, (size_t)(count - 1), name) != JPL_OK ||
+            strcmp(name, last) != 0) {
+            fputs("Could not read overflow constant names.\n", stderr);
+            jpl_close(ephemeris);
+            return 1;
+        }
     }
 
     constants = malloc((size_t)header->constant_count * sizeof *constants);

@@ -59,7 +59,10 @@ Merge acceptance found an additional worktree-layout issue: running
 inside the ignored `.worktrees/` directory as unlisted source. The license
 checker now excludes that directory, with a positive synthetic nested-
 worktree regression in `jpl_licenses`. Both focused tests pass with the
-worktree still present; the merged main suite is rerun separately.
+worktree still present. The main checkout at `0038224` passed the full
+MSVC Debug `build/merge-verify` suite **42/42** with the linked worktree
+present. After syncing the fix into the native WSL copy, the full GCC
+Debug and Release suites passed **42/42** each.
 
 ## Frame-source table (T12, R04)
 

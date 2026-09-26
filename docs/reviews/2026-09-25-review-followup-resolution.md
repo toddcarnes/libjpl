@@ -7,6 +7,8 @@ See LICENSE in the project root for the full license text.
 # Review follow-up resolution
 
 - Date: 2026-09-25; base revision `05e9c6f`.
+- Fix revisions: `d132b79` (F1-F7) and `0038224` (main-checkout
+  license sweep correction).
 - Work branch: `bugfix/review-followup-fixes`. This log records file-level
   fixes and observed tests, not a release claim.
 - Approved [design](../superpowers/specs/2026-09-25-review-followup-fixes-design.md)
@@ -51,5 +53,8 @@ This was not visible when tests ran inside the linked worktree itself.
 `tests/cmake/check_licenses.cmake` now excludes `.worktrees/`, and
 `tests/cmake/test_licenses.cmake` constructs a positive nested-worktree
 case that fails with the old checker. Both focused license/install tests
-pass with `.worktrees/` still present in the main checkout. A fresh merged
-full-suite result must be recorded after the follow-up commit lands.
+pass with `.worktrees/` still present in the main checkout. After the
+second fast-forward to `0038224`, `build/merge-verify` on `main` passed
+**42/42** Windows MSVC Debug tests with the linked worktree still present.
+The updated native Ubuntu source copy also passed the full Debug and
+Release suites, **42/42** in each configuration.

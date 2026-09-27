@@ -855,3 +855,95 @@ if(LIBJPL_BUILD_TESTS)
             "-DINVENTORY=${CMAKE_CURRENT_SOURCE_DIR}/tests/license_inventory.cmake"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_install.cmake")
 endif()
+
+# SDK packaging targets (explicit, not automatic)
+# package-sdk: creates build/sdk/{include,lib,cmake,share/licenses,share/doc} via cmake --install + Doxygen
+# package-sdk-zip: depends on package-sdk; creates build/sdk-${VERSION}-${PLATFORM}.zip
+if(CMAKE_COMMAND AND CMAKE_AR)
+    # Helper: build Doxygen HTML into a temp dir (works regardless of LIBJPL_BUILD_DOCS)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        set(JPL_SDK_DOCS_WORK "${CMAKE_CURRENT_BINARY_DIR}/sdk_docs")
+        file(MAKE_DIRECTORY "${JPL_SDK_DOCS_WORK}")
+        # Configure Doxyfile with SDK-specific paths
+        file(READ "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in" _sdk_doxyfile_in)
+        string(REPLACE "@CMAKE_CURRENT_BINARY_DIR@/docs"
+            "${JPL_SDK_DOCS_WORK}" _sdk_doxyfile "${_sdk_doxyfile_in}")
+        string(REPLACE "@CMAKE_CURRENT_SOURCE_DIR@"
+            "${CMAKE_CURRENT_SOURCE_DIR}" _sdk_doxyfile "${_sdk_doxyfile}")
+        file(WRITE "${JPL_SDK_DOCS_WORK}/Doxyfile" "${_sdk_doxyfile}")
+        add_custom_target(jpl_sdk_docs
+            COMMAND "${DOXYGEN_EXECUTABLE}" "${JPL_SDK_DOCS_WORK}/Doxyfile"
+            WORKING_DIRECTORY "${JPL_SDK_DOCS_WORK}"
+            COMMENT "Building Doxygen HTML for SDK"
+            VERBATIM)
+    else()
+        add_custom_target(jpl_sdk_docs
+            COMMAND ${CMAKE_COMMAND} -E echo "Doxygen not found; skipping HTML docs in SDK"
+            COMMENT "Doxygen not found"
+            VERBATIM)
+    endif()
+
+# SDK packaging: separate staging and zip creation
+    if(CMAKE_SYSTEM_NAME)
+        set(JPL_SDK_ZIP_NAME "sdk-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.zip")
+    else()
+        set(JPL_SDK_ZIP_NAME "sdk-${PROJECT_VERSION}.zip")
+    endif()
+    set(JPL_SDK_ZIP_PATH "${CMAKE_CURRENT_BINARY_DIR}/${JPL_SDK_ZIP_NAME}")
+    set(JPL_SDK_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/sdk")
+    set(JPL_SDK_STAMP "${CMAKE_CURRENT_BINARY_DIR}/sdk_stamp.txt")
+
+    # Stage directory (outputs stamp)
+    add_custom_command(OUTPUT "${JPL_SDK_STAMP}"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${JPL_SDK_PREFIX}"
+        COMMAND ${CMAKE_COMMAND} --install "${CMAKE_CURRENT_BINARY_DIR}"
+            --prefix "${JPL_SDK_PREFIX}"
+            --config $<CONFIG>
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${JPL_SDK_PREFIX}/share/doc/libjpl"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/BUILDING.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/CHANGELOG.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/LICENSES.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/docs/validation.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/docs/migration-two-part-dates.md"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/README-ERFA.md"
+            "${JPL_SDK_PREFIX}/share/doc/libjpl/"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${JPL_SDK_DOCS_WORK}/html"
+            "${JPL_SDK_PREFIX}/share/doc/libjpl/html"
+        COMMAND ${CMAKE_COMMAND} -E echo "VERIFY: Checking SDK directory"
+        COMMAND ${CMAKE_COMMAND} -E compare_files "${JPL_SDK_PREFIX}/include/jpl.h" "${JPL_SDK_PREFIX}/include/jpl.h"
+        COMMAND ${CMAKE_COMMAND} -E touch "${JPL_SDK_STAMP}"
+        DEPENDS jpl_sdk_docs
+        COMMENT "Creating SDK staging directory at ${JPL_SDK_PREFIX}"
+        VERBATIM)
+
+    add_custom_target(package-sdk DEPENDS "${JPL_SDK_STAMP}")
+
+    # Create zip from staged directory (outputs zip)
+    add_custom_command(OUTPUT "${JPL_SDK_ZIP_PATH}"
+        COMMAND ${CMAKE_COMMAND}
+            -DSDK_ROOT="${JPL_SDK_PREFIX}"
+            -DZIP_PATH="${JPL_SDK_ZIP_PATH}"
+            -DMANIFEST_PATH="${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdk_package.cmake"
+        COMMAND ${CMAKE_COMMAND} -E echo "Created ${JPL_SDK_ZIP_NAME}"
+        DEPENDS "${JPL_SDK_STAMP}"
+        COMMENT "Creating SDK zip archive at ${JPL_SDK_ZIP_PATH}"
+        VERBATIM)
+
+    add_custom_target(package-sdk-zip DEPENDS "${JPL_SDK_ZIP_PATH}")
+
+    # Generate manifest for zip (list of files under sdk/) - kept for manual invocation
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt"
+        COMMAND ${CMAKE_COMMAND} -E env
+            "SDK_ROOT=${JPL_SDK_PREFIX}"
+            ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdk_manifest.cmake"
+        DEPENDS "${JPL_SDK_STAMP}"
+        COMMENT "Generating SDK file manifest"
+        VERBATIM)
+    add_custom_target(sdk_manifest DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt")
+endif()

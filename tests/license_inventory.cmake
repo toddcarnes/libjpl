@@ -72,6 +72,8 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/license_inventory.cmake"
   "cmake/libjplConfig.cmake.in"
   "cmake/LibjplTestData.cmake"
+  "cmake/sdk_manifest.cmake"
+  "cmake/sdk_package.cmake"
   ".github/workflows/ci.yml"
   ".github/workflows/ephemerides.yml"
   "tests/consumer/CMakeLists.txt"

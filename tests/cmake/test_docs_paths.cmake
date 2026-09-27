@@ -47,6 +47,7 @@ set(whitelist
   "src/jpl_frames.c"
   "src/jpl_convenience.c"
   "src/jpl_private.h"
+  "src/erfa/README-ERFA.md"
   "cmake/libjplConfig.cmake.in"
   "cmake/LibjplTestData.cmake")
 file(GLOB erfa_sources RELATIVE "${SOURCE}" "${SOURCE}/src/erfa/*.c")

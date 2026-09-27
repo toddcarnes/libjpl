@@ -82,30 +82,6 @@ int jpl_date_compare(const double a[2], const double b[2]);
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */
 jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
-                                              const double jd_tt[2], double out[3]);
-
-/* Private deterministic light-time iteration-budget hook for tests.
- * Defined in the non-installed jpl_testing archive under LIBJPL_TESTING;
- * absent from the installed jpl archive. The public solver
- * calls the same internal implementation with JPL_LIGHTTIME_FAST_MAX_ITER
- * and JPL_LIGHTTIME_SAFE_MAX_ITER. Budgets count that iteration family
- * only (zero fast + zero safeguarded forces CONVERGENCE on non-root
- * cases). Negative budgets are rejected as JPL_ERROR_ARGUMENT with no
- * output written. */
-#ifdef LIBJPL_TESTING
-jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
-    const double jd[2], int target, int center, double state[6], double *delay,
-    int fast_iterations, int safeguarded_iterations);
-
-/* Bounded-read test hook: caps parser source reads at max_bytes when
- * nonzero (0 disables). Production builds without LIBJPL_TESTING bypass it
- * entirely; the hook is test-only and never declared in installed headers. */
-void jpl_test_set_parser_read_limit(size_t max_bytes);
-
-/* Exercise the selector's own range checks without interpolate's outer
- * coverage guard. This hook exists only in the private testing archive. */
-jpl_status jpl_test_select_record(const jpl_ephemeris *ephemeris,
-    const double jd[2], size_t *index, double start[2], double end[2]);
-#endif
+                                               const double jd_tt[2], double out[3]);
 
 #endif

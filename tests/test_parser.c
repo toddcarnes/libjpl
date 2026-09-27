@@ -4,6 +4,7 @@
  */
 #include "jpl.h"
 #include "jpl_private.h"
+#include "jpl_testing.h"
 #include "jpl_test_util.h"
 
 #include <float.h>
@@ -868,10 +869,9 @@ int main(void) {
     /* Wide-record regression. A valid mock with a 1 MiB record
      * width, one advertised interval, and ordinary fixed header/endpoints.
      * With the parser read limit at 2880 bytes, both opens must succeed
-     * (no parser read exceeds 2880 bytes). Before the fix, full-record
-     * parsing requested 1 MiB and both opens failed under the limit. The
-     * limit is reset even on failure; the hook is test-only and declared
-     * in src/jpl_private.h under LIBJPL_TESTING. */
+      * (no parser read exceeds 2880 bytes). Before the fix, full-record
+      * reads under the limit were not bounded; the hook is test-only and
+      * declared in include/jpl_testing.h under LIBJPL_TESTING. */
     {
         enum { WDOUBLES = 131072, WBYTES = WDOUBLES * 8 };
         static unsigned char *whdr = NULL;

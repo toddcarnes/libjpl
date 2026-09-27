@@ -39,13 +39,23 @@ target_include_directories(jpl PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_
 # below. Downstream users never need erfa.h (frames API hides it), so the
 # PUBLIC include stays build-interface-only. Revisit only if a public header
 # ever includes erfa.h.
+# ERFA version: extracted at configure time from the vendored README so the
+# compiler macros never drift from the bundled source tree. SOFA_VERSION is
+# kept literal (erfaversion.c only references the macro; no parsing needed).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/README-ERFA.md"
+     _erfa_readme_line REGEX "ERFA v[0-9]+\\.[0-9]+\\.[0-9]+")
+string(REGEX MATCH "v([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${_erfa_readme_line}")
+set(LIBJPL_ERFA_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+set(LIBJPL_ERFA_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(LIBJPL_ERFA_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(LIBJPL_ERFA_VERSION_MICRO "${CMAKE_MATCH_3}")
 # erfaversion.c expects version macros from generated config.h (see configure.ac
 # in the ERFA release); define them here since we build without autotools.
 target_compile_definitions(jpl PRIVATE
-    PACKAGE_VERSION=\"2.0.1\"
-    PACKAGE_VERSION_MAJOR=2
-    PACKAGE_VERSION_MINOR=0
-    PACKAGE_VERSION_MICRO=1
+    PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
+    PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
+    PACKAGE_VERSION_MINOR=${LIBJPL_ERFA_VERSION_MINOR}
+    PACKAGE_VERSION_MICRO=${LIBJPL_ERFA_VERSION_MICRO}
     SOFA_VERSION=\"20231011\"
 )
 
@@ -174,10 +184,10 @@ if(LIBJPL_BUILD_TESTS)
     target_include_directories(jpl_testing PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
     target_include_directories(jpl_testing PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
     target_compile_definitions(jpl_testing PRIVATE
-        PACKAGE_VERSION=\"2.0.1\"
-        PACKAGE_VERSION_MAJOR=2
-        PACKAGE_VERSION_MINOR=0
-        PACKAGE_VERSION_MICRO=1
+        PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
+        PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
+        PACKAGE_VERSION_MINOR=${LIBJPL_ERFA_VERSION_MINOR}
+        PACKAGE_VERSION_MICRO=${LIBJPL_ERFA_VERSION_MICRO}
         SOFA_VERSION=\"20231011\"
         LIBJPL_TESTING
     )
@@ -287,10 +297,10 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_generate_reference PRIVATE c_std_17)
     target_include_directories(jpl_generate_reference PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
     target_compile_definitions(jpl_generate_reference PRIVATE
-        PACKAGE_VERSION=\"2.0.1\"
-        PACKAGE_VERSION_MAJOR=2
-        PACKAGE_VERSION_MINOR=0
-        PACKAGE_VERSION_MICRO=1
+        PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
+        PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
+        PACKAGE_VERSION_MINOR=${LIBJPL_ERFA_VERSION_MINOR}
+        PACKAGE_VERSION_MICRO=${LIBJPL_ERFA_VERSION_MICRO}
         SOFA_VERSION=\"20231011\"
     )
     if(JPL_NEED_M_LIB)

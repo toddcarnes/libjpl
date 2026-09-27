@@ -13,6 +13,7 @@
 
 #include "jpl.h"
 #include "jpl_private.h"
+#include "jpl_testing.h"
 #include "jpl_test_util.h"
 
 #include <stdint.h>

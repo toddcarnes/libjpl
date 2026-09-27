@@ -10,6 +10,7 @@
 #include "jpl.h"
 #include "jpl_frames.h"
 #include "jpl_private.h"
+#include "jpl_testing.h"
 #include "jpl_test_util.h"
 
 #ifndef LIBJPL_TESTING

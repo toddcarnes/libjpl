@@ -28,10 +28,11 @@ docs/latex/
 
 # .NET build artifacts
 bin/
-obj/
+**/obj/**
 *.user
 *.generated.cs
 *.g.cs
+*.dll
 
 # Python cache
 __pycache__/

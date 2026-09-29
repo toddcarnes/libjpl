@@ -125,7 +125,17 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/vbnet/src/LibJpl/JplEnums.vb"
   "bindings/vbnet/src/LibJpl/Native.vb"
   "bindings/vbnet/tests/LibJpl.VbTests.vbproj"
-  "bindings/vbnet/tests/Program.vb"
+"bindings/vbnet/tests/Program.vb"
+  "bindings/cpp/examples/planet_positions.cpp"
+  "bindings/cpp/examples/README.md"
+  "bindings/python/examples/README.md"
+  "bindings/python/examples/planet_positions.py"
+  "bindings/csharp/examples/README.md"
+  "bindings/csharp/examples/PlanetPositions.cs"
+  "bindings/vbnet/examples/README.md"
+  "bindings/vbnet/examples/PlanetPositions.vb"
+  "bindings/cpp/examples/README.md"
+  "bindings/c/examples/README.md"
 )
 # Exempt files and why:
 #   LICENSE - the full MIT grant itself (checked separately for completeness).

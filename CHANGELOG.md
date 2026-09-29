@@ -12,6 +12,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+### Added
+
+- Shared library target `jpl_shared` with versioned SONAME (`VERSION`/`SOVERSION`) and Windows `VERSIONINFO` resource.
+- Export header `jpl_export.h` with `JPL_API` macro for cross-platform DLL import/export.
+- C++ header-only RAII wrapper (`bindings/cpp/`): `jpl::Ephemeris`, `jpl::JplError`, convenience helpers.
+- Python cffi binding (`bindings/python/`): `libjpl.Ephemeris` context manager, `libjpl.JplError`.
+- C# P/Invoke binding (`bindings/csharp/`): `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, enums `JplStatus`/`JplTarget`/`JplByteOrder`/`JplReferenceFrame`.
+- VB.NET P/Invoke binding (`bindings/vbnet/`): mirrors C# API, mirrors `SafeHandle` wrapper.
+- CMake options `LIBJPL_BUILD_SHARED`, `LIBJPL_BUILD_CPP_BINDING`, `LIBJPL_BUILD_PYTHON_BINDING`, `LIBJPL_BUILD_CSHARP_BINDING`, `LIBJPL_BUILD_VBNET_BINDING` (all default `OFF` except shared).
+- License header enforcement for new files via `jpl_licenses` test.
+- Usage examples for all bindings: C (`bindings/c/examples/`), C++ (`bindings/cpp/examples/`), Python (`bindings/python/examples/`), C# (`bindings/csharp/examples/`), VB.NET (`bindings/vbnet/examples/`).
+
+### Changed
+
+- Public headers `jpl.h`, `jpl_frames.h`, `jpl_convenience.h` now include `jpl_export.h` and prefix all public declarations with `JPL_API`.
+- Library install layout: static archive to `${CMAKE_INSTALL_LIBDIR}/static`, shared library to `${CMAKE_INSTALL_LIBDIR}/shared` and `${CMAKE_INSTALL_BINDIR}/shared`.
+- C++ binding installs headers to `${CMAKE_INSTALL_INCLUDEDIR}/jpl/`.
+- `jpl_install` test updated for split static/shared layout.
+
+### Fixed
+
+- `jpl_install` test: POSIX shared-link check now references `${LIBDIR}/static/libjpl.a`.
+- License checker now exempts `build_debug/`, `build_release/`, `obj/`, `bin/` build directories.
+- C#/VB.NET wrapper scripts copy `libjpl.so`/`jpl.dll` to test output directory for Linux/macOS.
+
 ## [0.4.0] - 2026-09-26
 
 ### Added

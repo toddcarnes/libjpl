@@ -165,6 +165,43 @@ depth, but no 32-bit configuration is tested or claimed. The historical
 32-bit job, multilib instructions, and width-conditional test scaffolding
 have been removed.
 
+## Language bindings
+
+Official bindings are provided for four languages. All require the shared
+library (`-DLIBJPL_BUILD_SHARED=ON`) and are built on demand via CMake
+options (default `OFF`). Each binding targets the same C API and passes
+the same offline test suite.
+
+### C++ (`bindings/cpp/`)
+
+Header-only RAII wrapper (`jpl::Ephemeris`, `jpl::JplError`, free helpers
+`jpl::planet_position`, `jpl::moon_position`, `jpl::tt_to_tdb`).
+CMake option: `LIBJPL_BUILD_CPP_BINDING=ON`. Installs headers to
+`${CMAKE_INSTALL_INCLUDEDIR}/jpl/`.
+
+### Python (`bindings/python/`)
+
+cffi wrapper: `libjpl.Ephemeris` context manager, `libjpl.JplError`,
+`libjpl.get_state`/`planet_position` helpers. CMake option:
+`LIBJPL_BUILD_PYTHON_BINDING=ON`. Requires Python 3 + `cffi`.
+
+### C# (`bindings/csharp/`)
+
+P/Invoke with `SafeHandle` wrapper: `LibJpl.JplEphemeris : SafeHandle`,
+`LibJplApi.Open`/`OpenMmap`, `JplStatus`/`JplTarget`/`JplByteOrder`/`JplReferenceFrame`
+enums. CMake option: `LIBJPL_BUILD_CSHARP_BINDING=ON`. Requires .NET 8 SDK.
+
+### VB.NET (`bindings/vbnet/`)
+
+Direct port of C# API: `LibJpl.JplEphemeris : SafeHandle`,
+`LibJplApi.Open`/`OpenMmap`, identical enums and exceptions. CMake option:
+`LIBJPL_BUILD_VBNET_BINDING=ON`. Requires .NET 8 SDK.
+
+All binding tests pass on Windows (MSVC Debug/Release) and Linux (GCC
+Debug/Release). Tests for missing toolchains are absent, never failing.
+
+## Platform support
+
 ## Procedures and historical evidence (2026-09-19 checkpoint)
 
 The commands below remain useful, but results marked “pending” or “not

@@ -1,0 +1,11 @@
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.GeneratedMSBuildEditorConfig.editorconfig
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.AssemblyInfoInputs.cache
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.AssemblyInfo.cs
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.csproj.CoreCompileInputs.cache
+D:\src\libjpl\bindings\csharp\src\LibJpl\bin\Debug\net8.0\LibJpl.deps.json
+D:\src\libjpl\bindings\csharp\src\LibJpl\bin\Debug\net8.0\LibJpl.dll
+D:\src\libjpl\bindings\csharp\src\LibJpl\bin\Debug\net8.0\LibJpl.pdb
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.dll
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\refint\LibJpl.dll
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\LibJpl.pdb
+D:\src\libjpl\bindings\csharp\src\LibJpl\obj\Debug\net8.0\ref\LibJpl.dll

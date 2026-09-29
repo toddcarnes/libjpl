@@ -32,14 +32,14 @@ function(run_checked)
 endfunction()
 
 function(check_archive_symbols libdir)
-  set(lib_msvc "${libdir}/jpl.lib")
-  set(lib_posix "${libdir}/libjpl.a")
+  set(lib_msvc "${libdir}/static/jpl.lib")
+  set(lib_posix "${libdir}/static/libjpl.a")
   if(EXISTS "${lib_msvc}" AND NOT EXISTS "${lib_posix}")
     set(archive "${lib_msvc}")
   elseif(EXISTS "${lib_posix}" AND NOT EXISTS "${lib_msvc}")
     set(archive "${lib_posix}")
   else()
-    message(FATAL_ERROR "expected exactly one installed jpl archive in ${libdir}")
+    message(FATAL_ERROR "expected exactly one installed jpl archive in ${libdir}/static")
   endif()
   run_checked("${CMAKE_COMMAND}"
     "-DARCHIVE=${archive}" "-DSYMBOL_TOOL=${SYMBOL_TOOL}"
@@ -71,6 +71,9 @@ if(NOT DEFINED INCLUDEDIR OR "${INCLUDEDIR}" STREQUAL "")
 endif()
 if(NOT DEFINED DATADIR OR "${DATADIR}" STREQUAL "")
   set(DATADIR "share")
+endif()
+if(NOT DEFINED BINDIR OR "${BINDIR}" STREQUAL "")
+  set(BINDIR "bin")
 endif()
 
 # Unique owned work tree beneath the primary binary dir; never delete an
@@ -113,8 +116,8 @@ run_checked("${CMAKE_COMMAND}" --install "${BUILD}"
 # --- Case 2: inspect the default install (headers, notices, exports). ---
 file(GLOB installed_headers RELATIVE "${PREFIX}/${INCLUDEDIR}" "${PREFIX}/${INCLUDEDIR}/*.h")
 list(SORT installed_headers)
-if(NOT installed_headers STREQUAL "jpl.h;jpl_convenience.h;jpl_frames.h")
-  message(FATAL_ERROR "installed headers are not exactly the three public headers: ${installed_headers}")
+if(NOT installed_headers STREQUAL "jpl.h;jpl_convenience.h;jpl_export.h;jpl_frames.h")
+  message(FATAL_ERROR "installed headers are not exactly the four public headers: ${installed_headers}")
 endif()
 if(DEFINED CHECKER AND NOT "${CHECKER}" STREQUAL ""
     AND DEFINED INVENTORY AND NOT "${INVENTORY}" STREQUAL "")
@@ -169,6 +172,24 @@ if(NOT targets_content MATCHES "INTERFACE_INCLUDE_DIRECTORIES")
 endif()
 check_archive_symbols("${PREFIX}/${LIBDIR}")
 
+# --- Case 2b: inspect the shared library artifacts. ---
+if(WIN32)
+  if(NOT EXISTS "${PREFIX}/${BINDIR}/shared/jpl.dll")
+    message(FATAL_ERROR "missing installed shared library: ${PREFIX}/${BINDIR}/shared/jpl.dll")
+  endif()
+  if(NOT EXISTS "${PREFIX}/${LIBDIR}/shared/jpl.lib")
+    message(FATAL_ERROR "missing installed import library: ${PREFIX}/${LIBDIR}/shared/jpl.lib")
+  endif()
+else()
+  file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.so*")
+  if(NOT shared_libs)
+    file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.*.dylib")
+  endif()
+  if(NOT shared_libs)
+    message(FATAL_ERROR "missing installed shared library in ${PREFIX}/${LIBDIR}/shared (expected libjpl.so* or libjpl.*.dylib)")
+  endif()
+endif()
+
 # --- Case 3: default-prefix consumer, exact current version. ---
 # Search roots are plain prefixes: find_package appends lib/cmake etc.
 # itself. A custom LIBDIR layout needs libjpl_DIR pointed at the exact
@@ -182,7 +203,12 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   ${child_gen_args} ${child_toolchain_args}
   "-DCMAKE_PREFIX_PATH=${default_prefix_path}" "-Dlibjpl_DIR=${default_libjpl_dir}" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-default"
-  --config "${CONFIG}" --parallel)
+  --config "${CONFIG}" --parallel 4)
+if(WIN32)
+  # Copy jpl.dll to the test executable directory so all consumer tests can find it.
+  file(COPY "${PREFIX}/${BINDIR}/shared/jpl.dll"
+    DESTINATION "${WORK}/consumer-default/${CONFIG}")
+endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
   -C "${CONFIG}" --output-on-failure)
 
@@ -223,7 +249,11 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   ${child_gen_args} ${child_toolchain_args}
   "-DCMAKE_PREFIX_PATH=${SPACE_PREFIX}" "-Dlibjpl_DIR=${space_libjpl_dir}" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-spaces"
-  --config "${CONFIG}" --parallel)
+  --config "${CONFIG}" --parallel 4)
+if(WIN32)
+  file(COPY "${SPACE_PREFIX}/${BINDIR}/shared/jpl.dll"
+    DESTINATION "${WORK}/consumer-spaces/${CONFIG}")
+endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-spaces"
   -C "${CONFIG}" --output-on-failure)
 
@@ -243,7 +273,7 @@ run_checked("${CMAKE_COMMAND}" --install "${WORK}/lib-custom"
 check_archive_symbols("${CUSTOM_PREFIX}/custom-lib")
 file(GLOB custom_headers RELATIVE "${CUSTOM_PREFIX}/headers/jpl" "${CUSTOM_PREFIX}/headers/jpl/*.h")
 list(SORT custom_headers)
-if(NOT custom_headers STREQUAL "jpl.h;jpl_convenience.h;jpl_frames.h")
+if(NOT custom_headers STREQUAL "jpl.h;jpl_convenience.h;jpl_export.h;jpl_frames.h")
   message(FATAL_ERROR "custom-destination headers are not exactly the three public headers: ${custom_headers}")
 endif()
 if(NOT EXISTS "${CUSTOM_PREFIX}/custom-lib/cmake/libjpl/libjplConfig.cmake")
@@ -263,7 +293,11 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   ${child_gen_args} ${child_toolchain_args}
   "-Dlibjpl_DIR=${CUSTOM_PREFIX}/custom-lib/cmake/libjpl" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-custom"
-  --config "${CONFIG}" --parallel)
+  --config "${CONFIG}" --parallel 4)
+if(WIN32)
+  file(COPY "${CUSTOM_PREFIX}/${BINDIR}/shared/jpl.dll"
+    DESTINATION "${WORK}/consumer-custom/${CONFIG}")
+endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-custom"
   -C "${CONFIG}" --output-on-failure)
 
@@ -280,7 +314,11 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   ${child_gen_args} ${child_toolchain_args}
   "-DCMAKE_PREFIX_PATH=${NOPIC_PREFIX}" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-nopic"
-  --config "${CONFIG}" --parallel)
+  --config "${CONFIG}" --parallel 4)
+if(WIN32)
+  file(COPY "${NOPIC_PREFIX}/${BINDIR}/shared/jpl.dll"
+    DESTINATION "${WORK}/consumer-nopic/${CONFIG}")
+endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-nopic"
   -C "${CONFIG}" --output-on-failure)
 
@@ -295,7 +333,7 @@ if(UNIX AND DEFINED PIC_IS_ON AND "${PIC_IS_ON}")
     set(shared_suffix ".so")
   endif()
   set(shared_args "${C_COMPILER}" -I "${SPACE_PREFIX}/${INCLUDEDIR}"
-    "${SOURCE}/tests/consumer/main.c" "${SPACE_PREFIX}/${LIBDIR}/libjpl.a")
+    "${SOURCE}/tests/consumer/main.c" "${SPACE_PREFIX}/${LIBDIR}/static/libjpl.a")
   if(DEFINED NEED_M AND NOT "${NEED_M}" STREQUAL "")
     list(APPEND shared_args "-l${NEED_M}")
   endif()

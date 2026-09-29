@@ -8,4 +8,12 @@
 
 include("${CMAKE_CURRENT_LIST_DIR}/libjplTargets.cmake")
 
+# Provide backward-compatibility aliases
+if(TARGET jpl::jpl_static AND NOT TARGET jpl::jpl)
+  add_library(jpl::jpl ALIAS jpl::jpl_static)
+endif()
+if(TARGET jpl::jpl_shared AND NOT TARGET jpl::jpl_shared_debug)
+  add_library(jpl::jpl_shared_debug ALIAS jpl::jpl_shared)
+endif()
+
 check_required_components(libjpl)

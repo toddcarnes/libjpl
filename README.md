@@ -119,6 +119,26 @@ differ from physical planet centers.
 The `jpl_examples` CTest suite compiles and runs these patterns from
 `tests/examples.c` against the committed fixture.
 
+## Language Bindings
+
+Prebuilt shared-library bindings live under `bindings/<lang>/` and require
+`-DLIBJPL_BUILD_SHARED=ON` plus the language-specific CMake option:
+
+- **C++** (`bindings/cpp/`, `-DLIBJPL_BUILD_CPP_BINDING=ON`): header-only RAII wrapper
+  `jpl::Ephemeris`, `jpl::JplError`, `jpl::planet_position`.
+- **Python** (`bindings/python/`, `-DLIBJPL_BUILD_PYTHON_BINDING=ON`): cffi wrapper
+  `libjpl.Ephemeris` context manager, `libjpl.JplError`.
+- **C#** (`bindings/csharp/`, `-DLIBJPL_BUILD_CSHARP_BINDING=ON`): P/Invoke with
+  `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open`, convenience helpers.
+- **VB.NET** (`bindings/vbnet/`, `-DLIBJPL_BUILD_VBNET_BINDING=ON`): mirrors the
+  C# API in VB.NET syntax.
+
+Each binding's CMake option defaults to `OFF`; the test is absent (not failing)
+if the toolchain (C++17, Python+cffi, .NET 8) is unavailable.
+
+See [`BUILDING.md`](BUILDING.md#language-bindings) for per-language build
+instructions.
+
 ## Credits
 
 First-party code and documentation are MIT licensed, copyright

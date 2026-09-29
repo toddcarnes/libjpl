@@ -1,0 +1,160 @@
+# Copyright (c) 2026 Todd Carnes
+# SPDX-License-Identifier: MIT
+# See LICENSE in the project root for the full license text.
+
+"""Raw cffi bindings over the libjpl shared library. Do not import directly; use libjpl.ephemeris."""
+from cffi import FFI
+
+ffi = FFI()
+ffi.cdef("""
+    typedef enum { JPL_OK=0, JPL_ERROR_ARGUMENT, JPL_ERROR_IO, JPL_ERROR_FORMAT,
+        JPL_ERROR_RANGE, JPL_ERROR_MEMORY, JPL_ERROR_UNSUPPORTED,
+        JPL_ERROR_CONVERGENCE, JPL_ERROR_NUMERIC } jpl_status;
+
+    typedef enum { JPL_BYTE_ORDER_LITTLE_ENDIAN, JPL_BYTE_ORDER_BIG_ENDIAN } jpl_byte_order;
+
+    typedef enum { JPL_MERCURY=1, JPL_VENUS=2, JPL_EARTH=3, JPL_MARS=4,
+        JPL_JUPITER=5, JPL_SATURN=6, JPL_URANUS=7, JPL_NEPTUNE=8,
+        JPL_PLUTO=9, JPL_MOON=10, JPL_SUN=11, JPL_SOLAR_SYSTEM_BARYCENTER=12,
+        JPL_EARTH_MOON_BARYCENTER=13, JPL_NUTATIONS=14, JPL_LIBRATIONS=15,
+        JPL_TT_TDB=17, JPL_SSB=0 } jpl_target;
+
+    typedef enum { JPL_FRAME_UNKNOWN=0, JPL_FRAME_DYNAMICAL_1950=1,
+        JPL_FRAME_DYNAMICAL_2000=2, JPL_FRAME_ICRF=3 } jpl_reference_frame;
+
+    typedef struct { int start_index; int coefficients_per_component; int subintervals; } jpl_pointer;
+
+    typedef struct {
+        char titles[3][85];
+        char constant_names[400][7];
+        double start_jd[2];
+        double end_jd[2];
+        double step_days;
+        int constant_count;
+        double astronomical_unit_km;
+        double earth_moon_mass_ratio;
+        jpl_pointer pointers[12];
+        int ephemeris_number;
+        jpl_reference_frame reference_frame;
+        jpl_pointer libration_pointer;
+        jpl_pointer tt_tdb_pointer;
+        int has_tt_tdb;
+        size_t record_double_count;
+        jpl_byte_order byte_order;
+    } jpl_header;
+
+    typedef struct jpl_ephemeris jpl_ephemeris;
+
+    /* jpl.h - core API */
+    const char *jpl_status_string(jpl_status status);
+    jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
+    void jpl_close(jpl_ephemeris *ephemeris);
+    const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
+    jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
+    jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
+                                     char name[7]);
+    jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
+                               double *values, size_t value_count);
+    size_t jpl_record_count(const jpl_ephemeris *ephemeris);
+    jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                    double *seconds, double *rate_per_day);
+    int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
+    jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                             int target, int center, double state[6]);
+    jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                       int target, int center, double state[6], double *out_light_time);
+    jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
+    jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
+                                         double sun_distance_au, double out_state[6]);
+    jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
+    jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
+
+    /* jpl_frames.h - frame conversions and time conversions */
+    jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], double out_state[6]);
+    jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], double out_state[6]);
+    jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
+    jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
+    jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
+
+    /* jpl_convenience.h - planet/Moon helpers and unit conversions */
+    jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2], int planet, int center, double state[6]);
+    jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
+    jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
+                                              const double jd_tt[2], int target,
+                                              double out_longitude_deg, double out_latitude_deg,
+                                              double out_range_au, double out_longitude_rate_deg_per_day,
+                                              double out_range_rate_km_per_s);
+    jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_s[3]);
+    jpl_status jpl_km_to_au(double km, double *au);
+""")
+
+_lib = None
+try:
+    _lib = ffi.dlopen("jpl")
+except OSError:
+    pass
+
+if _lib is None:
+    # On Windows, try to find jpl.dll in the tests directory
+    import os
+    import sys
+    if sys.platform == "win32":
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        python_dir = os.path.dirname(os.path.dirname(module_dir))
+        tests_dir = os.path.join(python_dir, "tests")
+        dll_path = os.path.join(tests_dir, "jpl.dll")
+        import traceback
+        traceback.print_exc()
+        print(f"DEBUG: module_dir={module_dir}", file=sys.stderr)
+        print(f"DEBUG: python_dir={python_dir}", file=sys.stderr)
+        print(f"DEBUG: tests_dir={tests_dir}", file=sys.stderr)
+        print(f"DEBUG: dll_path={dll_path}", file=sys.stderr)
+        print(f"DEBUG: os.path.exists(dll_path)={os.path.exists(dll_path)}", file=sys.stderr)
+        if os.path.exists(dll_path):
+            try:
+                _lib = ffi.dlopen(dll_path)
+            except OSError as exc2:
+                raise ImportError(
+                    "could not load the libjpl shared library; build with "
+                    "-DLIBJPL_BUILD_SHARED=ON and put jpl.dll / libjpl.so on the "
+                    "library path") from exc2
+        else:
+            raise ImportError(
+                "could not load the libjpl shared library; build with "
+                "-DLIBJPL_BUILD_SHARED=ON and put jpl.dll / libjpl.so on the "
+                "library path")
+
+if _lib is None:
+    # On Linux, try to find libjpl.so in the top-level build directory
+    import os
+    import sys
+    if sys.platform.startswith("linux"):
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up: libjpl -> src -> python -> bindings -> (top level)
+        bindings_dir = os.path.dirname(os.path.dirname(os.path.dirname(module_dir)))
+        top_build_dir = os.path.join(os.path.dirname(bindings_dir), "build")
+        # Try multiple possible locations
+        so_paths = [
+            os.path.join(top_build_dir, "libjpl.so"),
+            os.path.join(top_build_dir, "libjpl.so.0"),
+            os.path.join(top_build_dir, "libjpl.so.0.4.0"),
+        ]
+        print(f"DEBUG: module_dir={module_dir}", file=sys.stderr)
+        print(f"DEBUG: bindings_dir={bindings_dir}", file=sys.stderr)
+        print(f"DEBUG: top_build_dir={top_build_dir}", file=sys.stderr)
+        for so_path in so_paths:
+            print(f"DEBUG: checking {so_path}, exists={os.path.exists(so_path)}", file=sys.stderr)
+            if os.path.exists(so_path):
+                try:
+                    _lib = ffi.dlopen(so_path)
+                    print(f"DEBUG: Successfully loaded {so_path}", file=sys.stderr)
+                    break
+                except OSError as e:
+                    print(f"DEBUG: Failed to load {so_path}: {e}", file=sys.stderr)
+                    pass
+
+if _lib is None:
+    raise ImportError(
+        "could not load the libjpl shared library; build with "
+        "-DLIBJPL_BUILD_SHARED=ON and put jpl.dll / libjpl.so on the "
+        "library path")

@@ -5,6 +5,7 @@
 #ifndef LIBJPL_CONVENIENCE_H
 #define LIBJPL_CONVENIENCE_H
 #include "jpl.h"
+#include "jpl_export.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,7 +60,7 @@ extern "C" {
  *       no deflection, Earth-orientation, refraction, or derivative terms.
  * @note state is unchanged on failure.
  */
-jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2], int planet, int center, double state[6]);
+JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2], int planet, int center, double state[6]);
 /**
  * @brief Apparent Moon position, Earth-centered ICRS.
  * @param ephem Open handle.
@@ -86,7 +87,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2]
  *       jpl_get_state() legs and apply the desired corrections explicitly.
  * @note state is unchanged on failure.
  */
-jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
+JPL_API jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
 
 /** @brief Apparent geocentric position and estimated motion in the true ecliptic of date. */
 typedef struct jpl_apparent_ecliptic_result {
@@ -135,9 +136,9 @@ typedef struct jpl_apparent_ecliptic_result {
  * @note out is unchanged on failure. As with other FILE-path
  *       reads, use a clone per concurrent reader, or use jpl_open_mmap().
  */
-jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
-                                          const double jd_tt[2], int target,
-                                          jpl_apparent_ecliptic_result *out);
+JPL_API jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
+                                           const double jd_tt[2], int target,
+                                           jpl_apparent_ecliptic_result *out);
 /** @brief Convert velocity from AU/day to km/s.
  *  @param vel_au_day Input triple, must be non-NULL.
  *  @param vel_km_s Output triple, must be non-NULL.
@@ -145,7 +146,7 @@ jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
  *          nonfinite input, JPL_ERROR_NUMERIC on unrepresentable output.
  *  @note Output is unchanged on failure. Uses the modern AU (149597870.7 km).
  *        Supports exact input/output aliasing. */
-jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_s[3]);
+JPL_API jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_s[3]);
 /**
  * @brief Convert distance from km to AU.
  * @param km Distance in km.
@@ -154,7 +155,7 @@ jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL output or nonfinite
  *         input.
  * @note Output is unchanged on failure. Uses the modern AU definition. */
-jpl_status jpl_km_to_au(double km, double *au);
+JPL_API jpl_status jpl_km_to_au(double km, double *au);
 #ifdef __cplusplus
 }
 #endif

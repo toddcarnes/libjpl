@@ -26,6 +26,17 @@ docs/latex/
 *.lib
 *.exe
 
+# .NET build artifacts
+bin/
+obj/
+*.user
+*.generated.cs
+*.g.cs
+
+# Python cache
+__pycache__/
+*.py[cod]
+
 # Editor / OS junk
 .vs/
 .vscode/

@@ -12,29 +12,40 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(JPL_CORE_SOURCES src/jpl.c src/jpl_frames.c src/jpl_convenience.c src/jpl_date.c)
-add_library(jpl STATIC ${JPL_CORE_SOURCES})
-add_library(jpl::jpl ALIAS jpl)
+option(LIBJPL_BUILD_SHARED "Build the shared libjpl library" ON)
 
-target_compile_features(jpl PUBLIC c_std_17)
-set_target_properties(jpl PROPERTIES
+# Generate export header before defining targets
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpl_export.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/jpl_export.h" @ONLY)
+
+add_library(jpl_static STATIC ${JPL_CORE_SOURCES})
+add_library(jpl::jpl_static ALIAS jpl_static)
+add_library(jpl::jpl ALIAS jpl_static)
+
+target_compile_features(jpl_static PUBLIC c_std_17)
+set_target_properties(jpl_static PROPERTIES
     C_EXTENSIONS OFF
+    OUTPUT_NAME "jpl"
 )
 # PIC only matters when linking this static lib into a shared object.
 option(LIBJPL_PIC "Build static lib with position-independent code" ON)
 if(LIBJPL_PIC)
-    set_target_properties(jpl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    set_target_properties(jpl_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
-target_include_directories(jpl
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
 
 file(GLOB ERFA_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/*.c")
 # Only ERFA's own test drivers carry main(); anchor the exclusion so a
 # future upstream file (e.g. t_erfa_c_foo.c) cannot slip into the library.
 list(FILTER ERFA_SOURCES EXCLUDE REGEX "/t_erfa_c(_extra)?\\.c$")
-target_sources(jpl PRIVATE ${ERFA_SOURCES})
-target_include_directories(jpl PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
+
+target_sources(jpl_static PRIVATE ${ERFA_SOURCES})
+target_include_directories(jpl_static
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>
+)
 # NOTE: src/erfa is intentionally NOT installed with the 3 public headers
 # below. Downstream users never need erfa.h (frames API hides it), so the
 # PUBLIC include stays build-interface-only. Revisit only if a public header
@@ -51,7 +62,7 @@ set(LIBJPL_ERFA_VERSION_MINOR "${CMAKE_MATCH_2}")
 set(LIBJPL_ERFA_VERSION_MICRO "${CMAKE_MATCH_3}")
 # erfaversion.c expects version macros from generated config.h (see configure.ac
 # in the ERFA release); define them here since we build without autotools.
-target_compile_definitions(jpl PRIVATE
+target_compile_definitions(jpl_static PRIVATE
     PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
     PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
     PACKAGE_VERSION_MINOR=${LIBJPL_ERFA_VERSION_MINOR}
@@ -60,10 +71,10 @@ target_compile_definitions(jpl PRIVATE
 )
 
 if(MSVC)
-    target_compile_definitions(jpl PRIVATE _CRT_SECURE_NO_WARNINGS)
-    target_compile_options(jpl PRIVATE /W4 /permissive-)
+    target_compile_definitions(jpl_static PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(jpl_static PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(jpl PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(jpl_static PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 # Math linkage is resolved at configure time for the actual toolchain and
@@ -92,7 +103,52 @@ else()
     endif()
 endif()
 if(JPL_NEED_M_LIB)
-    target_link_libraries(jpl PUBLIC "${JPL_NEED_M_LIB}")
+    target_link_libraries(jpl_static PUBLIC "${JPL_NEED_M_LIB}")
+endif()
+
+# Shared library target
+if(LIBJPL_BUILD_SHARED)
+    add_library(jpl_shared SHARED ${JPL_CORE_SOURCES})
+    add_library(jpl::jpl_shared ALIAS jpl_shared)
+    target_compile_features(jpl_shared PUBLIC c_std_17)
+    set_target_properties(jpl_shared PROPERTIES
+        C_EXTENSIONS OFF
+        OUTPUT_NAME "jpl"
+        VERSION "${PROJECT_VERSION}"
+        SOVERSION "${PROJECT_VERSION_MAJOR}"
+        POSITION_INDEPENDENT_CODE ON
+    )
+    target_sources(jpl_shared PRIVATE ${ERFA_SOURCES})
+    target_include_directories(jpl_shared
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>
+    )
+    target_compile_definitions(jpl_shared PRIVATE
+        PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
+        PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
+        PACKAGE_VERSION_MINOR=${LIBJPL_ERFA_VERSION_MINOR}
+        PACKAGE_VERSION_MICRO=${LIBJPL_ERFA_VERSION_MICRO}
+        SOFA_VERSION=\"20231011\"
+        JPL_BUILDING_SHARED
+    )
+    if(MSVC)
+        target_compile_definitions(jpl_shared PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(jpl_shared PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(jpl_shared PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(JPL_NEED_M_LIB)
+        target_link_libraries(jpl_shared PUBLIC "${JPL_NEED_M_LIB}")
+    endif()
+    # Windows VERSIONINFO resource for the shared library
+    if(WIN32)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpl_version.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/jpl_version.rc" @ONLY)
+        target_sources(jpl_shared PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/jpl_version.rc")
+    endif()
 endif()
 
 # The unconditional license installs live below; GNUInstallDirs stays
@@ -103,15 +159,28 @@ endif()
 include(GNUInstallDirs)
 # GNUInstallDirs is established before installed include construction, so
 # custom -DCMAKE_INSTALL_INCLUDEDIR values flow into the exported interface.
-target_include_directories(jpl
+target_include_directories(jpl_static
     PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-install(TARGETS jpl EXPORT libjplTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+if(LIBJPL_BUILD_SHARED)
+    target_include_directories(jpl_shared
+        PUBLIC
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+endif()
+install(TARGETS jpl_static EXPORT libjplTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/static
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/static
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/static
 )
+if(LIBJPL_BUILD_SHARED)
+    install(TARGETS jpl_shared EXPORT libjplTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/shared
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/shared
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/shared
+    )
+endif()
 install(EXPORT libjplTargets NAMESPACE jpl:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libjpl)
 
 include(CMakePackageConfigHelpers)
@@ -154,7 +223,32 @@ if(LIBJPL_BUILD_DOCS)
           "-DCONFIG=$<CONFIG>"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_docs_paths.cmake")
 endif()
-install(FILES include/jpl.h include/jpl_frames.h include/jpl_convenience.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES include/jpl.h include/jpl_frames.h include/jpl_convenience.h
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/jpl_export.h"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+option(LIBJPL_BUILD_CPP_BINDING "Build the C++ binding tests" OFF)
+if(LIBJPL_BUILD_CPP_BINDING)
+    add_subdirectory(bindings/cpp)
+endif()
+
+option(LIBJPL_BUILD_PYTHON_BINDING "Build the Python binding tests" OFF)
+if(LIBJPL_BUILD_PYTHON_BINDING)
+    add_subdirectory(bindings/python)
+endif()
+
+option(LIBJPL_BUILD_CSHARP_BINDING "Build the C# binding tests" OFF)
+if(LIBJPL_BUILD_CSHARP_BINDING)
+    add_subdirectory(bindings/csharp)
+endif()
+
+option(LIBJPL_BUILD_VBNET_BINDING "Build the VB.NET binding tests" OFF)
+if(LIBJPL_BUILD_VBNET_BINDING)
+    add_subdirectory(bindings/vbnet)
+endif()
+
+install(DIRECTORY bindings/cpp/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
 install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/libjpl")
 install(FILES src/erfa/LICENSE DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/libjpl"
         RENAME ERFA-LICENSE)
@@ -181,8 +275,13 @@ if(LIBJPL_BUILD_TESTS)
     if(LIBJPL_PIC)
         set_target_properties(jpl_testing PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
-    target_include_directories(jpl_testing PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-    target_include_directories(jpl_testing PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>)
+    target_include_directories(jpl_testing
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>
+    )
     target_compile_definitions(jpl_testing PRIVATE
         PACKAGE_VERSION=\"${LIBJPL_ERFA_VERSION}\"
         PACKAGE_VERSION_MAJOR=${LIBJPL_ERFA_VERSION_MAJOR}
@@ -201,7 +300,7 @@ if(LIBJPL_BUILD_TESTS)
         target_link_libraries(jpl_testing PUBLIC "${JPL_NEED_M_LIB}")
     endif()
     add_executable(jpl_tests tests/test_jpl.c)
-    target_link_libraries(jpl_tests PRIVATE jpl)
+    target_link_libraries(jpl_tests PRIVATE jpl_static)
     target_compile_features(jpl_tests PRIVATE c_std_17)
     add_test(NAME jpl_tests COMMAND jpl_tests)
     add_executable(jpl_lighttime_tests tests/test_lighttime.c)
@@ -211,32 +310,35 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_definitions(jpl_lighttime_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_lighttime COMMAND jpl_lighttime_tests)
     add_executable(jpl_aberration_tests tests/test_aberration.c)
-    target_link_libraries(jpl_aberration_tests PRIVATE jpl)
+    target_link_libraries(jpl_aberration_tests PRIVATE jpl_testing)
     target_compile_features(jpl_aberration_tests PRIVATE c_std_17)
     target_include_directories(jpl_aberration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_compile_definitions(jpl_aberration_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_aberration COMMAND jpl_aberration_tests)
     add_executable(jpl_frames_tests tests/test_frames.c)
-    target_link_libraries(jpl_frames_tests PRIVATE jpl)
+    target_link_libraries(jpl_frames_tests PRIVATE jpl_testing)
     target_compile_features(jpl_frames_tests PRIVATE c_std_17)
     target_include_directories(jpl_frames_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_compile_definitions(jpl_frames_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_frames COMMAND jpl_frames_tests)
     add_executable(jpl_convenience_tests tests/test_convenience.c)
-    target_link_libraries(jpl_convenience_tests PRIVATE jpl)
+    target_link_libraries(jpl_convenience_tests PRIVATE jpl_testing)
     target_compile_features(jpl_convenience_tests PRIVATE c_std_17)
     target_include_directories(jpl_convenience_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_compile_definitions(jpl_convenience_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_convenience COMMAND jpl_convenience_tests)
     add_executable(jpl_mmap_tests tests/test_mmap.c)
-    target_link_libraries(jpl_mmap_tests PRIVATE jpl)
+    target_link_libraries(jpl_mmap_tests PRIVATE jpl_static)
     target_compile_features(jpl_mmap_tests PRIVATE c_std_17)
     add_test(NAME jpl_mmap COMMAND jpl_mmap_tests)
     find_package(Threads REQUIRED)
     add_executable(jpl_threads_tests tests/test_threads.c)
-    target_link_libraries(jpl_threads_tests PRIVATE jpl Threads::Threads)
+    target_link_libraries(jpl_threads_tests PRIVATE jpl_static Threads::Threads)
     target_compile_features(jpl_threads_tests PRIVATE c_std_17)
     add_test(NAME jpl_threads COMMAND jpl_threads_tests)
     set_tests_properties(jpl_threads PROPERTIES TIMEOUT 120)
     add_executable(jpl_tt_tdb_tests tests/test_tt_tdb.c)
-    target_link_libraries(jpl_tt_tdb_tests PRIVATE jpl)
+    target_link_libraries(jpl_tt_tdb_tests PRIVATE jpl_static)
     target_compile_features(jpl_tt_tdb_tests PRIVATE c_std_17)
     add_test(NAME jpl_tt_tdb COMMAND jpl_tt_tdb_tests)
     add_executable(jpl_parser_tests tests/test_parser.c)
@@ -254,9 +356,10 @@ if(LIBJPL_BUILD_TESTS)
     # Private date arithmetic: two-part helpers with sentinel
     # preservation; linked through jpl, private headers via src/.
     add_executable(jpl_dates_tests tests/test_dates.c)
-    target_link_libraries(jpl_dates_tests PRIVATE jpl)
+    target_link_libraries(jpl_dates_tests PRIVATE jpl_testing)
     target_compile_features(jpl_dates_tests PRIVATE c_std_17)
     target_include_directories(jpl_dates_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_dates_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_dates COMMAND jpl_dates_tests)
     # Large-file I/O: sparse 3.2 GiB fixture with a
     # beyond-INT32 last-record offset; 32-bit address-space cases stay
@@ -273,9 +376,10 @@ if(LIBJPL_BUILD_TESTS)
     # Checked testpo row parsing: shared test-only parser plus
     # component/tolerance policy exercised before the live runners.
     add_executable(jpl_testpo_parser_tests tests/test_testpo_parser.c tests/jpl_testpo_util.c)
-    target_link_libraries(jpl_testpo_parser_tests PRIVATE jpl)
+    target_link_libraries(jpl_testpo_parser_tests PRIVATE jpl_testing)
     target_compile_features(jpl_testpo_parser_tests PRIVATE c_std_17)
     target_include_directories(jpl_testpo_parser_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_testpo_parser_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_testpo_parser COMMAND jpl_testpo_parser_tests)
     add_executable(jpl_numeric_tests tests/test_numeric.c)
     target_link_libraries(jpl_numeric_tests PRIVATE jpl_testing)
@@ -286,8 +390,9 @@ if(LIBJPL_BUILD_TESTS)
     # README-compiled examples: ordinary usage patterns with status
     # checks, run against the committed fixture.
     add_executable(jpl_examples tests/examples.c)
-    target_link_libraries(jpl_examples PRIVATE jpl)
+    target_link_libraries(jpl_examples PRIVATE jpl_static)
     target_compile_features(jpl_examples PRIVATE c_std_17)
+    target_include_directories(jpl_examples PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     add_test(NAME jpl_examples
         COMMAND jpl_examples "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph")
     # Independent reference generator (test development only): compiled
@@ -307,9 +412,10 @@ if(LIBJPL_BUILD_TESTS)
         target_link_libraries(jpl_generate_reference PRIVATE "${JPL_NEED_M_LIB}")
     endif()
     add_executable(jpl_fixture_tests tests/test_fixture.c tests/jpl_testpo_util.c)
-    target_link_libraries(jpl_fixture_tests PRIVATE jpl)
+    target_link_libraries(jpl_fixture_tests PRIVATE jpl_testing)
     target_compile_features(jpl_fixture_tests PRIVATE c_std_17)
     target_include_directories(jpl_fixture_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_fixture_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_fixture
         COMMAND jpl_fixture_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
@@ -372,10 +478,11 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_horizons_reference.cmake")
     add_executable(jpl_horizons_tests tests/test_horizons.c)
-    target_link_libraries(jpl_horizons_tests PRIVATE jpl)
+    target_link_libraries(jpl_horizons_tests PRIVATE jpl_testing)
     target_compile_features(jpl_horizons_tests PRIVATE c_std_17)
     target_include_directories(jpl_horizons_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
+    target_compile_definitions(jpl_horizons_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_horizons_offline
         COMMAND jpl_horizons_tests
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
@@ -397,28 +504,29 @@ if(LIBJPL_BUILD_TESTS)
     # large-data registrations stay opt-in; small synthetic validator
     # data below runs offline.
     add_executable(jpl_testpo_tests tests/test_testpo.c tests/jpl_testpo_util.c)
-    target_link_libraries(jpl_testpo_tests PRIVATE jpl)
+    target_link_libraries(jpl_testpo_tests PRIVATE jpl_testing)
     target_compile_features(jpl_testpo_tests PRIVATE c_std_17)
     target_include_directories(jpl_testpo_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(jpl_testpo_tests PRIVATE LIBJPL_TESTING)
     # Fault-injection variants force the post-read ferror branch so the
     # read-error path is exercised portably. Registered only for the
     # negative read-error cases; the normal runners have no fault behavior.
     add_executable(jpl_testpo_fault_tests tests/test_testpo.c tests/jpl_testpo_util.c)
-    target_link_libraries(jpl_testpo_fault_tests PRIVATE jpl)
+    target_link_libraries(jpl_testpo_fault_tests PRIVATE jpl_testing)
     target_compile_features(jpl_testpo_fault_tests PRIVATE c_std_17)
     target_include_directories(jpl_testpo_fault_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    target_compile_definitions(jpl_testpo_fault_tests PRIVATE JPL_TEST_READER_FAULT=1)
+    target_compile_definitions(jpl_testpo_fault_tests PRIVATE JPL_TEST_READER_FAULT=1 LIBJPL_TESTING)
     add_executable(jpl_fixture_fault_tests tests/test_fixture.c tests/jpl_testpo_util.c)
-    target_link_libraries(jpl_fixture_fault_tests PRIVATE jpl)
+    target_link_libraries(jpl_fixture_fault_tests PRIVATE jpl_testing)
     target_compile_features(jpl_fixture_fault_tests PRIVATE c_std_17)
     target_include_directories(jpl_fixture_fault_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    target_compile_definitions(jpl_fixture_fault_tests PRIVATE JPL_TEST_READER_FAULT=1)
+    target_compile_definitions(jpl_fixture_fault_tests PRIVATE JPL_TEST_READER_FAULT=1 LIBJPL_TESTING)
     # Small synthetic validator inputs: generator emits mock
     # ephemerides plus framed runner files; each negative case must exit
     # 1 with its diagnostic category. Bracket-argument EXPECT values keep
     # regex metacharacters (pipes, dots, stars) intact through -D.
     add_executable(jpl_validator_data tests/make_validator_data.c)
-    target_link_libraries(jpl_validator_data PRIVATE jpl)
+    target_link_libraries(jpl_validator_data PRIVATE jpl_static)
     target_compile_features(jpl_validator_data PRIVATE c_std_17)
     target_include_directories(jpl_validator_data PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     set(JPL_VALIDATOR_WORK "${CMAKE_CURRENT_BINARY_DIR}/validator_data")
@@ -589,13 +697,15 @@ if(LIBJPL_BUILD_TESTS)
         PROPERTIES FIXTURES_REQUIRED jpl_validator_corpus)
 
     add_executable(jpl_real_ephemeris_tests tests/test_real_ephemeris.c)
-    target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl)
+    target_link_libraries(jpl_real_ephemeris_tests PRIVATE jpl_testing)
     target_compile_features(jpl_real_ephemeris_tests PRIVATE c_std_17)
     target_include_directories(jpl_real_ephemeris_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(jpl_real_ephemeris_tests PRIVATE LIBJPL_TESTING)
     add_executable(jpl_all_ephemerides_tests tests/test_all_ephemerides.c)
-    target_link_libraries(jpl_all_ephemerides_tests PRIVATE jpl)
+    target_link_libraries(jpl_all_ephemerides_tests PRIVATE jpl_testing)
     target_compile_features(jpl_all_ephemerides_tests PRIVATE c_std_17)
     target_include_directories(jpl_all_ephemerides_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(jpl_all_ephemerides_tests PRIVATE LIBJPL_TESTING)
 
     # License notices: positive pass over the intact source tree,
     # plus build-tree negative cases (missing root license, stripped

@@ -18,6 +18,8 @@
 
 #include <stddef.h>
 
+#include "jpl_export.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -146,7 +148,7 @@ typedef struct jpl_ephemeris jpl_ephemeris;
  * @param status Status code from any libjpl function.
  * @return Pointer to a static string; "unknown error" if status is out of range. Never NULL.
  */
-const char *jpl_status_string(jpl_status status);
+JPL_API const char *jpl_status_string(jpl_status status);
 
 /**
  * @brief Opens a standard JPL DE binary file.
@@ -166,7 +168,7 @@ const char *jpl_status_string(jpl_status status);
  *       Contents must stay immutable while readers are active: identity
  *       checks do not snapshot-isolate in-place edits.
  */
-jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
+JPL_API jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
 
 /**
  * @brief Closes an ephemeris handle and releases its resources.
@@ -176,7 +178,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
  *       use-after-free. A single handle must not be shared across threads
  *       on the FILE path (see jpl_get_state).
  */
-void jpl_close(jpl_ephemeris *ephemeris);
+JPL_API void jpl_close(jpl_ephemeris *ephemeris);
 
 /**
  * @brief Returns the parsed header of an open ephemeris.
@@ -184,7 +186,7 @@ void jpl_close(jpl_ephemeris *ephemeris);
  * @return Pointer to the header, valid while the handle is open; NULL if ephemeris is NULL.
  * @note Each clone has its own header copy; do not use after closing that handle.
  */
-const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
+JPL_API const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
 
 /**
  * @brief Reads the constants record of an open ephemeris.
@@ -198,7 +200,7 @@ const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
  *       I/O failure (unlike computed-state outputs, which are
  *       transactional).
  */
-jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
+JPL_API jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
 
 /**
  * @brief Reads a constant name at its index in the constants record.
@@ -215,8 +217,8 @@ jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, si
  *       failure. On the FILE backend, use a separate cloned handle for each
  *       concurrent reader, as with other file reads.
  */
-jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
-                                 char name[JPL_CONSTANT_NAME_LENGTH + 1]);
+JPL_API jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
+                                  char name[JPL_CONSTANT_NAME_LENGTH + 1]);
 
 /**
  * @brief Reads one complete coefficient record, including its two Julian-date bounds.
@@ -231,15 +233,15 @@ jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
  *       epoch fields verbatim and may be partially written after an I/O
  *       failure (unlike computed-state outputs, which are transactional).
  */
-jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
-                           double *values, size_t value_count);
+JPL_API jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
+                            double *values, size_t value_count);
 
 /**
  * @brief Returns the number of data records in an open ephemeris.
  * @param ephemeris Open handle, or NULL.
  * @return Number of data records; 0 if ephemeris is NULL.
  */
-size_t jpl_record_count(const jpl_ephemeris *ephemeris);
+JPL_API size_t jpl_record_count(const jpl_ephemeris *ephemeris);
 
 /**
  * @brief Interpolates TT minus TDB at a TDB Julian date (*t files).
@@ -264,8 +266,8 @@ size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  *       1.7 ms amplitude, +/-3 ns model accuracy over 1950-2050 per ERFA)
  *       instead.
  */
-jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                                 double *seconds, double *rate_per_day);
+JPL_API jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                  double *seconds, double *rate_per_day);
 
 /**
  * @brief Reports whether the open file carries the TT-TDB dataset.
@@ -274,7 +276,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_
  *         0 if ephemeris is NULL or the dataset is absent.
  * @note Content-derived, never filename-derived: DENUM carries no t suffix.
  */
-int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
+JPL_API int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
 
 /**
  * @brief Interpolates a JPL target at a TDB Julian date.
@@ -318,8 +320,8 @@ int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  *       separate threads if the file stays immutable. Synchronize cloning
  *       against closing the source (see jpl_ephemeris_clone()).
  */
-jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                          int target, int center, double state[6]);
+JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                           int target, int center, double state[6]);
 
 /**
  * @brief Interpolates a light-time-corrected relative state without aberration.
@@ -363,8 +365,8 @@ jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
  * @note Computed state and optional light-time output are unchanged on
  *       failure.
  */
-jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                                    int target, int center, double state[6], double *out_light_time);
+JPL_API jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+                                     int target, int center, double state[6], double *out_light_time);
 
 /**
  * @brief Applies special-relativistic stellar aberration.
@@ -382,7 +384,7 @@ jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double 
  * @note Transactional: out_state is unchanged on failure. Exact
  *       state/out_state aliasing is supported.
  */
-jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
+JPL_API jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
 
 /**
  * @brief Applies full special-relativistic stellar aberration including the
@@ -407,8 +409,8 @@ jpl_status jpl_apply_aberration(const double state[6], const double observer_vel
  * @note Transactional: out_state is unchanged on failure. Exact
  *       state/out_state aliasing is supported.
  */
-jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                               double sun_distance_au, double out_state[6]);
+JPL_API jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
+                                double sun_distance_au, double out_state[6]);
 
 /**
  * @brief Opens a DE file via read-only memory mapping.
@@ -430,7 +432,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
  *       stay immutable while any reader is active; in-place edits are
  *       not snapshot-isolated.
  */
-jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
+JPL_API jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
 /**
  * @brief Clones a handle for concurrent read access.
  * @param ephem Source handle.
@@ -453,7 +455,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
  *       duration of the clone call; no handle may be closed while a
  *       reader is using it.
  */
-jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
+JPL_API jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
 
 #ifdef __cplusplus
 }

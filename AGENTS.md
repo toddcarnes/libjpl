@@ -86,3 +86,8 @@ ctest --test-dir build -C Debug --output-on-failure
 - Agent commands run under PowerShell 5.1: avoid `&&`/`||`, use
   `; if ($?) { ... }` for dependent commands, quote paths with spaces,
   and use `workdir` instead of `cd`.
+- **License headers**: Every source file created must carry the MIT license
+  header with `Copyright (c) 2026 Todd Carnes` and `SPDX-License-Identifier: MIT`
+  in the file's native comment syntax (C `/* */`, `#` for scripts, `<!-- -->` for
+  XML/HTML, `//` for C#). This is enforced by the `jpl_licenses` test via
+  `tests/license_inventory.cmake`. New files must be added to that inventory.

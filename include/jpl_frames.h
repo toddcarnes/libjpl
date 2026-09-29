@@ -5,6 +5,7 @@
 #ifndef LIBJPL_FRAMES_H
 #define LIBJPL_FRAMES_H
 #include "jpl.h"
+#include "jpl_export.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,7 +34,7 @@ extern "C" {
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
  */
-jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], double out_state[6]);
+JPL_API jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], double out_state[6]);
 /**
  * @brief Rotate an ICRS state to ecliptic of date.
  * @param state Input state, position (AU) + velocity (AU/day) in ICRS. Must be non-NULL.
@@ -49,7 +50,7 @@ jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], do
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
  */
-jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], double out_state[6]);
+JPL_API jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], double out_state[6]);
 /**
  * @brief Ecliptic-of-date-to-ICRS rotation matrix R[3][3].
  * @param jd_tt TT Julian date as a two-part array used to evaluate bias/precession/obliquity.
@@ -61,7 +62,7 @@ jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], do
  *       (bias + precession + mean obliquity, IAU 2006).
  * @note R is unchanged on failure.
  */
-jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
+JPL_API jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
 /**
  * @brief TT Julian date to TDB (approximate, via ERFA).
  * @param jd_tt TT Julian date as a two-part array.
@@ -84,7 +85,7 @@ jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
  * @note jd_tdb is unchanged on failure; exact input/output aliasing is
  *       supported.
  */
-jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
+JPL_API jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
 /**
  * @brief TDB Julian date to TT (approximate).
  * @param jd_tdb TDB Julian date as a two-part array.
@@ -102,7 +103,7 @@ jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
  * @note jd_tt is unchanged on failure; exact input/output aliasing is
  *       supported.
  */
-jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
+JPL_API jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
 #ifdef __cplusplus
 }
 #endif

@@ -1,0 +1,129 @@
+/* Copyright (c) 2026 Todd Carnes
+ * SPDX-License-Identifier: MIT
+ * See LICENSE in the project root for the full license text.
+ */
+#include <jpl/jpl.hpp>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <ephemeris-file>\n";
+        return 1;
+    }
+
+    try {
+        jpl::Ephemeris eph(argv[1]);
+
+        // Check ephemeris number (DE441 = 441)
+        if (eph.header().ephemeris_number != 441) {
+            std::cerr << "Expected ephemeris number 441, got " << eph.header().ephemeris_number << "\n";
+            return 1;
+        }
+
+        // Read Earth-from-Sun at J2000.0
+        const std::array<double, 2> jd_tdb = {2451545.0, 0.0};
+        auto state = eph.get_state(jd_tdb, 3, 11);
+
+        // Verify all six slots are finite
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(state[i])) {
+                std::cerr << "State[" << i << "] is not finite: " << state[i] << "\n";
+                return 1;
+            }
+        }
+
+        // Test frame conversions
+        auto icrs_state = jpl::Ephemeris::ecliptic_to_icrs(state, {2451545.0, 0.0});
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(icrs_state[i])) {
+                std::cerr << "ICRS State[" << i << "] is not finite: " << icrs_state[i] << "\n";
+                return 1;
+            }
+        }
+
+        // Test time conversion
+        auto jd_tdb_tt = jpl::Ephemeris::tt_to_tdb({2451545.0, 0.0});
+        if (!std::isfinite(jd_tdb_tt[0]) || !std::isfinite(jd_tdb_tt[1])) {
+            std::cerr << "TT->TDB conversion failed\n";
+            return 1;
+        }
+
+        // Test convenience functions
+        auto planet_state = eph.planet_position({2451545.0, 0.0}, 3, 11);
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(planet_state[i])) {
+                std::cerr << "Planet state[" << i << "] is not finite: " << planet_state[i] << "\n";
+                return 1;
+            }
+        }
+
+        auto moon_state = eph.moon_position({2451545.0, 0.0});
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(moon_state[i])) {
+                std::cerr << "Moon state[" << i << "] is not finite: " << moon_state[i] << "\n";
+                return 1;
+            }
+        }
+
+        // Test aberration
+        std::array<double, 6> geom_state = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        std::array<double, 3> obs_vel = {0.0, 29.78, 0.0}; // ~Earth orbital velocity km/s
+        auto aberrated = jpl::Ephemeris::apply_aberration(geom_state, obs_vel);
+        for (int i = 0; i < 6; ++i) {
+            if (!std::isfinite(aberrated[i])) {
+                std::cerr << "Aberrated state[" << i << "] is not finite: " << aberrated[i] << "\n";
+                return 1;
+            }
+        }
+
+        // Test light time
+        auto lt_result = eph.get_state_lighttime({2451545.0, 0.0}, 3, 11);
+        if (!std::isfinite(lt_result.light_time_days) || lt_result.light_time_days <= 0) {
+            std::cerr << "Light time computation failed\n";
+            return 1;
+        }
+
+        // Test frame rotation matrix
+        auto R = jpl::Ephemeris::frame_rotation_matrix({2451545.0, 0.0});
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                if (!std::isfinite(R[i][j])) {
+                    std::cerr << "Rotation matrix[" << i << "][" << j << "] is not finite: " << R[i][j] << "\n";
+                    return 1;
+                }
+            }
+        }
+
+        // Test time conversion round-trip
+        auto jd_tt = jpl::Ephemeris::tdb_to_tt(jd_tdb);
+        if (!std::isfinite(jd_tt[0]) || !std::isfinite(jd_tt[1])) {
+            std::cerr << "TDB->TT conversion failed\n";
+            return 1;
+        }
+
+        // Check that opening a missing path throws
+        try {
+            jpl::Ephemeris bad_eph("nonexistent_file.eph");
+            std::cerr << "Expected exception for missing file\n";
+            return 1;
+        } catch (const jpl::JplError& ex) {
+            if (ex.status() != JPL_ERROR_IO && ex.status() != JPL_ERROR_ARGUMENT) {
+                std::cerr << "Wrong error status for missing file: " << ex.status() << "\n";
+                return 1;
+            }
+        }
+
+        std::cout << "C++ binding test passed\n";
+        return 0;
+
+    } catch (const jpl::JplError& ex) {
+        std::cerr << "JplError: " << ex.what() << " (status=" << ex.status() << ")\n";
+        return 1;
+    } catch (const std::exception& ex) {
+        std::cerr << "Exception: " << ex.what() << "\n";
+        return 1;
+    }
+}

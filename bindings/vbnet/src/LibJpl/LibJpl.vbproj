@@ -1,0 +1,22 @@
+<!-- Copyright (c) 2026 Todd Carnes
+     SPDX-License-Identifier: MIT
+     See LICENSE in the project root for the full license text. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AssemblyName>LibJpl</AssemblyName>
+    <RootNamespace>LibJpl</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="LibJpl.vb" />
+    <Compile Include="JplEphemeris.vb" />
+    <Compile Include="JplEnums.vb" />
+    <Compile Include="Native.vb" />
+  </ItemGroup>
+</Project>

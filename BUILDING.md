@@ -29,9 +29,73 @@ Xcode); omit on single-config Makefiles/Ninja, which default to Release.
 | Option | Default | Description |
 |---|---|---|
 | `LIBJPL_PIC` | `ON` | Build the static library with position-independent code (needed to link into a shared object). |
+| `LIBJPL_BUILD_SHARED` | `ON` | Build the shared library (`jpl.dll` / `libjpl.so`) in addition to the static library. |
 | `LIBJPL_BUILD_TESTS` | `ON` | Build the offline test suite and test binaries. |
 | `LIBJPL_BUILD_DOCS` | `OFF` | Build Doxygen API documentation. |
 | `LIBJPL_FETCH_EPHEMERIDES` | `OFF` | Download DE440/DE440t validation binaries and register integration tests. |
+| `LIBJPL_BUILD_CPP_BINDING` | `OFF` | Build C++ RAII wrapper tests (requires C++17 compiler). |
+| `LIBJPL_BUILD_PYTHON_BINDING` | `OFF` | Build Python cffi binding tests (requires Python 3 + cffi). |
+| `LIBJPL_BUILD_CSHARP_BINDING` | `OFF` | Build C# P/Invoke binding tests (requires .NET 8 SDK). |
+| `LIBJPL_BUILD_VBNET_BINDING` | `OFF` | Build VB.NET P/Invoke binding tests (requires .NET 8 SDK). |
+
+## Language Bindings
+
+All language bindings require the shared library (`-DLIBJPL_BUILD_SHARED=ON`) and link against it at runtime. Each binding has its own CMake option (default `OFF`) and can be built/tested independently.
+
+### C++ Binding (Header-only RAII Wrapper)
+
+```sh
+cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CPP_BINDING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug -R jpl_cpp_binding --output-on-failure
+```
+
+Headers are installed to `${CMAKE_INSTALL_INCLUDEDIR}/jpl/` and provide `jpl::Ephemeris`, `jpl::JplError`, and `jpl::planet_position`/`jpl::moon_position` helpers.
+
+### Python Binding (cffi)
+
+```sh
+cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_PYTHON_BINDING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug -R jpl_python_binding --output-on-failure
+```
+
+Requires Python 3 and `cffi` (`pip install cffi`). The test is skipped (not failed) if cffi is not importable.
+
+### C# Binding (P/Invoke + SafeHandle)
+
+```sh
+cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CSHARP_BINDING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug -R jpl_csharp_binding --output-on-failure
+```
+
+Requires .NET 8 SDK (`dotnet --version >= 8`). Provides `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, and convenience functions. Test runs via a generated wrapper script that places `jpl.dll` / `libjpl.so` on the library path.
+
+### VB.NET Binding (P/Invoke + SafeHandle)
+
+```sh
+cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_VBNET_BINDING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug -R jpl_vbnet_binding --output-on-failure
+```
+
+Requires .NET 8 SDK. Mirrors the C# API: `LibJpl.JplEphemeris`, `LibJplApi.Open/OpenMmap`, enums `JplStatus`/`JplTarget`/`JplByteOrder`/`JplReferenceFrame`.
+
+### Building All Bindings Together
+
+```sh
+cmake -S . -B build \
+  -DLIBJPL_BUILD_SHARED=ON \
+  -DLIBJPL_BUILD_CPP_BINDING=ON \
+  -DLIBJPL_BUILD_PYTHON_BINDING=ON \
+  -DLIBJPL_BUILD_CSHARP_BINDING=ON \
+  -DLIBJPL_BUILD_VBNET_BINDING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent, never failing.
 
 ## Building Documentation
 

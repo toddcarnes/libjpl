@@ -2,6 +2,14 @@
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
 
+# Configure pyproject.toml with project version
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml" @ONLY)
+
+# Configure _libjpl.py with project version
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/libjpl/_libjpl.py"
+    "${CMAKE_CURRENT_BINARY_DIR}/src/libjpl/_libjpl.py" @ONLY)
+
 # Probe for cffi at configure time
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)

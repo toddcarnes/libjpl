@@ -8,7 +8,7 @@
 # Copy libjpl.so to the test output directory so it can be found
 cp -f "@CMAKE_BINARY_DIR@/libjpl.so" "@CMAKE_CURRENT_SOURCE_DIR@/tests/bin/Debug/net8.0/libjpl.so" 2>/dev/null || true
 cp -f "@CMAKE_BINARY_DIR@/libjpl.so.0" "@CMAKE_CURRENT_SOURCE_DIR@/tests/bin/Debug/net8.0/libjpl.so.0" 2>/dev/null || true
-cp -f "@CMAKE_BINARY_DIR@/libjpl.so.0.4.0" "@CMAKE_CURRENT_SOURCE_DIR@/tests/bin/Debug/net8.0/libjpl.so.0.4.0" 2>/dev/null || true
+cp -f "@CMAKE_BINARY_DIR@/libjpl.so.@PROJECT_VERSION@" "@CMAKE_CURRENT_SOURCE_DIR@/tests/bin/Debug/net8.0/libjpl.so.@PROJECT_VERSION@" 2>/dev/null || true
 
 # Run the test
 exec dotnet run --project "@CMAKE_CURRENT_SOURCE_DIR@/tests/LibJpl.Tests.csproj" -- "@CMAKE_SOURCE_DIR@/tests/data/de441_2000_2010.eph"

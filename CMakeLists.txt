@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.4.0 LANGUAGES C)
+project(libjpl VERSION 0.5.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -26,6 +26,9 @@ target_compile_features(jpl_static PUBLIC c_std_17)
 set_target_properties(jpl_static PROPERTIES
     C_EXTENSIONS OFF
     OUTPUT_NAME "jpl"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/static"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/static"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/static"
 )
 # PIC only matters when linking this static lib into a shared object.
 option(LIBJPL_PIC "Build static lib with position-independent code" ON)
@@ -117,6 +120,9 @@ if(LIBJPL_BUILD_SHARED)
         VERSION "${PROJECT_VERSION}"
         SOVERSION "${PROJECT_VERSION_MAJOR}"
         POSITION_INDEPENDENT_CODE ON
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shared"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shared"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin"
     )
     target_sources(jpl_shared PRIVATE ${ERFA_SOURCES})
     target_include_directories(jpl_shared
@@ -178,7 +184,7 @@ if(LIBJPL_BUILD_SHARED)
     install(TARGETS jpl_shared EXPORT libjplTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/shared
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/shared
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/shared
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
 install(EXPORT libjplTargets NAMESPACE jpl:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libjpl)
@@ -1010,8 +1016,13 @@ if(CMAKE_COMMAND AND CMAKE_AR)
         COMMAND ${CMAKE_COMMAND} --install "${CMAKE_CURRENT_BINARY_DIR}"
             --prefix "${JPL_SDK_PREFIX}"
             --config $<CONFIG>
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+            "${JPL_SDK_PREFIX}/share/licenses"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory
+            "${JPL_SDK_PREFIX}/share"
         COMMAND ${CMAKE_COMMAND} -E make_directory
-            "${JPL_SDK_PREFIX}/share/doc/libjpl"
+            "${JPL_SDK_PREFIX}/doc"
+            "${JPL_SDK_PREFIX}/licenses"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/BUILDING.md"
@@ -1020,10 +1031,17 @@ if(CMAKE_COMMAND AND CMAKE_AR)
             "${CMAKE_CURRENT_SOURCE_DIR}/docs/validation.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/docs/migration-two-part-dates.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/README-ERFA.md"
-            "${JPL_SDK_PREFIX}/share/doc/libjpl/"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/PROVENANCE.md"
+            "${JPL_SDK_PREFIX}/doc/"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${JPL_SDK_DOCS_WORK}/html"
-            "${JPL_SDK_PREFIX}/share/doc/libjpl/html"
+            "${JPL_SDK_PREFIX}/doc/html"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+            "${JPL_SDK_PREFIX}/licenses/LICENSE"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/LICENSE"
+            "${JPL_SDK_PREFIX}/licenses/ERFA-LICENSE"
         COMMAND ${CMAKE_COMMAND} -E echo "VERIFY: Checking SDK directory"
         COMMAND ${CMAKE_COMMAND} -E compare_files "${JPL_SDK_PREFIX}/include/jpl.h" "${JPL_SDK_PREFIX}/include/jpl.h"
         COMMAND ${CMAKE_COMMAND} -E touch "${JPL_SDK_STAMP}"

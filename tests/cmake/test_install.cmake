@@ -213,8 +213,8 @@ run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
   -C "${CONFIG}" --output-on-failure)
 
 # --- Case 4: deliberately incompatible versions fail for the version reason.
-# Previous tagged versions and a newer patch version must not match 0.4.0. ---
-foreach(_bad_version IN ITEMS 0.2.0 0.3.0 0.4.1 9999.0.0)
+# Previous tagged versions and a newer patch version must not match ${VERSION}. ---
+foreach(_bad_version IN ITEMS 0.2.0 0.3.0 0.4.0 0.5.1 9999.0.0)
   string(REPLACE "." "_" _bad_tag "${_bad_version}")
   execute_process(
     COMMAND "${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consumer-badversion-${_bad_tag}"

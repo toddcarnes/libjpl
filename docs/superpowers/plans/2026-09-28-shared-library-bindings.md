@@ -205,7 +205,7 @@ cmake -S . -B build/shared-task
 cmake --build build/shared-task --config Debug --target jpl_shared
 ```
 
-Expected: on Linux `build/shared-task/libjpl.so.0` exists as a symlink chain to `libjpl.so.0.4.0`; on Windows `build/shared-task/Debug/jpl.dll` exists and its Details tab (or `dumpbin`) reports `0.4.0`. Then re-run:
+Expected: on Linux `build/shared-task/libjpl.so.0` exists as a symlink chain to `libjpl.so.0.5.0`; on Windows `build/shared-task/Debug/jpl.dll` exists and its Details tab (or `dumpbin`) reports `0.5.0`. Then re-run:
 
 ```powershell
 ctest --test-dir build/shared-task -C Debug -R "^(jpl_install)$" --output-on-failure

@@ -98,6 +98,6 @@ int jpl_date_compare(const double a[2], const double b[2]);
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */
 jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
-                                               const double jd_tt[2], double out[3]);
+                                               const jpl_date *jd_tt, double out[3]);
 
 #endif

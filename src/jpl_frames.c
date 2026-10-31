@@ -172,12 +172,9 @@ jpl_status jpl_tt_to_tdb(const jpl_date *jd_tt, jpl_date *jd_tdb) {
     if (!isfinite(correction)) return JPL_ERROR_NUMERIC;
     /* Exact aliasing: compute into a local, then copy out. */
     {
-        jpl_date out;
-        status = jpl_date_add_days(norm, correction, (double[2]){0,0});
-        if (status != JPL_OK) return status;
-        /* Use local array then assign to struct */
         double out_arr[2];
-        jpl_date_add_days(norm, correction, out_arr);
+        status = jpl_date_add_days(norm, correction, out_arr);
+        if (status != JPL_OK) return status;
         jd_tdb->hi = out_arr[0];
         jd_tdb->lo = out_arr[1];
     }
@@ -248,7 +245,7 @@ void jpl_frame_context_destroy(jpl_frame_context *context) {
     if (context) free(context);
 }
 
-jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
+jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]) {
     double pr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
@@ -262,7 +259,7 @@ jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, c
     return JPL_OK;
 }
 
-jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
+jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]) {
     double vr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
@@ -276,7 +273,7 @@ jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, c
     return JPL_OK;
 }
 
-jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
+jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
     double pr[3], vr[3];
     if (!context || !state || !out_state) return JPL_ERROR_ARGUMENT;
     jpl_status s = check_state(state);

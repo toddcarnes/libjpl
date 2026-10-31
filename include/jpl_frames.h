@@ -133,7 +133,7 @@ JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
  * @since 0.6.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]);
+JPL_API jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]);
 
 /**
  * @brief Rotates a velocity vector using a precomputed frame context.
@@ -143,7 +143,7 @@ JPL_API jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *co
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
  * @since 0.6.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]);
+JPL_API jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]);
 
 /**
  * @brief Rotates a full state vector using a precomputed frame context.
@@ -153,7 +153,7 @@ JPL_API jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *co
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
  * @since 0.6.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
+JPL_API jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
 
 #ifdef __cplusplus
 }

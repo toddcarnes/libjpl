@@ -63,9 +63,9 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(&header->start_jd, &cov_start);
+    s = jpl_date_normalize(header->start_jd, &cov_start);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
-    s = jpl_date_normalize(&header->end_jd, &cov_end);
+    s = jpl_date_normalize(header->end_jd, &cov_end);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
     if (jpl_date_compare(tdb, &cov_start) < 0 ||
         jpl_date_compare(tdb, &cov_end) > 0) return JPL_ERROR_RANGE;

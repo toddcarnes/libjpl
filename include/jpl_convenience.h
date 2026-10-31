@@ -18,14 +18,14 @@ extern "C" {
 /**
  * @brief Apparent planet position (light-time + stellar aberration, ICRS).
  * @param ephem Open handle.
- * @param jd_tt TT Julian date as a two-part array.
+ * @param jd_tt TT Julian date as a jpl_date.
  * @param planet Target body: 1-11 or 13 (planets incl. Earth 3, Moon 10,
  *        Sun 11, EMB 13; rejects target 0, SSB 12, nutations 14,
  *        librations 15, and out-of-range values).
  * @param center Center body: 0 (SSB) or 1-13 (rejects negatives and
  *        anything above 13). Centers 0 and 12 are equivalent; both denote
  *        a zero-velocity SSB observer with no aberration/Sun lookup.
- * @param state Output array of 6 slots receiving position (AU) + velocity
+ * @param state Output jpl_state receiving position (AU) + velocity
  *        (AU/day) in ICRS. Accepted ICRF-aligned DE records are already
  *        equatorial; no frame rotation is applied.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT for invalid planet/center,
@@ -52,7 +52,7 @@ extern "C" {
  *       <=0.4uas solar-potential term (via jpl_apply_aberration_full)
  *       whenever the observer is neither the SSB nor the Sun itself; the
  *       term is not gravitational light bending. SSB-observer calls apply
- *       no aberration. state[3..5] is the retarded-epoch velocity, passed
+ *       no aberration. state.vx,vy,vz is the retarded-epoch velocity, passed
  *       through aberration unchanged.
  * @note The body-center observer is the center body's barycenter at the
  *       reception epoch (centers 0/12: the SSB with zero velocity). Only
@@ -60,12 +60,12 @@ extern "C" {
  *       no deflection, Earth-orientation, refraction, or derivative terms.
  * @note state is unchanged on failure.
  */
-JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2], int planet, int center, double state[6]);
+JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, int planet, int center, jpl_state *state);
 /**
  * @brief Apparent Moon position, Earth-centered ICRS.
  * @param ephem Open handle.
- * @param jd_tt TT Julian date as a two-part array.
- * @param state Output array of 6 slots receiving position (AU) + velocity
+ * @param jd_tt TT Julian date as a jpl_date.
+ * @param state Output jpl_state receiving position (AU) + velocity
  *        (AU/day) in ICRS, Earth-centered.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT for NULL handle/state/jd_tt
  *         or nonfinite date parts; JPL_ERROR_RANGE for out-of-coverage TDB
@@ -79,7 +79,7 @@ JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double 
  *       no historical-frame transformation is applied.
  * @note This is one Earth-observer-to-Moon light-time leg with one
  *       aberration correction, using jpl_planet_position(). The velocity
- *       state[3..5] is retarded-epoch and unaberrated.
+ *       state.vx,vy,vz is retarded-epoch and unaberrated.
  * @note If a caller adds this result to a separate apparent leg to
  *       construct a third-body direction, the independently corrected
  *       legs have different emission epochs; that sum is only an
@@ -87,7 +87,7 @@ JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double 
  *       jpl_get_state() legs and apply the desired corrections explicitly.
  * @note state is unchanged on failure.
  */
-JPL_API jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
+JPL_API jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, jpl_state *state);
 
 /** @brief Apparent geocentric position and estimated motion in the true ecliptic of date. */
 typedef struct jpl_apparent_ecliptic_result {
@@ -101,7 +101,7 @@ typedef struct jpl_apparent_ecliptic_result {
 /**
  * @brief Returns an apparent geocentric true-ecliptic position and motion of date.
  * @param ephem Open DE handle from jpl_open(), jpl_open_mmap(), or a clone.
- * @param jd_tt Reception epoch as a two-part TT Julian date.
+ * @param jd_tt Reception epoch as a jpl_date TT Julian date.
  * @param target Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune,
  *        Pluto, Moon, or Sun. Earth, EMB, SSB, angular data, and invalid
  *        target codes have no supported Earth-centered direction.
@@ -137,8 +137,8 @@ typedef struct jpl_apparent_ecliptic_result {
  *       reads, use a clone per concurrent reader, or use jpl_open_mmap().
  */
 JPL_API jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
-                                           const double jd_tt[2], int target,
-                                           jpl_apparent_ecliptic_result *out);
+                                            const jpl_date *jd_tt, int target,
+                                            jpl_apparent_ecliptic_result *out);
 /** @brief Convert velocity from AU/day to km/s.
  *  @param vel_au_day Input triple, must be non-NULL.
  *  @param vel_km_s Output triple, must be non-NULL.

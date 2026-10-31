@@ -19,7 +19,7 @@ extern "C" {
 /**
  * @brief Rotate an ecliptic-of-date state to ICRS.
  * @param state Input state, position (AU) + velocity (AU/day) in ecliptic of date. Must be non-NULL.
- * @param jd_tt TT Julian date as a two-part array used to evaluate bias/precession/obliquity.
+ * @param jd_tt TT Julian date as a jpl_date used to evaluate bias/precession/obliquity.
  * @param out_state Output state in ICRS, may alias state. Must be non-NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts or nonfinite state slots, JPL_ERROR_NUMERIC when finite
@@ -34,11 +34,11 @@ extern "C" {
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
  */
-JPL_API jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], double out_state[6]);
+JPL_API jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
 /**
  * @brief Rotate an ICRS state to ecliptic of date.
  * @param state Input state, position (AU) + velocity (AU/day) in ICRS. Must be non-NULL.
- * @param jd_tt TT Julian date as a two-part array used to evaluate bias/precession/obliquity.
+ * @param jd_tt TT Julian date as a jpl_date used to evaluate bias/precession/obliquity.
  * @param out_state Output state in ecliptic of date, may alias state. Must be non-NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts or nonfinite state slots, JPL_ERROR_NUMERIC when finite
@@ -50,10 +50,10 @@ JPL_API jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_t
  *       frame-rate dR/dt terms from precession are not included
  *       (~50"/yr x 1 AU ~= 1 m/s).
  */
-JPL_API jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], double out_state[6]);
+JPL_API jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
 /**
  * @brief Ecliptic-of-date-to-ICRS rotation matrix R[3][3].
- * @param jd_tt TT Julian date as a two-part array used to evaluate bias/precession/obliquity.
+ * @param jd_tt TT Julian date as a jpl_date used to evaluate bias/precession/obliquity.
  * @param R Output 3x3 rotation matrix mapping ecliptic vectors to ICRS. Must be non-NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts, JPL_ERROR_NUMERIC when finite inputs produce an
@@ -62,11 +62,11 @@ JPL_API jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_t
  *       (bias + precession + mean obliquity, IAU 2006).
  * @note R is unchanged on failure.
  */
-JPL_API jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
+JPL_API jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]);
 /**
  * @brief TT Julian date to TDB (approximate, via ERFA).
- * @param jd_tt TT Julian date as a two-part array.
- * @param jd_tdb Output TDB Julian date as a two-part array. May alias jd_tt.
+ * @param jd_tt TT Julian date as a jpl_date.
+ * @param jd_tdb Output TDB Julian date as a jpl_date. May alias jd_tt.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts, JPL_ERROR_NUMERIC on unrepresentable arithmetic.
  * @note Geocentric Fairhead & Bretagnon (1990) model via ERFA eraDtdb with
@@ -85,11 +85,11 @@ JPL_API jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][
  * @note jd_tdb is unchanged on failure; exact input/output aliasing is
  *       supported.
  */
-JPL_API jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
+JPL_API jpl_status jpl_tt_to_tdb(const jpl_date *jd_tt, jpl_date *jd_tdb);
 /**
  * @brief TDB Julian date to TT (approximate).
- * @param jd_tdb TDB Julian date as a two-part array.
- * @param jd_tt Output TT Julian date as a two-part array. May alias jd_tdb.
+ * @param jd_tdb TDB Julian date as a jpl_date.
+ * @param jd_tt Output TT Julian date as a jpl_date. May alias jd_tdb.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts, JPL_ERROR_CONVERGENCE when the residual does not reach
  *         1e-15 day within 10 iterations, JPL_ERROR_NUMERIC on
@@ -103,7 +103,58 @@ JPL_API jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
  * @note jd_tt is unchanged on failure; exact input/output aliasing is
  *       supported.
  */
-JPL_API jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
+JPL_API jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt);
+
+/**
+ * @brief Creates a frame conversion context for repeated transformations at a fixed epoch.
+ * @param jd_tt TT Julian date as a jpl_date. The context caches the precession-nutation
+ *        matrix evaluated at this epoch.
+ * @param out_context Receives the allocated context on success; set to NULL on failure.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if jd_tt or out_context is NULL,
+ *         JPL_ERROR_NUMERIC on unrepresentable arithmetic, JPL_ERROR_MEMORY on allocation failure.
+ * @note The context is immutable after creation and can be reused for many vector rotations.
+ *       Destroy with jpl_frame_context_destroy().
+ * @since 0.6.0
+ */
+JPL_API jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context);
+
+/**
+ * @brief Destroys a frame conversion context.
+ * @param context Context from jpl_frame_context_create(); NULL is a no-op.
+ * @since 0.6.0
+ */
+JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
+
+/**
+ * @brief Rotates a position vector using a precomputed frame context.
+ * @param context Context from jpl_frame_context_create().
+ * @param in Input position vector (AU). Must be non-NULL.
+ * @param out Output position vector (AU). Must be non-NULL; may alias in.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @since 0.6.0
+ */
+JPL_API jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]);
+
+/**
+ * @brief Rotates a velocity vector using a precomputed frame context.
+ * @param context Context from jpl_frame_context_create().
+ * @param in Input velocity vector (AU/day). Must be non-NULL.
+ * @param out Output velocity vector (AU/day). Must be non-NULL; may alias in.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @since 0.6.0
+ */
+JPL_API jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]);
+
+/**
+ * @brief Rotates a full state vector using a precomputed frame context.
+ * @param context Context from jpl_frame_context_create().
+ * @param state Input state (position AU + velocity AU/day). Must be non-NULL.
+ * @param out_state Output state. Must be non-NULL; may alias state.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @since 0.6.0
+ */
+JPL_API jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
+
 #ifdef __cplusplus
 }
 #endif

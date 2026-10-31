@@ -38,6 +38,22 @@ _Static_assert(offsetof(jpl_header, ephemeris_number) == 3264,
                "jpl_header.ephemeris_number moved: update the C#/VB bindings");
 #endif
 
+/* Conversion helpers between public struct types and internal double[2]/double[6] */
+static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
+    out[0] = d->hi; out[1] = d->lo;
+}
+static inline void jpl_pair_to_date(const double in[2], jpl_date *d) {
+    d->hi = in[0]; d->lo = in[1];
+}
+static inline void jpl_state_to_array(const jpl_state *s, double out[6]) {
+    out[0] = s->x; out[1] = s->y; out[2] = s->z;
+    out[3] = s->vx; out[4] = s->vy; out[5] = s->vz;
+}
+static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
+    s->x = in[0]; s->y = in[1]; s->z = in[2];
+    s->vx = in[3]; s->vy = in[4]; s->vz = in[5];
+}
+
 #if defined(_WIN32)
 #define JPL_FSEEK _fseeki64
 #define JPL_FTELL _ftelli64
@@ -1882,9 +1898,11 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     return JPL_OK;
 }
 
-jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target, int center, double state[6]) {
+jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state) {
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
+    double jd_arr[2];
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd, jd_arr);
     /* Target zero is invalid; center zero is the SSB alias. Validate
      * target/center combinations before date normalization or data access:
      * invalid codes report ARGUMENT regardless of date or file contents.
@@ -1895,17 +1913,17 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
-        return interpolate(e, jd, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
-                           target == JPL_NUTATIONS ? 2 : 3, state);
+        return interpolate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
+                           target == JPL_NUTATIONS ? 2 : 3, local);
     }
     if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
     /* Body codes 1-13 plus center 0/12 route through barycentric legs
      * below. Validate pointers/dates first so a missing
      * dataset reports UNSUPPORTED only after valid checks pass. */
-    status = barycentric_state(e, jd, target, target_state);
+    status = barycentric_state(e, jd_arr, target, target_state);
     if (status != JPL_OK) return status;
     if (center == 0) memset(center_state, 0, sizeof center_state);
-    else { status = barycentric_state(e, jd, center, center_state); if (status != JPL_OK) return status; }
+    else { status = barycentric_state(e, jd_arr, center, center_state); if (status != JPL_OK) return status; }
     /* Relative state plus modern-AU scaling in local storage: validate
      * every accumulated/scaled component before publishing. */
     for (i = 0; i < 6; ++i) {
@@ -1914,7 +1932,7 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
         local[i] = diff / JPL_AU_KM;
         if (!isfinite(local[i])) return JPL_ERROR_NUMERIC;
     }
-    memcpy(state, local, sizeof local);
+    jpl_array_to_state(local, state);
     return JPL_OK;
 }
 
@@ -2150,25 +2168,35 @@ jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
 }
 #endif
 
-jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const double jd[2], int target, int center, double state[6], double *out_lt) {
-    return lighttime_solve(e, jd, target, center, state, out_lt,
-                           JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state, double *out_lt) {
+    double jd_arr[2];
+    jpl_date_to_pair(jd, jd_arr);
+    double local_state[6];
+    double lt;
+    jpl_status s = lighttime_solve(e, jd_arr, target, center, local_state, &lt,
+                                   JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+    if (s != JPL_OK) return s;
+    jpl_array_to_state(local_state, state);
+    if (out_lt) *out_lt = lt;
+    return JPL_OK;
 }
 
-jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], double *seconds, double *rate_per_day) {
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, double *seconds, double *rate_per_day) {
     double state[6];
     double value, rate;
     jpl_status status;
     const jpl_pointer *tt;
     size_t span_end;
+    double jd_arr[2];
     if (!e || !seconds || !jd_tdb) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd_tdb[0]) || !isfinite(jd_tdb[1])) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd_tdb, jd_arr);
+    if (!isfinite(jd_arr[0]) || !isfinite(jd_arr[1])) return JPL_ERROR_ARGUMENT;
     /* Valid checks precede the missing-dataset report: nonfinite/NULL
      * inputs above stay ARGUMENT, out-of-coverage below stays RANGE,
      * and only a valid in-coverage query for absent data is UNSUPPORTED. */
     {
         double norm[2], cov_start[2], cov_end[2];
-        status = jpl_date_normalize(jd_tdb, norm);
+        status = jpl_date_normalize(jd_arr, norm);
         if (status != JPL_OK) return status;
         status = jpl_date_normalize(e->header.start_jd, cov_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
@@ -2189,7 +2217,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
      * state[3] its rate in seconds/day (span is in days, so the engine
      * derivative needs no unit conversion). Slots [1],[2],[4],[5] unused.
      * Validate before either optional/required output is written. */
-    status = interpolate(e, jd_tdb, tt, 1, state);
+    status = interpolate(e, jd_arr, tt, 1, state);
     if (status != JPL_OK) return status;
     value = state[0];
     rate = state[3];
@@ -2201,8 +2229,8 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
 
 
 
-jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3],
-                                double sun_distance_au, double out[6]) {
+jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_vel[3],
+                                double sun_distance_au, jpl_state *out) {
     /* Solar gravitational radius; ERFA ERFA_SRS, kept in jpl_private.h.
      * Published formula (cf. ERFA eraAb, Explanatory Supplement Expr. 7.40
      * + Klioner 2003 solar term): pnat = r/rn direction, beta = v/c,
@@ -2210,18 +2238,15 @@ jpl_status jpl_apply_aberration(const double state[6], const double observer_vel
      * w2 = SRS/sun_distance, p = pnat*bm1 + w1*beta + w2*(beta-pdv*pnat),
      * distance-preserving rescale out = p*(r/|p|); velocity unchanged. */
     const double SRS = JPL_SRS_AU;
-    double beta[3], pnat[3], p[3], local[6];
+    double beta[3], pnat[3], p[3], local_pos[3];
     double r, rn, beta2 = 0.0, bm1, pdv = 0.0, w1, w2;
-    double local_state[6];
     int i;
     if (!state || !observer_vel || !out) return JPL_ERROR_ARGUMENT;
-    for (i = 0; i < 6; ++i) {
-        if (!isfinite(state[i])) return JPL_ERROR_ARGUMENT;
-    }
+    if (!isfinite(state->x) || !isfinite(state->y) || !isfinite(state->z) ||
+        !isfinite(state->vx) || !isfinite(state->vy) || !isfinite(state->vz))
+        return JPL_ERROR_ARGUMENT;
     for (i = 0; i < 3; ++i) {
         if (!isfinite(observer_vel[i])) return JPL_ERROR_ARGUMENT;
-        /* Velocity slot copy deferred: copy into local output only after
-         * all validation below succeeds. */
     }
     if (!isfinite(sun_distance_au)) return JPL_ERROR_ARGUMENT;
     /* Observer-speed gate in AU/day before forming beta: a finite but
@@ -2242,13 +2267,13 @@ jpl_status jpl_apply_aberration(const double state[6], const double observer_vel
     }
     /* Physically invalid standalone velocity: at or above light speed. */
     if (!(beta2 < 1.0)) return JPL_ERROR_ARGUMENT;
-    { const double pos[3] = { state[0], state[1], state[2] }; r = jpl_vec_norm3(pos); }
+    { const double pos[3] = { state->x, state->y, state->z }; r = jpl_vec_norm3(pos); }
     if (!isfinite(r)) return JPL_ERROR_NUMERIC;
     if (r == 0.0) {
         /* Validated finite zero position: pass through with unchanged
          * velocity. Copy via locals so aliased outputs stay exact. */
-        memcpy(local, state, sizeof local);
-        memcpy(out, local, sizeof local);
+        out->x = state->x; out->y = state->y; out->z = state->z;
+        out->vx = state->vx; out->vy = state->vy; out->vz = state->vz;
         return JPL_OK;
     }
     /* Scale-safe direction: normalize with the scaled components so r/rn
@@ -2258,10 +2283,10 @@ jpl_status jpl_apply_aberration(const double state[6], const double observer_vel
     {
         double m = 0.0, dl, d[3];
         for (i = 0; i < 3; ++i) {
-            double a = fabs(state[i]);
+            double a = fabs((&state->x)[i]);
             if (a > m) m = a;
         }
-        for (i = 0; i < 3; ++i) d[i] = state[i] / m;
+        for (i = 0; i < 3; ++i) d[i] = (&state->x)[i] / m;
         dl = jpl_vec_norm3(d);
         if (!isfinite(dl) || dl == 0.0) return JPL_ERROR_NUMERIC;
         for (i = 0; i < 3; ++i) {
@@ -2306,12 +2331,12 @@ jpl_status jpl_apply_aberration(const double state[6], const double observer_vel
      * intentionally unused: dividing each of p by rn first keeps the
      * intermediate direction bounded. */
     for (i = 0; i < 3; ++i) {
-        local_state[i] = (p[i] / rn) * r;
-        if (!isfinite(local_state[i])) return JPL_ERROR_NUMERIC;
+        local_pos[i] = (p[i] / rn) * r;
+        if (!isfinite(local_pos[i])) return JPL_ERROR_NUMERIC;
     }
     /* Velocity passed through unchanged, copied into local output only
      * after every check above succeeded. */
-    local_state[3] = state[3]; local_state[4] = state[4]; local_state[5] = state[5];
-    memcpy(out, local_state, sizeof local_state);
+    out->x = local_pos[0]; out->y = local_pos[1]; out->z = local_pos[2];
+    out->vx = state->vx; out->vy = state->vy; out->vz = state->vz;
     return JPL_OK;
 }

@@ -19,4 +19,10 @@
     <Compile Include="JplEphemeris.cs" />
     <Compile Include="LibJpl.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The test project asserts the native layout of JplHeaderNative. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>LibJpl.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

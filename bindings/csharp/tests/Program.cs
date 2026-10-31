@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 using System;
+using System.Runtime.InteropServices;
 using LibJpl;
 
 class Program
@@ -25,6 +26,66 @@ class Program
             {
                 Console.Error.WriteLine($"Expected ephemeris number 441, got {header.EphemerisNumber}");
                 Environment.Exit(1);
+            }
+
+            // The managed mirror of jpl_header must match the C layout, or
+            // fields would be read from the wrong offsets.
+            if (Marshal.SizeOf<JplHeaderNative>() != 3320)
+            {
+                Console.Error.WriteLine($"JplHeaderNative size is {Marshal.SizeOf<JplHeaderNative>()}, expected 3320");
+                Environment.Exit(1);
+            }
+            if (Marshal.OffsetOf<JplHeaderNative>(nameof(JplHeaderNative.EphemerisNumber)).ToInt32() != 3264)
+            {
+                Console.Error.WriteLine($"EphemerisNumber offset is {Marshal.OffsetOf<JplHeaderNative>(nameof(JplHeaderNative.EphemerisNumber))}, expected 3264");
+                Environment.Exit(1);
+            }
+
+            // Header metadata must be populated from the native struct.
+            if (header.ConstantCount < 400)
+            {
+                Console.Error.WriteLine($"Expected at least 400 constants, got {header.ConstantCount}");
+                Environment.Exit(1);
+            }
+            if (!(header.StartJd[0] < header.EndJd[0]))
+            {
+                Console.Error.WriteLine($"Bad coverage: {header.StartJd[0]} .. {header.EndJd[0]}");
+                Environment.Exit(1);
+            }
+            if (header.Titles.Length != 3 || Array.Exists(header.Titles, string.IsNullOrEmpty))
+            {
+                Console.Error.WriteLine($"Missing header titles: {string.Join(",", header.Titles)}");
+                Environment.Exit(1);
+            }
+            if (header.AstronomicalUnitKm < 1.49597870e8 || header.AstronomicalUnitKm > 1.49597871e8)
+            {
+                Console.Error.WriteLine($"Bad AU: {header.AstronomicalUnitKm}");
+                Environment.Exit(1);
+            }
+            if (header.EarthMoonMassRatio < 81.30 || header.EarthMoonMassRatio > 81.31)
+            {
+                Console.Error.WriteLine($"Bad EMRAT: {header.EarthMoonMassRatio}");
+                Environment.Exit(1);
+            }
+            if (header.Pointers[(int)JplTarget.Earth].Subintervals <= 0)
+            {
+                Console.Error.WriteLine("Earth pointer has no subintervals");
+                Environment.Exit(1);
+            }
+
+            var constants = eph.ReadConstants();
+            if (constants.Length != header.ConstantCount)
+            {
+                Console.Error.WriteLine($"Read {constants.Length} constants, expected {header.ConstantCount}");
+                Environment.Exit(1);
+            }
+            foreach (double value in constants)
+            {
+                if (!double.IsFinite(value))
+                {
+                    Console.Error.WriteLine("Non-finite constant value");
+                    Environment.Exit(1);
+                }
             }
 
             // Read Earth-from-Sun at J2000.0
@@ -79,6 +140,33 @@ class Program
                     Console.Error.WriteLine($"Moon state[{i}] is not finite: {moonState[i]}");
                     Environment.Exit(1);
                 }
+            }
+
+            // Apparent ecliptic position returns a five-double result struct;
+            // a mismatched declaration would corrupt memory instead of
+            // merely returning wrong values.
+            var ecliptic = eph.ApparentEclipticPosition(new double[] { 2451545.0, 0.0 }, JplTarget.Moon);
+            if (!(ecliptic.LongitudeDeg >= 0.0 && ecliptic.LongitudeDeg < 360.0))
+            {
+                Console.Error.WriteLine($"Bad ecliptic longitude: {ecliptic.LongitudeDeg}");
+                Environment.Exit(1);
+            }
+            if (!(Math.Abs(ecliptic.LatitudeDeg) <= 90.0))
+            {
+                Console.Error.WriteLine($"Bad ecliptic latitude: {ecliptic.LatitudeDeg}");
+                Environment.Exit(1);
+            }
+            if (!(ecliptic.RangeAu > 0.002 && ecliptic.RangeAu < 0.003))
+            {
+                Console.Error.WriteLine($"Bad Moon range: {ecliptic.RangeAu}");
+                Environment.Exit(1);
+            }
+            if (!double.IsFinite(ecliptic.LongitudeRateDegPerDay) ||
+                !double.IsFinite(ecliptic.RangeRateKmPerS) ||
+                Math.Abs(ecliptic.RangeRateKmPerS) >= 1.0)
+            {
+                Console.Error.WriteLine($"Bad ecliptic rates: {ecliptic.LongitudeRateDegPerDay}, {ecliptic.RangeRateKmPerS}");
+                Environment.Exit(1);
             }
 
             // Test aberration

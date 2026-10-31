@@ -7,6 +7,53 @@ Imports System.Runtime.InteropServices
 
 Namespace LibJpl
 
+<StructLayout(LayoutKind.Sequential, CharSet:=CharSet.Ansi, Pack:=8)>
+Friend Structure JplPointerNative
+    Public StartIndex As Integer
+    Public CoefficientsPerComponent As Integer
+    Public Subintervals As Integer
+End Structure
+
+<StructLayout(LayoutKind.Sequential, CharSet:=CharSet.Ansi, Pack:=8)>
+Friend Structure JplHeaderNative
+    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=3 * 85)>
+    Public TitlesFlat As Byte()
+
+    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=400 * 7)>
+    Public ConstantNamesFlat As Byte()
+
+    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=2)>
+    Public StartJd As Double()
+
+    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=2)>
+    Public EndJd As Double()
+
+    Public StepDays As Double
+    Public ConstantCount As Integer
+    Public AstronomicalUnitKm As Double
+    Public EarthMoonMassRatio As Double
+
+    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=12)>
+    Public Pointers As JplPointerNative()
+
+    Public EphemerisNumber As Integer
+    Public ReferenceFrame As Integer
+    Public LibrationPointer As JplPointerNative
+    Public TtTdbPointer As JplPointerNative
+    Public HasTtTdb As Integer
+    Public RecordDoubleCount As ULong
+    Public ByteOrder As Integer
+End Structure
+
+<StructLayout(LayoutKind.Sequential, Pack:=8)>
+Friend Structure JplApparentEclipticResultNative
+    Public LongitudeDeg As Double
+    Public LatitudeDeg As Double
+    Public RangeAu As Double
+    Public LongitudeRateDegPerDay As Double
+    Public RangeRateKmPerS As Double
+End Structure
+
 Friend Module Native
     Private Const DllName As String = "jpl"
 
@@ -164,11 +211,7 @@ Friend Module Native
         ephem As IntPtr,
         <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
         target As Integer,
-        <Out()> ByRef longitude_deg As Double,
-        <Out()> ByRef latitude_deg As Double,
-        <Out()> ByRef range_au As Double,
-        <Out()> ByRef longitude_rate_deg_per_day As Double,
-        <Out()> ByRef range_rate_km_per_s As Double) As JplStatus
+        ByRef result As JplApparentEclipticResultNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>

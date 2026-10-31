@@ -11,6 +11,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+# Warning policy: the project enables warnings but never makes them fatal, so
+# a newer local compiler does not block development. CI opts in via
+# -DCMAKE_COMPILE_WARNING_AS_ERROR=ON (CMake maps it to /WX or -Werror).
+if(DEFINED CMAKE_COMPILE_WARNING_AS_ERROR AND CMAKE_VERSION VERSION_LESS "3.24")
+    message(FATAL_ERROR
+        "CMAKE_COMPILE_WARNING_AS_ERROR needs CMake 3.24 or newer; this is CMake ${CMAKE_VERSION}")
+endif()
+
 set(JPL_CORE_SOURCES src/jpl.c src/jpl_frames.c src/jpl_convenience.c src/jpl_date.c)
 option(LIBJPL_BUILD_SHARED "Build the shared libjpl library" ON)
 
@@ -973,7 +981,7 @@ if(LIBJPL_BUILD_TESTS)
 endif()
 
 # SDK packaging targets (explicit, not automatic)
-# package-sdk: creates build/sdk/{include,lib,cmake,share/licenses,share/doc} via cmake --install + Doxygen
+# package-sdk: creates build/sdk/{include,lib,bin,cmake,doc,licenses} via cmake --install + Doxygen
 # package-sdk-zip: depends on package-sdk; creates build/sdk-${VERSION}-${PLATFORM}.zip
 if(CMAKE_COMMAND AND CMAKE_AR)
     # Helper: build Doxygen HTML into a temp dir (works regardless of LIBJPL_BUILD_DOCS)
@@ -1016,10 +1024,11 @@ if(CMAKE_COMMAND AND CMAKE_AR)
         COMMAND ${CMAKE_COMMAND} --install "${CMAKE_CURRENT_BINARY_DIR}"
             --prefix "${JPL_SDK_PREFIX}"
             --config $<CONFIG>
+        # The SDK presents licenses at its root, so drop the install-time
+        # license tree rather than a whole share/ directory that future
+        # install rules may populate.
         COMMAND ${CMAKE_COMMAND} -E remove_directory
             "${JPL_SDK_PREFIX}/share/licenses"
-        COMMAND ${CMAKE_COMMAND} -E remove_directory
-            "${JPL_SDK_PREFIX}/share"
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "${JPL_SDK_PREFIX}/doc"
             "${JPL_SDK_PREFIX}/licenses"
@@ -1043,7 +1052,11 @@ if(CMAKE_COMMAND AND CMAKE_AR)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/LICENSE"
             "${JPL_SDK_PREFIX}/licenses/ERFA-LICENSE"
         COMMAND ${CMAKE_COMMAND} -E echo "VERIFY: Checking SDK directory"
-        COMMAND ${CMAKE_COMMAND} -E compare_files "${JPL_SDK_PREFIX}/include/jpl.h" "${JPL_SDK_PREFIX}/include/jpl.h"
+        COMMAND ${CMAKE_COMMAND}
+            "-DSDK_ROOT=${JPL_SDK_PREFIX}"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DGENERATED_DIR=${CMAKE_CURRENT_BINARY_DIR}/generated"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_sdk.cmake"
         COMMAND ${CMAKE_COMMAND} -E touch "${JPL_SDK_STAMP}"
         DEPENDS jpl_sdk_docs
         COMMENT "Creating SDK staging directory at ${JPL_SDK_PREFIX}"

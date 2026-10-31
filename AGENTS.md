@@ -35,7 +35,8 @@ Verify the merged result before removing the branch or its worktree.
   `src/erfa/` (vendored ERFA v2.0.1, BSD-3 — never modify sources here).
 - `tests/` — `test_*.c` runners (some also have fault-injection variants);
   shared mock builders live in `tests/jpl_test_util.h`.
-- `docs/superpowers/{specs,plans}/` — design specs and implementation plans.
+- `docs/specs/` — design specs.
+- `docs/plans/` — implementation plans.
 
 ## Current contracts
 

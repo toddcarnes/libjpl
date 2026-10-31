@@ -28,7 +28,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure
-        run: cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF
+        run: cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
       - name: Test
@@ -47,7 +47,7 @@ jobs:
       - name: Initialize MSVC environment
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       - name: Configure (clang-cl, Ninja)
-        run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
       - name: Test including jpl_install consumer
@@ -65,7 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure
-        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
       - name: Test
@@ -84,7 +84,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure
-        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
       - name: Test
@@ -101,9 +101,94 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure
-        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_C_FLAGS="-Werror=implicit-function-declaration"
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  # The bindings are optional targets, so nothing else in CI compiles or runs
+  # them. These jobs enable all four, require each test to be registered (a
+  # missing interpreter/SDK must fail rather than silently skip), and then run
+  # the full suite (46 baseline + 4 binding tests).
+  bindings-windows:
+    name: Windows bindings ${{ matrix.config }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install cffi
+        run: python -m pip install --disable-pip-version-check cffi
+      - name: Configure (all bindings, warnings as errors)
+        run: >
+          cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF
+          -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          -DLIBJPL_BUILD_SHARED=ON
+          -DLIBJPL_BUILD_CPP_BINDING=ON
+          -DLIBJPL_BUILD_PYTHON_BINDING=ON
+          -DLIBJPL_BUILD_CSHARP_BINDING=ON
+          -DLIBJPL_BUILD_VBNET_BINDING=ON
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Require every binding test to be registered
+        shell: pwsh
+        run: |
+          $registered = (ctest --test-dir build/ci -C ${{ matrix.config }} -N) -join "`n"
+          $missing = @()
+          foreach ($name in 'jpl_cpp_binding', 'jpl_python_binding', 'jpl_csharp_binding', 'jpl_vbnet_binding') {
+            if ($registered -notmatch [regex]::Escape($name)) { $missing += $name }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Error "Binding tests not registered: $($missing -join ', ')"
+            exit 1
+          }
+      - name: Test
+        run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
+
+  bindings-linux:
+    name: Linux bindings ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install cffi in a virtual environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libffi-dev
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check cffi
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Configure (all bindings, warnings as errors)
+        run: >
+          cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+          -DLIBJPL_FETCH_EPHEMERIDES=OFF
+          -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          -DLIBJPL_BUILD_SHARED=ON
+          -DLIBJPL_BUILD_CPP_BINDING=ON
+          -DLIBJPL_BUILD_PYTHON_BINDING=ON
+          -DLIBJPL_BUILD_CSHARP_BINDING=ON
+          -DLIBJPL_BUILD_VBNET_BINDING=ON
+      - name: Build
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+      - name: Require every binding test to be registered
+        run: |
+          registered=$(ctest --test-dir build/ci -C ${{ matrix.config }} -N)
+          status=0
+          for name in jpl_cpp_binding jpl_python_binding jpl_csharp_binding jpl_vbnet_binding; do
+            case "$registered" in
+              *"$name"*) ;;
+              *) echo "::error::$name is not registered"; status=1 ;;
+            esac
+          done
+          exit $status
       - name: Test
         run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
 
@@ -146,7 +231,7 @@ jobs:
       - name: Install Doxygen
         run: sudo apt-get update; sudo apt-get install -y doxygen
       - name: Configure
-        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON "-DCMAKE_C_FLAGS=-Werror=implicit-function-declaration"
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build (includes Doxygen XML)
         run: cmake --build build/ci --config Release --parallel
       - name: Test docs, licenses, fixtures

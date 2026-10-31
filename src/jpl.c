@@ -19,6 +19,7 @@
 #include "jpl_testing.h"
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
 #include <float.h>
 #include <limits.h>
@@ -26,6 +27,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if UINTPTR_MAX == UINT64_MAX
+/* The managed bindings mirror this layout; their tests assert the same
+ * numbers. If these fire, update Native.cs and Native.vb together with the
+ * public header rather than silently shifting fields. */
+_Static_assert(sizeof(jpl_header) == 3320,
+               "jpl_header layout changed: update the C#/VB bindings");
+_Static_assert(offsetof(jpl_header, ephemeris_number) == 3264,
+               "jpl_header.ephemeris_number moved: update the C#/VB bindings");
+#endif
 
 #if defined(_WIN32)
 #define JPL_FSEEK _fseeki64
@@ -1618,7 +1629,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
     if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
     status = interp_select_record(e, norm, &record_index, file_start, file_end);
-    if (status != JPL_OK) { fprintf(stderr, "interp: select_record -> %d\n", status); return status; }
+    if (status != JPL_OK) return status;
     status = interp_read_record_cached(e, record_index, &record, &cached);
     if (status != JPL_OK) return status;
     status = interp_verify_record_bounds(norm, record, file_start, file_end);
@@ -1793,9 +1804,9 @@ static jpl_status lt_initial_estimate(const jpl_ephemeris *e, int target,
 /* Fast fixed-point iteration: up to fast_budget steps of
  * emission = receive - lt. Returns JPL_OK with state/delay set if converged,
  * JPL_ERROR_RANGE if an iterate crossed coverage (caller falls through to
- * bracket), JPL_ERROR_CONVERGENCE if budget exhausted or date arithmetic
- * failed without convergence (caller falls through to bracket), or propagates
- * other errors from lighttime_evaluate. */
+ * bracket), JPL_ERROR_CONVERGENCE if budget exhausted without settling
+ * (caller falls through to bracket), or propagates other errors from
+ * lighttime_evaluate. */
 static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
                                   const double norm[2], const double observer_km[6],
                                   int fast_budget, double *delay, double *residual,
@@ -1817,6 +1828,11 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
         }
         prev = lt;
     }
+    /* A successful evaluation is not convergence: the settle test above
+     * is what accepts a root. Without this reset an exhausted budget with
+     * a valid last iterate would report JPL_OK while state was never
+     * published, silently returning an unconverged delay. */
+    if (st == JPL_OK) st = JPL_ERROR_CONVERGENCE;
     *delay = lt;
     return st;
 }

@@ -507,5 +507,39 @@ static int lighttime_t10_cases(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
+    /* Budget exhaustion after a successful evaluation is still failure.
+     * fast=1 cannot settle this moving-target mock (each step shrinks the
+     * residual by v/c only), so a 1/0 budget must return CONVERGENCE with
+     * outputs untouched rather than reporting JPL_OK with the caller's
+     * state never written. */
+    {
+        const char *path = "jpl_test_lighttime_budget_fast.bin";
+        static const double jd[2] = {2451545.5, 0.0};
+        const double c = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
+        double state[6], before[6], tau = -7.0, range;
+        size_t k;
+        jpl_ephemeris *e = NULL;
+        for (k = 0; k < 6; ++k) { state[k] = 21.0 + (double)k; before[k] = state[k]; }
+        JPL_TEST_CHECK(write_linear_mock(path, 2451545.0, 2451546.0, 0.01, 1.0) == 0);
+        JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, jd, JPL_MARS, 0, state, &tau, 1, 0) == JPL_ERROR_CONVERGENCE);
+        JPL_TEST_CHECK(memcmp(state, before, sizeof state) == 0);
+        JPL_TEST_CHECK(tau == -7.0);
+        /* The safeguarded bracket must still recover the root when the
+         * fast budget alone is short. */
+        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, jd, JPL_MARS, 0, state, &tau, 1, JPL_LIGHTTIME_SAFE_MAX_ITER) == JPL_OK);
+        JPL_TEST_CHECK(tau > 0.0);
+        range = hypot(hypot(state[0], state[1]), state[2]);
+        JPL_TEST_CHECK(fabs(tau - range / c) < 1e-12);
+        /* A full fast budget settles without the bracket and publishes
+         * the emission-epoch state. */
+        tau = -7.0;
+        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, jd, JPL_MARS, 0, state, &tau, JPL_LIGHTTIME_FAST_MAX_ITER, 0) == JPL_OK);
+        JPL_TEST_CHECK(tau > 0.0);
+        range = hypot(hypot(state[0], state[1]), state[2]);
+        JPL_TEST_CHECK(fabs(tau - range / c) < 1e-12);
+        jpl_close(e);
+        JPL_TEST_CHECK(remove(path) == 0);
+    }
     return 0;
 }

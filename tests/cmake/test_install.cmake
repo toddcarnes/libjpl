@@ -138,8 +138,12 @@ string(REPLACE "." "\\." escaped_version "${VERSION}")
 if(NOT version_content MATCHES "${escaped_version}")
   message(FATAL_ERROR "installed version file does not mention ${VERSION}")
 endif()
-if(NOT version_content MATCHES "ExactVersion")
-  message(FATAL_ERROR "installed version file is not exact-version compatibility")
+# ExactVersion compatibility means the generated file sets PACKAGE_VERSION_EXACT
+# when PACKAGE_FIND_VERSION exactly matches PACKAGE_VERSION.
+# write_basic_package_version_file with COMPATIBILITY ExactVersion produces a
+# SamePatchVersion-style template that evaluates exactness at find_package time.
+if(NOT version_content MATCHES "PACKAGE_VERSION_EXACT")
+  message(FATAL_ERROR "installed version file lacks exact-version logic (PACKAGE_VERSION_EXACT)")
 endif()
 file(READ "${config_dir}/libjplConfig.cmake" config_content)
 foreach(leak IN ITEMS "${SOURCE}" "${BUILD}")
@@ -174,8 +178,8 @@ check_archive_symbols("${PREFIX}/${LIBDIR}")
 
 # --- Case 2b: inspect the shared library artifacts. ---
 if(WIN32)
-  if(NOT EXISTS "${PREFIX}/${BINDIR}/shared/jpl.dll")
-    message(FATAL_ERROR "missing installed shared library: ${PREFIX}/${BINDIR}/shared/jpl.dll")
+  if(NOT EXISTS "${PREFIX}/${BINDIR}/jpl.dll")
+    message(FATAL_ERROR "missing installed shared library: ${PREFIX}/${BINDIR}/jpl.dll")
   endif()
   if(NOT EXISTS "${PREFIX}/${LIBDIR}/shared/jpl.lib")
     message(FATAL_ERROR "missing installed import library: ${PREFIX}/${LIBDIR}/shared/jpl.lib")
@@ -206,7 +210,7 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-default"
   --config "${CONFIG}" --parallel 4)
 if(WIN32)
   # Copy jpl.dll to the test executable directory so all consumer tests can find it.
-  file(COPY "${PREFIX}/${BINDIR}/shared/jpl.dll"
+  file(COPY "${PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-default/${CONFIG}")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
@@ -225,7 +229,9 @@ foreach(_bad_version IN ITEMS 0.2.0 0.3.0 0.4.0 0.5.1 9999.0.0)
     message(FATAL_ERROR "incompatible version request ${_bad_version} unexpectedly configured")
   endif()
   string(REPLACE "\n" " " bad_flat "${bad_out} ${bad_err}")
-  if(NOT bad_flat MATCHES "not compatible with the version requested|exactly matches requested version")
+  # CMake 3.x: "Could not find a configuration file for package ... that exactly matches requested version"
+  # CMake 4.x: "not compatible with the version requested" / "exactly matches requested version"
+  if(NOT bad_flat MATCHES "not compatible with the version requested|exactly.*matches.*requested.*version")
     message(FATAL_ERROR "incompatible version ${_bad_version} failed for the wrong reason (expected a version diagnostic):\n${bad_out}\n${bad_err}")
   endif()
 endforeach()
@@ -251,7 +257,7 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-spaces"
   --config "${CONFIG}" --parallel 4)
 if(WIN32)
-  file(COPY "${SPACE_PREFIX}/${BINDIR}/shared/jpl.dll"
+  file(COPY "${SPACE_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-spaces/${CONFIG}")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-spaces"
@@ -295,7 +301,7 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-custom"
   --config "${CONFIG}" --parallel 4)
 if(WIN32)
-  file(COPY "${CUSTOM_PREFIX}/${BINDIR}/shared/jpl.dll"
+  file(COPY "${CUSTOM_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-custom/${CONFIG}")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-custom"
@@ -316,7 +322,7 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-nopic"
   --config "${CONFIG}" --parallel 4)
 if(WIN32)
-  file(COPY "${NOPIC_PREFIX}/${BINDIR}/shared/jpl.dll"
+  file(COPY "${NOPIC_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-nopic/${CONFIG}")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-nopic"

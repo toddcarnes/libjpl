@@ -19,4 +19,10 @@
     <Compile Include="JplEnums.vb" />
     <Compile Include="Native.vb" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The test project asserts the native layout of JplHeaderNative. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>LibJpl.VbTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

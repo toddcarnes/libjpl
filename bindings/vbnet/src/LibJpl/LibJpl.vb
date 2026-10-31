@@ -70,10 +70,61 @@ Public Class JplHeader
             Throw New ArgumentException("Invalid header pointer")
         End If
 
-        Dim h As New JplHeader With {
-            .EphemerisNumber = Marshal.ReadInt32(headerPtr, 3264)
+        Dim native As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
+
+        Dim headings(2) As String
+        For i = 0 To headings.Length - 1
+            headings(i) = FixedString(native.TitlesFlat, i * 85, 85)
+        Next
+
+        Dim nameCount As Integer = Math.Clamp(native.ConstantCount, 0, 400)
+        Dim names As String() = Array.Empty(Of String)()
+        If nameCount > 0 Then
+            ReDim names(nameCount - 1)
+            For i = 0 To nameCount - 1
+                names(i) = FixedString(native.ConstantNamesFlat, i * 7, 7)
+            Next
+        End If
+
+        Dim targetPointers(11) As JplPointer
+        For i = 0 To targetPointers.Length - 1
+            targetPointers(i) = ToPointer(native.Pointers(i))
+        Next
+
+        Return New JplHeader With {
+            .Titles = headings,
+            .ConstantNames = names,
+            .StartJd = New Double() {native.StartJd(0), native.StartJd(1)},
+            .EndJd = New Double() {native.EndJd(0), native.EndJd(1)},
+            .StepDays = native.StepDays,
+            .ConstantCount = native.ConstantCount,
+            .AstronomicalUnitKm = native.AstronomicalUnitKm,
+            .EarthMoonMassRatio = native.EarthMoonMassRatio,
+            .Pointers = targetPointers,
+            .EphemerisNumber = native.EphemerisNumber,
+            .ReferenceFrame = CType(native.ReferenceFrame, JplReferenceFrame),
+            .LibrationPointer = ToPointer(native.LibrationPointer),
+            .TtTdbPointer = ToPointer(native.TtTdbPointer),
+            .HasTtTdb = native.HasTtTdb,
+            .RecordDoubleCount = CLng(native.RecordDoubleCount),
+            .ByteOrder = CType(native.ByteOrder, JplByteOrder)
         }
-        Return h
+    End Function
+
+    Private Shared Function FixedString(bytes As Byte(), offset As Integer, length As Integer) As String
+        Dim nulIndex As Integer = Array.IndexOf(bytes, CByte(0), offset, length)
+        If nulIndex < 0 Then
+            nulIndex = offset + length
+        End If
+        Return Text.Encoding.UTF8.GetString(bytes, offset, nulIndex - offset)
+    End Function
+
+    Private Shared Function ToPointer(p As JplPointerNative) As JplPointer
+        Return New JplPointer With {
+            .StartIndex = p.StartIndex,
+            .CoefficientsPerComponent = p.CoefficientsPerComponent,
+            .Subintervals = p.Subintervals
+        }
     End Function
 End Class
 

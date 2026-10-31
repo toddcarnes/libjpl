@@ -14,7 +14,8 @@
 # Sweep-exempt directory prefixes
 # (checked in tests/cmake/check_licenses.cmake, not listed per file):
 #   src/erfa/          - vendored third-party ERFA (BSD-3, never modified)
-#   docs/superpowers/  - historical design records, preserved verbatim
+#   docs/specs/        - historical design records, preserved verbatim
+#   docs/plans/        - historical implementation plans, preserved verbatim
 #   docs/reviews/      - saved review plus progress ledger, verbatim
 #   build/, out/, cmake-build-*/ - generated build trees, no notices
 #   .git/, .worktrees/, .superpowers/, docs/html/, docs/latex/ - tooling output
@@ -76,6 +77,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "cmake/LibjplTestData.cmake"
   "cmake/sdk_manifest.cmake"
   "cmake/sdk_package.cmake"
+  "cmake/verify_sdk.cmake"
   ".github/workflows/ci.yml"
   ".github/workflows/ephemerides.yml"
   "tests/consumer/CMakeLists.txt"
@@ -108,8 +110,6 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/python/src/libjpl/ephemeris.py"
   "bindings/python/tests/test_python_binding.py"
   "bindings/csharp/CMakeLists.txt"
-  "bindings/csharp/run_csharp_test.bat.in"
-  "bindings/csharp/run_csharp_test.sh.in"
   "bindings/csharp/src/LibJpl/JplEnums.cs"
   "bindings/csharp/src/LibJpl/Native.cs"
   "bindings/csharp/src/LibJpl/JplEphemeris.cs"
@@ -117,15 +117,13 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/csharp/tests/LibJpl.Tests.csproj"
   "bindings/csharp/tests/Program.cs"
   "bindings/vbnet/CMakeLists.txt"
-  "bindings/vbnet/run_vbnet_test.bat.in"
-  "bindings/vbnet/run_vbnet_test.sh.in"
   "bindings/vbnet/src/LibJpl/LibJpl.vbproj"
   "bindings/vbnet/src/LibJpl/LibJpl.vb"
   "bindings/vbnet/src/LibJpl/JplEphemeris.vb"
   "bindings/vbnet/src/LibJpl/JplEnums.vb"
   "bindings/vbnet/src/LibJpl/Native.vb"
   "bindings/vbnet/tests/LibJpl.VbTests.vbproj"
-"bindings/vbnet/tests/Program.vb"
+  "bindings/vbnet/tests/Program.vb"
   "bindings/cpp/examples/planet_positions.cpp"
   "bindings/cpp/examples/README.md"
   "bindings/python/examples/README.md"
@@ -134,7 +132,6 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/csharp/examples/PlanetPositions.cs"
   "bindings/vbnet/examples/README.md"
   "bindings/vbnet/examples/PlanetPositions.vb"
-  "bindings/cpp/examples/README.md"
   "bindings/c/examples/README.md"
 )
 # Exempt files and why:

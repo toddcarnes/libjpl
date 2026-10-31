@@ -12,13 +12,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
+
+- Light-time: budget exhaustion in lt_fast_iterate now correctly sets JPL_ERROR_CONVERGENCE. (B1)
+- Binding: fixed geocentric apparent ecliptic ABI for Python, C#, and VB.NET; added JplApparentEclipticResultNative to both .NET bindings. (B2, B4)
+- License: inventory deduplication and indention fix. (B3)
+- CI: added bindings-windows and bindings-linux jobs for full coverage of C++, Python, C#, and VB.NET. (H1)
+- Binding: implemented full JplHeader.FromNative mapping for C# and VB.NET. (H2)
+- CI: added -DCMAKE_COMPILE_WARNING_AS_ERROR=ON to all jobs; project-wide warning cleanup. (D3)
+- SDK: added cmake/verify_sdk.cmake to validate package staging; removed broad share/ delete. (M5)
+- CMake: removed redundant jpl::jpl_shared_debug alias. (D5)
+
 ## [0.5.0] - 2026-09-29
 
 ### Added
 
 - Shared library target `jpl_shared` with versioned SONAME (`VERSION`/`SOVERSION`) and Windows `VERSIONINFO` resource.
 - Export header `jpl_export.h` with `JPL_API` macro for cross-platform DLL import/export.
-- C++ header-only RAII wrapper (`bindings/cpp/`): `jpl::Ephemeris`, `jpl::JplError`, convenience helpers.
+- C++ header-only RAII wrapper (`bindings/cpp/`): `jpl::Ephemeris`, `jpl::JplError`, members of `jpl::Ephemeris`: `planet_position`, `moon_position`, `tt_to_tdb`).
 - Python cffi binding (`bindings/python/`): `libjpl.Ephemeris` context manager, `libjpl.JplError`.
 - C# P/Invoke binding (`bindings/csharp/`): `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, enums `JplStatus`/`JplTarget`/`JplByteOrder`/`JplReferenceFrame`.
 - VB.NET P/Invoke binding (`bindings/vbnet/`): mirrors C# API, mirrors `SafeHandle` wrapper.
@@ -35,9 +48,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
+
 - `jpl_install` test: POSIX shared-link check now references `${LIBDIR}/static/libjpl.a`.
 - License checker now exempts `build_debug/`, `build_release/`, `obj/`, `bin/` build directories.
-- C#/VB.NET wrapper scripts copy `libjpl.so`/`jpl.dll` to test output directory for Linux/macOS.
+- C#/VB.NET/Python: loader path (`$<TARGET_FILE_DIR:jpl_shared>`) replaces broken wrapper scripts and DLL copies. (M2, M3, L4)
 
 ## [0.4.0] - 2026-09-26
 
@@ -53,6 +68,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added a grouped Doxygen API landing page.
 
 ### Fixed
+
+- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 
 - Kept private parser and light-time test hooks out of the installed static
   library. Install tests now inspect defined archive symbols.
@@ -88,6 +105,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`jpl_docs_paths`); README examples compile and run as `jpl_examples`.
 
 ### Fixed
+
+- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 
 - F01: validator corpus generated once per run via a CTest fixture setup;
   repeated parallel execution no longer truncates shared files.
@@ -125,6 +144,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Test harness: single testpo runner with the manifest as single source, fixture provenance checks and SRS regression coverage; testpo suites registered for time-segmented DE variants.
 
 ### Fixed
+
+- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 - Light-time iteration uses the center epoch; observer velocity uses the full aberration term at the reception epoch.
 - SRS relativistic constant corrected.
 - Overflow and record-offset guard wraps closed, including the TT-TDB tail parse.

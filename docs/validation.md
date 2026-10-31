@@ -174,8 +174,7 @@ the same offline test suite.
 
 ### C++ (`bindings/cpp/`)
 
-Header-only RAII wrapper (`jpl::Ephemeris`, `jpl::JplError`, free helpers
-`jpl::planet_position`, `jpl::moon_position`, `jpl::tt_to_tdb`).
+Header-only RAII wrapper (`jpl::Ephemeris`, `jpl::JplError`, members of `jpl::Ephemeris`: `planet_position`, `moon_position`, `tt_to_tdb`).
 CMake option: `LIBJPL_BUILD_CPP_BINDING=ON`. Installs headers to
 `${CMAKE_INSTALL_INCLUDEDIR}/jpl/`.
 
@@ -197,10 +196,7 @@ Direct port of C# API: `LibJpl.JplEphemeris : SafeHandle`,
 `LibJplApi.Open`/`OpenMmap`, identical enums and exceptions. CMake option:
 `LIBJPL_BUILD_VBNET_BINDING=ON`. Requires .NET 8 SDK.
 
-All binding tests pass on Windows (MSVC Debug/Release) and Linux (GCC
-Debug/Release). Tests for missing toolchains are absent, never failing.
-
-## Platform support
+Binding tests are executed in CI on Windows (indings-windows job) and Linux (indings-linux job). C++ tests link against the static library, while Python, C#, and VB.NET link against the shared library.
 
 ## Procedures and historical evidence (2026-09-19 checkpoint)
 

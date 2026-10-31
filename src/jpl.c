@@ -86,6 +86,7 @@ struct jpl_ephemeris {
     size_t file_size;
     size_t record_count;            /* physically readable data records */
     size_t covered_record_count;    /* advertised intervals only */
+
     /* File identity captured from the open stream (not a path lookup),
      * used to verify FILE clones reopened the same object. POSIX stores
      * st_dev/st_ino; Windows stores volume serial + file index from the
@@ -93,14 +94,17 @@ struct jpl_ephemeris {
      * re-checked in the clone comparison. Contents must stay immutable
      * while any reader is active: identity validation is not snapshot
      * isolation against in-place edits. */
+    struct {
 #if !defined(_WIN32)
-    dev_t id_dev;
-    ino_t id_ino;
+        dev_t dev;
+        ino_t ino;
 #else
-    DWORD id_volume;
-    DWORD id_index_hi;
-    DWORD id_index_lo;
+        DWORD volume;
+        DWORD index_hi;
+        DWORD index_lo;
 #endif
+    } identity;
+
     /* Shared ownership counter: mmap clones share one heap counter; plain
      * FILE handles own a private count of 1. Windows uses Interlocked* on
      * an int (MSVC lacks C11 atomics without /experimental:c11atomics);
@@ -112,23 +116,32 @@ struct jpl_ephemeris {
 #else
     atomic_int *refcount;
 #endif
+
     int is_mmap;
-    unsigned char *mmap_base;
-    size_t mmap_size;
+
+    /* Memory-mapped file state (only used when is_mmap != 0). */
+    struct {
+        unsigned char *base;
+        size_t size;
+#if defined(_WIN32)
+        HANDLE hFile;
+        HANDLE hMap;
+#endif
+    } mmap;
+
     /* Single-record cache: last record_index + its decoded doubles. Used by
      * FILE-path reads only (mmap reads bypass it to stay lock-free); valid
      * only when cache_valid != 0. Clones always start cold (calloc) so no
      * cross-handle state is shared. */
-    double *cache_record;
-    size_t cache_index;
-    int cache_valid;
+    struct {
+        double *record;
+        size_t index;
+        int valid;
+    } cache;
+
     /* Copy of path for plain FILE handles so clones can fopen independently.
      * NULL for mmap handles (clones share the mapping instead). */
     char *path;
-#if defined(_WIN32)
-    HANDLE hFile;
-    HANDLE hMap;
-#endif
 };
 
 /* Capture stream identity from an open FILE: POSIX fstat device+inode,
@@ -141,8 +154,8 @@ static int capture_stream_identity(FILE *file, struct jpl_ephemeris *e) {
     struct stat st;
     if (!file || !e) return -1;
     if (fstat(fileno(file), &st) != 0) return -1;
-    e->id_dev = st.st_dev;
-    e->id_ino = st.st_ino;
+    e->identity.dev = st.st_dev;
+    e->identity.ino = st.st_ino;
     return 0;
 #else
     HANDLE h;
@@ -151,9 +164,9 @@ static int capture_stream_identity(FILE *file, struct jpl_ephemeris *e) {
     h = (HANDLE)_get_osfhandle(_fileno(file));
     if (h == INVALID_HANDLE_VALUE) return -1;
     if (!GetFileInformationByHandle(h, &info)) return -1;
-    e->id_volume = info.dwVolumeSerialNumber;
-    e->id_index_hi = info.nFileIndexHigh;
-    e->id_index_lo = info.nFileIndexLow;
+    e->identity.volume = info.dwVolumeSerialNumber;
+    e->identity.index_hi = info.nFileIndexHigh;
+    e->identity.index_lo = info.nFileIndexLow;
     return 0;
 #endif
 }
@@ -1093,10 +1106,10 @@ static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, do
     if (count == 0) return JPL_OK;
     if (ephemeris->is_mmap) {
         const unsigned char *base;
-        if (!ephemeris->mmap_base) return JPL_ERROR_IO;
+        if (!ephemeris->mmap.base) return JPL_ERROR_IO;
         if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
-        if (offset > ephemeris->mmap_size || count * 8 > ephemeris->mmap_size - offset) return JPL_ERROR_IO;
-        base = ephemeris->mmap_base + offset;
+        if (offset > ephemeris->mmap.size || count * 8 > ephemeris->mmap.size - offset) return JPL_ERROR_IO;
+        base = ephemeris->mmap.base + offset;
         if (ephemeris->header.byte_order == native_order()) { memcpy(values, base, count * 8); return JPL_OK; }
         for (i = 0; i < count; ++i) values[i] = read_f64(base + i * 8, ephemeris->header.byte_order);
         return JPL_OK;
@@ -1122,7 +1135,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e = calloc(1, sizeof *e); if (!e) return JPL_ERROR_MEMORY;
     e->refcount = malloc(sizeof *e->refcount); if (!e->refcount) { free(e); return JPL_ERROR_MEMORY; }
     refcount_init(e->refcount);
-    e->is_mmap = 0; e->mmap_base = NULL; e->mmap_size = 0;
+    e->is_mmap = 0; e->mmap.base = NULL; e->mmap.size = 0;
     /* Resolve the absolute reopen path before fopen and open that exact
      * resolved path, so a later cwd change cannot redirect clones. */
     resolved = resolve_reopen_path(path);
@@ -1152,28 +1165,28 @@ void jpl_close(jpl_ephemeris *e) {
     if (!e->refcount) { /* Partially constructed handle: best-effort release. */
         if (e->file) fclose(e->file);
         free(e->path);
-        free(e->cache_record);
+        free(e->cache.record);
         free(e);
         return;
     }
     /* refcount_dec returns the remaining count; siblings keep the mapping.
      * Each handle frees its own cache_record: the cache is per-handle, so
      * a closing sibling must not orphan its record buffer. */
-    if (refcount_dec(e->refcount) > 0) { free(e->cache_record); free(e); return; }
+    if (refcount_dec(e->refcount) > 0) { free(e->cache.record); free(e); return; }
     if (e->is_mmap) {
 #if defined(_WIN32)
-        if (e->mmap_base) UnmapViewOfFile(e->mmap_base);
-        if (e->hMap) CloseHandle(e->hMap);
-        if (e->hFile && e->hFile != INVALID_HANDLE_VALUE) CloseHandle(e->hFile);
+        if (e->mmap.base) UnmapViewOfFile(e->mmap.base);
+        if (e->mmap.hMap) CloseHandle(e->mmap.hMap);
+        if (e->mmap.hFile && e->mmap.hFile != INVALID_HANDLE_VALUE) CloseHandle(e->mmap.hFile);
 #else
-        if (e->mmap_base && e->mmap_size > 0) munmap(e->mmap_base, e->mmap_size);
+        if (e->mmap.base && e->mmap.size > 0) munmap(e->mmap.base, e->mmap.size);
 #endif
     } else {
         if (e->file) fclose(e->file);
     }
     free(e->refcount);
     free(e->path);
-    free(e->cache_record);
+    free(e->cache.record);
     free(e);
 }
 
@@ -1227,10 +1240,10 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (!e->refcount) { free(e); UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_MEMORY; }
         refcount_init(e->refcount);
         e->is_mmap = 1;
-        e->mmap_base = base;
-        e->mmap_size = file_size;
-        e->hFile = hFile;
-        e->hMap = hMap;
+        e->mmap.base = base;
+        e->mmap.size = file_size;
+        e->mmap.hFile = hFile;
+        e->mmap.hMap = hMap;
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
@@ -1281,8 +1294,8 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (!e->refcount) { free(e); munmap(base, file_size); return JPL_ERROR_MEMORY; }
         refcount_init(e->refcount);
         e->is_mmap = 1;
-        e->mmap_base = base;
-        e->mmap_size = file_size;
+        e->mmap.base = base;
+        e->mmap.size = file_size;
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
@@ -1308,11 +1321,11 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
         c->refcount = ephem->refcount;
-        c->mmap_base = ephem->mmap_base;
-        c->mmap_size = ephem->mmap_size;
+        c->mmap.base = ephem->mmap.base;
+        c->mmap.size = ephem->mmap.size;
 #if defined(_WIN32)
-        c->hFile = ephem->hFile;
-        c->hMap = ephem->hMap;
+        c->mmap.hFile = ephem->mmap.hFile;
+        c->mmap.hMap = ephem->mmap.hMap;
 #endif
         refcount_inc(c->refcount);
     } else {
@@ -1337,12 +1350,12 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         c->record_count = ephem->record_count;
         c->covered_record_count = ephem->covered_record_count;
 #if !defined(_WIN32)
-        c->id_dev = ephem->id_dev;
-        c->id_ino = ephem->id_ino;
+        c->identity.dev = ephem->identity.dev;
+        c->identity.ino = ephem->identity.ino;
 #else
-        c->id_volume = ephem->id_volume;
-        c->id_index_hi = ephem->id_index_hi;
-        c->id_index_lo = ephem->id_index_lo;
+        c->identity.volume = ephem->identity.volume;
+        c->identity.index_hi = ephem->identity.index_hi;
+        c->identity.index_lo = ephem->identity.index_lo;
 #endif
         /* Cold start: calloc zeroed cache_valid, so this clone never reads
          * the source handle's cached record. */
@@ -1378,7 +1391,7 @@ jpl_status jpl_get_constant_name(const jpl_ephemeris *e, size_t index,
     record_bytes = e->header.record_double_count * 8;
     if (offset > record_bytes || JPL_CONSTANT_NAME_LENGTH > record_bytes - offset) return JPL_ERROR_IO;
     if (e->is_mmap) {
-        jpl_mmap_source source = {e->mmap_base, e->mmap_size};
+        jpl_mmap_source source = {e->mmap.base, e->mmap.size};
         status = mmap_read_bytes(&source, offset, raw, sizeof raw);
     } else {
         jpl_file_source source = {e->file, e->file_size};
@@ -1595,9 +1608,9 @@ static jpl_status interp_read_record_cached(const jpl_ephemeris *e, size_t recor
     *out_record = malloc(e->header.record_double_count * sizeof **out_record);
     if (!*out_record) return JPL_ERROR_MEMORY;
     use_cache = !e->is_mmap;
-    was_cached = use_cache && e->cache_valid && e->cache_record && e->cache_index == record_index;
+    was_cached = use_cache && e->cache.valid && e->cache.record && e->cache.index == record_index;
     if (was_cached) {
-        memcpy(*out_record, e->cache_record, e->header.record_double_count * sizeof **out_record);
+        memcpy(*out_record, e->cache.record, e->header.record_double_count * sizeof **out_record);
         *cached = 1;
     } else {
         jpl_status status = jpl_read_record(e, record_index, *out_record, e->header.record_double_count);
@@ -1763,13 +1776,13 @@ static void interp_publish_state(const jpl_ephemeris *e, size_t record_index,
      * returns early, so the prior entry is never invalidated by a miss. */
     use_cache = !e->is_mmap;
     if (!use_cache || cached) return;
-    if (!((jpl_ephemeris *)e)->cache_record) {
-        ((jpl_ephemeris *)e)->cache_record = malloc(e->header.record_double_count * sizeof *record);
-        if (!((jpl_ephemeris *)e)->cache_record) return;
+    if (!((jpl_ephemeris *)e)->cache.record) {
+        ((jpl_ephemeris *)e)->cache.record = malloc(e->header.record_double_count * sizeof *record);
+        if (!((jpl_ephemeris *)e)->cache.record) return;
     }
-    memcpy(((jpl_ephemeris *)e)->cache_record, record, e->header.record_double_count * sizeof *record);
-    ((jpl_ephemeris *)e)->cache_index = record_index;
-    ((jpl_ephemeris *)e)->cache_valid = 1;
+    memcpy(((jpl_ephemeris *)e)->cache.record, record, e->header.record_double_count * sizeof *record);
+    ((jpl_ephemeris *)e)->cache.index = record_index;
+    ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
 static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,

@@ -116,7 +116,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
         if (!isfinite(sdist)) return JPL_ERROR_NUMERIC;
         /* Finite nonpositive Sun distance omits the potential term
          * inside the aberration call; nonfinite is ARGUMENT there. */
-        s = jpl_apply_aberration_full(tmp, vobs, sdist, tmp);
+        s = jpl_apply_aberration(tmp, vobs, sdist, tmp);
         if (s != JPL_OK) return s;
     } else {
         s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);
@@ -124,7 +124,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
         s = jpl_get_state(e, tdb, eff_center, 0, cst);
         if (s != JPL_OK) return s;
         vobs[0] = cst[3]; vobs[1] = cst[4]; vobs[2] = cst[5];
-        s = jpl_apply_aberration(tmp, vobs, tmp);
+        s = jpl_apply_aberration(tmp, vobs, 0.0, tmp);
         if (s != JPL_OK) return s;
     }
     memcpy(st, tmp, sizeof tmp);
@@ -187,7 +187,7 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
         for (k = 0; k < 3; ++k) state[k] = (bent[k] / bent_norm) * distance;
     }
     vobs[0] = observer[3]; vobs[1] = observer[4]; vobs[2] = observer[5];
-    s = jpl_apply_aberration_full(state, vobs, sun_distance, aberrated);
+    s = jpl_apply_aberration(state, vobs, sun_distance, aberrated);
     if (s != JPL_OK) return s;
     s = jpl_icrs_to_true_ecliptic_position(aberrated, tt, ecliptic);
     if (s != JPL_OK) return s;

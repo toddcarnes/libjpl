@@ -250,7 +250,7 @@ int main(void) {
      * term so observer velocity differs between tdb and tdb-lt. Sun seen
      * from EMB gives a transverse (-x sight line, y velocity) aberration
      * lever; the convenience output must match the reception-epoch
-     * jpl_apply_aberration_full composition within 1e-12 and differ from
+     * jpl_apply_aberration composition within 1e-12 and differ from
      * the stale emission-epoch composition. */
     {
         const char *path="jpl_test_convenience_epoch.bin";
@@ -303,11 +303,11 @@ int main(void) {
         sdist = test_norm3(vsun);
         JPL_TEST_CHECK(sdist > 0.5);
         { double vobs[3]={vc_rec[3],vc_rec[4],vc_rec[5]};
-          JPL_TEST_CHECK(jpl_apply_aberration_full(lt_state,vobs,sdist,expect)==JPL_OK); }
+          JPL_TEST_CHECK(jpl_apply_aberration(lt_state,vobs,sdist,expect)==JPL_OK); }
         for(i=0;i<6;++i) JPL_TEST_CHECK(fabs(got[i]-expect[i]) < 1e-12);
         /* And it must NOT match the stale emission-epoch composition. */
         { double stale[6], vobs_e[3]={vc_emi[3],vc_emi[4],vc_emi[5]}, mdiff=0.0;
-          JPL_TEST_CHECK(jpl_apply_aberration_full(lt_state,vobs_e,sdist,stale)==JPL_OK);
+          JPL_TEST_CHECK(jpl_apply_aberration(lt_state,vobs_e,sdist,stale)==JPL_OK);
           for(i=0;i<6;++i){double d=fabs(got[i]-stale[i]); if(d>mdiff) mdiff=d;}
           JPL_TEST_CHECK(mdiff > 1e-9); }
         /* NULL converter guards: status returns, outputs untouched. */

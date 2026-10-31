@@ -372,28 +372,9 @@ JPL_API jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const
  * @brief Applies special-relativistic stellar aberration.
  * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
  * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
- * @param out_state Output aberrated state, may alias state. Must be non-NULL.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
- *         state/velocity slots, or observer speed at/above light speed,
- *         JPL_ERROR_NUMERIC when finite inputs produce an unrepresentable result.
- * @note Special-relativistic direction transform (cf. ERFA eraAb) with
- *       distance preservation; solar gravitational term (<=0.4uas) omitted;
- *       velocity passed through unchanged. In-place safe.
- *       For the <=0.4uas solar term use jpl_apply_aberration_full when
- *       the Sun distance is known.
- * @note Transactional: out_state is unchanged on failure. Exact
- *       state/out_state aliasing is supported.
- */
-JPL_API jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
-
-/**
- * @brief Applies full special-relativistic stellar aberration including the
- *        solar gravitational potential term.
- * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
- * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
  * @param sun_distance_au Distance from the Sun to the observer in AU; finite
- *        nonpositive input omits the potential term (wrapper behavior),
- *        nonfinite input is invalid.
+ *        positive input includes the solar gravitational potential term
+ *        (<=0.4 uas), nonpositive input omits it, nonfinite input is invalid.
  * @param out_state Output aberrated state, may alias state. Must be non-NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
  *         state/velocity slots, observer speed at/above light speed, or
@@ -401,16 +382,15 @@ JPL_API jpl_status jpl_apply_aberration(const double state[6], const double obse
  *         produce an unrepresentable result.
  * @note Matches ERFA eraAb (Explanatory Supplement Expr. 7.40 + Klioner
  *       2003 solar term) to ~1e-12 on unit vectors; velocity passed through
- *       unchanged. In-place safe. See also jpl_apply_aberration, the
- *       signature-stable wrapper that omits the solar term.
- * @note Prefer this over jpl_apply_aberration when the Sun distance is
- *       known; the wrapper omits the <=0.4uas solar term (singular for
- *       Sun-centered observers).
+ *       unchanged. In-place safe.
+ * @note When sun_distance_au is known (>0), the <=0.4uas solar term is
+ *       included; pass 0.0 or negative to omit (e.g., for Sun-centered
+ *       observers where the term is singular).
  * @note Transactional: out_state is unchanged on failure. Exact
  *       state/out_state aliasing is supported.
  */
-JPL_API jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                                double sun_distance_au, double out_state[6]);
+JPL_API jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3],
+                                        double sun_distance_au, double out_state[6]);
 
 /**
  * @brief Opens a DE file via read-only memory mapping.

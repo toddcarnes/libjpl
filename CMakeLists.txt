@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.5.0 LANGUAGES C)
+project(libjpl VERSION 0.6.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -294,6 +294,7 @@ if(LIBJPL_BUILD_TESTS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>
     )
     target_compile_definitions(jpl_testing PRIVATE

@@ -133,14 +133,14 @@ int main(void) {
             memcpy(bad, st, sizeof bad); bad[0] = NAN;
             memcpy(oo, (double[6]){11, 22, 33, 44, 55, 66}, sizeof oo);
             memcpy(before, oo, sizeof oo);
-            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
             bv[0] = 2.0 * c_au_day; bv[1] = 0.0; bv[2] = 0.0;
-            JPL_TEST_CHECK(jpl_apply_aberration(st, bv, oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(st, bv, 0.0, oo) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
-            JPL_TEST_CHECK(jpl_apply_aberration_full(st, vv, NAN, oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, NAN, oo) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
-            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, NULL) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, NULL) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(jpl_frame_rotation_matrix(nan_lo, R) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
         }
@@ -208,7 +208,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_ecliptic_to_icrs(s, overflow, s) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(check_unchanged(s, before));
         memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_apply_aberration_full(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
     }
 
     /* Missing datasets report UNSUPPORTED after valid checks.

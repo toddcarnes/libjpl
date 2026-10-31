@@ -12,18 +12,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-31
+
+### Changed
+
+- **BREAKING**: Unified aberration API: removed `jpl_apply_aberration_full()`; `jpl_apply_aberration()` now takes `sun_distance_au` parameter (>0 includes solar term, ≤0 omits it). All callers updated.
+- **BREAKING**: `jpl_apply_aberration()` signature changed from 3 to 4 arguments; `jpl_apply_aberration_full()` removed from public API and bindings.
+- Internal test helpers (`jpl_date_*`, `jpl_icrs_to_true_ecliptic_position`, `jpl_vec_norm3`) moved from `jpl_private.h` to `jpl_testing.h` (guarded by `LIBJPL_TESTING`).
+- Windows path resolution in `jpl_ephemeris_clone()` now uses dynamic `GetFullPathNameA` allocation (no `_MAX_PATH` limit).
+
 ### Fixed
 
-- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
+- Light-time solver: budget exhaustion in `lt_fast_iterate` correctly sets `JPL_ERROR_CONVERGENCE`.
+- Added `JPL_TEST_ASSERT` macro for programming errors in test helpers (distinct from `JPL_TEST_CHECK`).
+- Added debug assertion to `jpl_date_compare()` for normalized input precondition.
+- `jpl_private.h` no longer exposes internal declarations to downstream consumers.
 
-- Light-time: budget exhaustion in lt_fast_iterate now correctly sets JPL_ERROR_CONVERGENCE. (B1)
-- Binding: fixed geocentric apparent ecliptic ABI for Python, C#, and VB.NET; added JplApparentEclipticResultNative to both .NET bindings. (B2, B4)
-- License: inventory deduplication and indention fix. (B3)
-- CI: added bindings-windows and bindings-linux jobs for full coverage of C++, Python, C#, and VB.NET. (H1)
-- Binding: implemented full JplHeader.FromNative mapping for C# and VB.NET. (H2)
-- CI: added -DCMAKE_COMPILE_WARNING_AS_ERROR=ON to all jobs; project-wide warning cleanup. (D3)
-- SDK: added cmake/verify_sdk.cmake to validate package staging; removed broad share/ delete. (M5)
-- CMake: removed redundant jpl::jpl_shared_debug alias. (D5)
+### Added
+
+- Windows extended-length path support (>260 chars) for `jpl_ephemeris_clone()` reopen path.
+
+### Dependencies
+
+- ERFA version still 2.0.1 (SOFA_VERSION 20231011).
 
 ## [0.5.0] - 2026-09-29
 

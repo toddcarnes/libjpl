@@ -252,7 +252,7 @@ int main(void) {
             vobs[0] = obs[3];
             vobs[1] = obs[4];
             vobs[2] = obs[5];
-            JPL_TEST_CHECK(jpl_apply_aberration_full(got, vobs, sdist, expect) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(got, vobs, sdist, expect) == JPL_OK);
             for (k = 0; k < 6; ++k) JPL_TEST_CHECK(fabs(expect[k] - ref->state[k]) < 1e-9);
             JPL_TEST_CHECK(fabs(lt - ref->delay_days) < 1e-12);
             /* Mixed-epoch velocity pinned: V - W(reception polynomial). */
@@ -280,7 +280,7 @@ int main(void) {
         double s[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
         double z[3] = {0.0, 0.0, 0.0};
         double o[6], keep[6] = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
-        JPL_TEST_CHECK(jpl_apply_aberration(s, z, o) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s, z, 0.0, o) == JPL_OK);
         JPL_TEST_CHECK(o[0] == s[0] && o[1] == s[1] && o[2] == s[2]);
         /* Transverse observer velocity deflects; radial velocity does
          * not change the direction to first order (collinear beta keeps
@@ -290,9 +290,9 @@ int main(void) {
             double trans[3] = {0.0, 0.01, 0.0};
             double rad[3] = {0.01, 0.0, 0.0};
             double ot[6], orad[6];
-            JPL_TEST_CHECK(jpl_apply_aberration(s, trans, ot) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(s, trans, 0.0, ot) == JPL_OK);
             JPL_TEST_CHECK(fabs(ot[1] - s[1]) > 1e-9);
-            JPL_TEST_CHECK(jpl_apply_aberration(s, rad, orad) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(s, rad, 0.0, orad) == JPL_OK);
             /* Collinear aberration preserves the unit direction. */
             {
                 double n0 = test_norm3(s), n1 = test_norm3(orad);
@@ -314,8 +314,8 @@ int main(void) {
             JPL_TEST_CHECK(jpl_ecliptic_to_icrs(aliased, jd, aliased) == JPL_OK);
             JPL_TEST_CHECK(memcmp(aliased, ref, sizeof ref) == 0);
             memcpy(aliased, st, sizeof aliased);
-            JPL_TEST_CHECK(jpl_apply_aberration(aliased, vv, aliased) == JPL_OK);
-            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(aliased, vv, 0.0, aliased) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, r2) == JPL_OK);
             JPL_TEST_CHECK(memcmp(aliased, r2, sizeof r2) == 0);
         }
         /* Legacy-frame rejection for convenience with untouched output. */
@@ -400,7 +400,7 @@ int main(void) {
             JPL_TEST_CHECK(jpl_ecliptic_to_icrs(bad, jd, out) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
             memcpy(out, keep, sizeof out);
-            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, 0.0, out) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
             for (a = 0; a < 3; ++a) {
                 for (b = 0; b < 3; ++b) { R[a][b] = 5.0; Rkeep[a][b] = 5.0; }
@@ -411,7 +411,7 @@ int main(void) {
             memcpy(out, keep, sizeof out);
             {
                 double ok[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
-                JPL_TEST_CHECK(jpl_apply_aberration_full(ok, vv, 1e-320, out) == JPL_ERROR_NUMERIC);
+                JPL_TEST_CHECK(jpl_apply_aberration(ok, vv, 1e-320, out) == JPL_ERROR_NUMERIC);
                 JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
             }
             /* RANGE: out-of-coverage TT-TDB query leaves outputs. */

@@ -15,7 +15,7 @@ int main(void) {
     double st[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
     double vobs[3] = {0.0, 0.01, 0.0};
     double out[6] = {0};
-    JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, out) == JPL_OK);
+    JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, 0.0, out) == JPL_OK);
     JPL_TEST_CHECK(fabs(out[0] - st[0]) > 0.0);
     double r0 = test_norm3(st);
     double r1 = test_norm3(out);
@@ -23,29 +23,29 @@ int main(void) {
     /* Velocity passed through unchanged. */
     JPL_TEST_CHECK(out[3]==st[3] && out[4]==st[4] && out[5]==st[5]);
     double io[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
-    JPL_TEST_CHECK(jpl_apply_aberration(io, vobs, io) == JPL_OK);
+    JPL_TEST_CHECK(jpl_apply_aberration(io, vobs, 0.0, io) == JPL_OK);
     JPL_TEST_CHECK(isfinite(io[0]) && isfinite(io[3]));
     JPL_TEST_CHECK(io[3]==0.0 && io[4]==0.01 && io[5]==0.0);
     /* NULL inputs report ARGUMENT and leave outputs unchanged. */
     {
         double keep[6] = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
         memcpy(out, keep, sizeof out);
-        JPL_TEST_CHECK(jpl_apply_aberration(NULL, vobs, out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(NULL, vobs, 0.0, out) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
-        JPL_TEST_CHECK(jpl_apply_aberration(st, NULL, out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, NULL, 0.0, out) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
-        JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, 0.0, NULL) == JPL_ERROR_ARGUMENT);
     }
     /* Zero position passes through with unchanged velocity. */
     {
         double z[6]={0,0,0,0.001,0.002,0.003}, zo[6];
-        JPL_TEST_CHECK(jpl_apply_aberration(z, vobs, zo) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(z, vobs, 0.0, zo) == JPL_OK);
         for (int i=0;i<6;++i) JPL_TEST_CHECK(zo[i]==z[i]);
     }
     /* Zero observer velocity leaves position unchanged. */
     {
         double zobs[3]={0,0,0}, so[6];
-        JPL_TEST_CHECK(jpl_apply_aberration(st, zobs, so) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, zobs, 0.0, so) == JPL_OK);
         JPL_TEST_CHECK(fabs(so[0]-st[0])<1e-15 && fabs(so[1]-st[1])<1e-15 && fabs(so[2]-st[2])<1e-15);
     }
     /* ERFA t_erfa_c vector (t_ab): solar-gravity term differs <=0.4uas, so 1e-9.
@@ -60,7 +60,7 @@ int main(void) {
         double s2[6] = {pn[0], pn[1], pn[2], 0.0, 0.0, 0.0};
         double vo2[3] = {vc[0]*C_KM_S*DAYSEC/AU_KM, vc[1]*C_KM_S*DAYSEC/AU_KM, vc[2]*C_KM_S*DAYSEC/AU_KM};
         double o2[6];
-        JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, o2) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, 0.0, o2) == JPL_OK);
         JPL_TEST_CHECK(fabs(o2[0] - (-0.7631631094219556269)) < 1e-9);
         JPL_TEST_CHECK(fabs(o2[1] - (-0.6087553082505590832)) < 1e-9);
         JPL_TEST_CHECK(fabs(o2[2] - (-0.2167926269368471279)) < 1e-9);
@@ -75,7 +75,7 @@ int main(void) {
             double s6[6], vo[3], got[6], be[3], exp[3], b2 = 0.0, bm;
             for (k = 0; k < 3; ++k) { s6[k] = dirs[d][k]*2.5; s6[k+3] = 0.001*k; vo[k] = vels[q][k]; be[k] = vo[k]/C_AU_DAY; b2 += be[k]*be[k]; }
             bm = sqrt(1.0 - b2);
-            JPL_TEST_CHECK(jpl_apply_aberration(s6, vo, got) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(s6, vo, 0.0, got) == JPL_OK);
             eraAb(dirs[d], be, 1e12, bm, exp);
             for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - exp[k]*2.5) < 1e-12);
             for (k = 0; k < 3; ++k) JPL_TEST_CHECK(got[k+3] == s6[k+3]);
@@ -95,25 +95,25 @@ int main(void) {
         double vo2[3] = {0.0, 0.0, 0.0};
         double o2[6];
         vo2[0] = vc[0] * c_au_day; vo2[1] = vc[1] * c_au_day; vo2[2] = vc[2] * c_au_day;
-        JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, 0.99980921395708788, o2) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, 0.99980921395708788, o2) == JPL_OK);
         JPL_TEST_CHECK(fabs(o2[0] - (-0.7631631094219556269)) < 1e-12);
         JPL_TEST_CHECK(fabs(o2[1] - (-0.6087553082505590832)) < 1e-12);
         JPL_TEST_CHECK(fabs(o2[2] - (-0.2167926269368471279)) < 1e-12);
         /* Non-positive Sun distance falls back to wrapper behavior. */
-        { double ow[6]; JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, ow) == JPL_OK);
-          JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, 0.0, o2) == JPL_OK);
+        { double ow[6]; JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, 0.0, ow) == JPL_OK);
+          JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, 0.0, o2) == JPL_OK);
           for (int k = 0; k < 6; ++k) JPL_TEST_CHECK(o2[k] == ow[k]);
           /* Negative finite distance omits the term identically. */
-          JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, -2.5, o2) == JPL_OK);
+          JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, -2.5, o2) == JPL_OK);
           for (int k = 0; k < 6; ++k) JPL_TEST_CHECK(o2[k] == ow[k]); }
         /* NULL-safe: ARGUMENT with unchanged outputs. */
         { double keep[6] = {3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
           memcpy(o2, keep, sizeof o2);
-          JPL_TEST_CHECK(jpl_apply_aberration_full(NULL, vo2, 1.0, o2) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(jpl_apply_aberration(NULL, vo2, 1.0, o2) == JPL_ERROR_ARGUMENT);
           JPL_TEST_CHECK(memcmp(o2, keep, sizeof o2) == 0);
-          JPL_TEST_CHECK(jpl_apply_aberration_full(s2, NULL, 1.0, o2) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(jpl_apply_aberration(s2, NULL, 1.0, o2) == JPL_ERROR_ARGUMENT);
           JPL_TEST_CHECK(memcmp(o2, keep, sizeof o2) == 0);
-          JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, 1.0, NULL) == JPL_ERROR_ARGUMENT); }
+          JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, 1.0, NULL) == JPL_ERROR_ARGUMENT); }
     }
     /* Differential vs eraAb at finite Sun distance (catches SRS drift). */
     {
@@ -130,7 +130,7 @@ int main(void) {
         int k;
         vo2[0] = vc[0] * c_au_day; vo2[1] = vc[1] * c_au_day; vo2[2] = vc[2] * c_au_day;
         for (k = 0; k < 3; ++k) be[k] = vc[k];
-        JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, s_au, got) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, s_au, got) == JPL_OK);
         eraAb(pn, be, s_au, sqrt(1.0 - (be[0]*be[0]+be[1]*be[1]+be[2]*be[2])), exp);
         for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - exp[k]) < 1e-12);
     }
@@ -151,7 +151,7 @@ int main(void) {
         int k;
         vo2[0] = vc[0] * c_au_day; vo2[1] = vc[1] * c_au_day; vo2[2] = vc[2] * c_au_day;
         for (k = 0; k < 3; ++k) be[k] = vc[k];
-        JPL_TEST_CHECK(jpl_apply_aberration_full(s2, vo2, s_au, got) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s2, vo2, s_au, got) == JPL_OK);
         eraAb(pn, be, s_au, sqrt(1.0 - (be[0]*be[0]+be[1]*be[1]+be[2]*be[2])), exp);
         for (k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(got[k] - exp[k]) < 1e-12);
     }
@@ -168,11 +168,11 @@ int main(void) {
             double v[3] = {0.0, 0.01, 0.0};
             double got[6], aliased[6], dir[3], n;
             memcpy(aliased, s, sizeof s);
-            JPL_TEST_CHECK(jpl_apply_aberration(s, v, got) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(s, v, 0.0, got) == JPL_OK);
             /* Velocity slots pass through unchanged. */
             JPL_TEST_CHECK(got[3] == 1.0 && got[4] == 2.0 && got[5] == 3.0);
             /* Exact permitted aliasing: in-place equals out-of-place. */
-            JPL_TEST_CHECK(jpl_apply_aberration(aliased, v, aliased) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(aliased, v, 0.0, aliased) == JPL_OK);
             for (k = 0; k < 6; ++k) JPL_TEST_CHECK(aliased[k] == got[k]);
             /* Direction is finite and shared across scales. The test norm
              * itself must be scale-safe (nested hypot): an unscaled
@@ -196,7 +196,7 @@ int main(void) {
     /* Exact large-scale contract from the plan. */
     {
         double s[6] = {1e200,0,0,1,2,3}, v[3] = {0,0.01,0}, out2[6];
-        JPL_TEST_CHECK(jpl_apply_aberration(s, v, out2) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(s, v, 0.0, out2) == JPL_OK);
         JPL_TEST_CHECK(isfinite(out2[0]) && isfinite(out2[1]));
         JPL_TEST_CHECK(out2[1] > 0.0);
         JPL_TEST_CHECK(out2[3] == 1 && out2[4] == 2 && out2[5] == 3);
@@ -210,29 +210,29 @@ int main(void) {
         double bad[6], vv[3], oo[6], z[6] = {0,0,0,0.001,0.002,0.003};
         memcpy(oo, keep, sizeof oo);
         memcpy(bad, st, sizeof bad); bad[2] = NAN;
-        JPL_TEST_CHECK(jpl_apply_aberration(bad, vobs, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(bad, vobs, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         memcpy(bad, st, sizeof bad); bad[5] = INFINITY;
-        JPL_TEST_CHECK(jpl_apply_aberration(bad, vobs, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(bad, vobs, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         vv[0] = vobs[0]; vv[1] = vobs[1]; vv[2] = NAN;
-        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         /* Observer at exactly c and above c are both invalid. */
         vv[0] = C_AU_DAY; vv[1] = 0.0; vv[2] = 0.0;
-        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         vv[0] = 2.0 * C_AU_DAY;
-        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         /* Zero position with a nonfinite velocity slot still fails. */
         vv[0] = 0.0; vv[1] = INFINITY; vv[2] = 0.0;
-        JPL_TEST_CHECK(jpl_apply_aberration(z, vv, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(z, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
         /* Nonfinite Sun distance is ARGUMENT, not a silent omission. */
-        JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, NAN, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, NAN, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
-        JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, INFINITY, oo) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, INFINITY, oo) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
     }
     /* Pinned apparent-oracle velocity slot. The oracle's
@@ -254,7 +254,7 @@ int main(void) {
         double keep[6] = {1.5, -2.5, 3.5, 4.5, 5.5, 6.5};
         double oo[6];
         memcpy(oo, keep, sizeof oo);
-        JPL_TEST_CHECK(jpl_apply_aberration_full(st, vobs, 1e-320, oo) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(jpl_apply_aberration(st, vobs, 1e-320, oo) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(oo, keep, sizeof oo) == 0);
     }
     /* Finite tiny-Sun regression: a unit-scale nonradial state with a
@@ -275,7 +275,7 @@ int main(void) {
         double r;
         int k;
         memcpy(aliased, tiny_state, sizeof aliased);
-        JPL_TEST_CHECK(jpl_apply_aberration_full(tiny_state, tiny_vel, 1e-200, got) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(tiny_state, tiny_vel, 1e-200, got) == JPL_OK);
         for (k = 0; k < 6; ++k) JPL_TEST_CHECK(isfinite(got[k]));
         /* Independent reference: same published formula, scale-safe norm. */
         r = hypot(hypot(tiny_state[0], tiny_state[1]), tiny_state[2]);
@@ -300,7 +300,7 @@ int main(void) {
         }
         JPL_TEST_CHECK(fabs(n - 1.0) < 1e-12);
         JPL_TEST_CHECK(got[3] == 1.0 && got[4] == 2.0 && got[5] == 3.0);
-        JPL_TEST_CHECK(jpl_apply_aberration_full(aliased, tiny_vel, 1e-200, aliased) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apply_aberration(aliased, tiny_vel, 1e-200, aliased) == JPL_OK);
         for (k = 0; k < 6; ++k) JPL_TEST_CHECK(aliased[k] == got[k]);
     }
     puts("aberration tests passed");

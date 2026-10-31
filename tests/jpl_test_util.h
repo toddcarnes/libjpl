@@ -33,6 +33,13 @@
     } \
 } while (0)
 
+#define JPL_TEST_ASSERT(cond) do { \
+    if (!(cond)) { \
+        fprintf(stderr, "ASSERT FAILED %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+        abort(); \
+    } \
+} while (0)
+
 static inline void test_put_u32(unsigned char *at, uint32_t v) {
     at[0] = (unsigned char)v;
     at[1] = (unsigned char)(v >> 8);
@@ -73,7 +80,7 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
      * otherwise wrap to a huge size_t and corrupt memory). JPL_TEST_CHECK
      * cannot signal failure from a void helper, and assert() vanishes in
      * Release (NDEBUG), so fail loudly on every build flavor. */
-    if (idx < 0 || idx > 14) { fprintf(stderr, "test_put_ptr: bad idx %d\n", idx); abort(); }
+    JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
                  idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
     test_put_u32(rec + off, start);
@@ -98,7 +105,7 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
 /* BE variants to stop hand-rolled offsets. */
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
     /* Same programming-error trap as test_put_ptr (see comment there). */
-    if (idx < 0 || idx > 14) { fprintf(stderr, "test_put_ptr: bad idx %d\n", idx); abort(); }
+    JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
                  idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
     test_put_u32be(rec + off, start);

@@ -202,16 +202,22 @@ static char *copy_string(const char *s) {
 
 /* Resolve a relative reopen path to an absolute path before fopen so a
  * later cwd change cannot redirect the clone to a different file. Uses
- * _fullpath on Windows and realpath(NULL) on POSIX (malloc'd; caller
- * frees). Falls back to a plain copy when resolution fails (clone then
- * re-verifies identity and fails IO rather than reading wrong data). */
+ * GetFullPathName with dynamic allocation on Windows and realpath(NULL)
+ * on POSIX (malloc'd; caller frees). Falls back to a plain copy when
+ * resolution fails (clone then re-verifies identity and fails IO rather
+ * than reading wrong data). */
 static char *resolve_reopen_path(const char *path) {
     if (!path) return NULL;
 #if defined(_WIN32)
     {
-        char *resolved = (char *)malloc(_MAX_PATH);
-        if (!resolved) return NULL;
-        if (!_fullpath(resolved, path, _MAX_PATH)) { free(resolved); return copy_string(path); }
+        DWORD len = GetFullPathNameA(path, 0, NULL, NULL);
+        if (len == 0) return copy_string(path);
+        char *resolved = (char *)malloc(len);
+        if (!resolved) return copy_string(path);
+        if (GetFullPathNameA(path, len, resolved, NULL) == 0) {
+            free(resolved);
+            return copy_string(path);
+        }
         return resolved;
     }
 #else
@@ -416,6 +422,170 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
     first[1] = 0.0;
     second[0] = enc1;
     second[1] = 0.0;
+    return JPL_OK;
+}
+
+/* Validate coverage metadata: start/end JD, step_days; compute span_days.
+ * Returns JPL_OK on success, JPL_ERROR_FORMAT for invalid metadata. */
+static jpl_status validate_coverage_metadata(const jpl_header *candidate,
+                                             double *out_span_days) {
+    double cov_start[2], cov_end[2], cov_span[2];
+    double span_lo;
+    jpl_status cov_status = jpl_date_normalize(candidate->start_jd, cov_start);
+    if (cov_status != JPL_OK) return JPL_ERROR_FORMAT;
+    cov_status = jpl_date_normalize(candidate->end_jd, cov_end);
+    if (cov_status != JPL_OK) return JPL_ERROR_FORMAT;
+    if (jpl_date_compare(cov_end, cov_start) <= 0) return JPL_ERROR_FORMAT;
+    cov_status = jpl_date_subtract(cov_end, cov_start, cov_span);
+    if (cov_status != JPL_OK) return JPL_ERROR_FORMAT;
+    double span_days = cov_span[0];
+    span_lo = cov_span[1];
+    if (!isfinite(candidate->step_days) || candidate->step_days <= 0.0) return JPL_ERROR_FORMAT;
+    /* Collapse the compensated coverage duration only to estimate the
+     * interval count. File geometry bounds that estimate, and the
+     * selected record endpoints are verified against two-part dates. */
+    span_days += span_lo;
+    if (!isfinite(span_days) || span_days <= 0.0) return JPL_ERROR_FORMAT;
+    *out_span_days = span_days;
+    return JPL_OK;
+}
+
+/* Compute expected record count from span and step; validate consistency.
+ * Returns JPL_OK on success, JPL_ERROR_FORMAT for invalid geometry. */
+static jpl_status compute_record_geometry(double span_days, double step_days,
+                                          size_t max_records,
+                                          size_t *out_expected_records) {
+    double span_records = span_days / step_days;
+    if (!isfinite(span_records) || span_records < 1.0 || span_records > (double)max_records) return JPL_ERROR_FORMAT;
+    size_t expected_records = (size_t)(span_records + 0.5);
+    if (expected_records == 0 || expected_records > max_records) return JPL_ERROR_FORMAT;
+    if (fabs(span_records - (double)expected_records) > 1e-7) return JPL_ERROR_FORMAT;
+    double reconstructed = (double)expected_records * step_days;
+    if (!isfinite(reconstructed) ||
+        fabs(reconstructed - span_days) > 1e-7 * step_days) return JPL_ERROR_FORMAT;
+    *out_expected_records = expected_records;
+    return JPL_OK;
+}
+
+/* Compute required record width from pointer extent and constants count.
+ * Returns JPL_OK on success, JPL_ERROR_FORMAT for invalid requirements. */
+static jpl_status validate_record_width(const jpl_header *candidate,
+                                        size_t *out_required_doubles,
+                                        size_t *out_required_bytes) {
+    size_t required_doubles = candidate->record_double_count;
+    if (required_doubles == 0) return JPL_ERROR_FORMAT;
+    if ((size_t)candidate->constant_count > required_doubles) required_doubles = (size_t)candidate->constant_count;
+    if (required_doubles > SIZE_MAX / 8) return JPL_ERROR_FORMAT;
+    size_t required_bytes = required_doubles * 8;
+    if (required_bytes < (size_t)MIN_RECORD_BYTES) required_bytes = (size_t)MIN_RECORD_BYTES;
+    *out_required_doubles = required_doubles;
+    *out_required_bytes = required_bytes;
+    return JPL_OK;
+}
+
+/* Parse optional TT-TDB tail at checked offset inside header record.
+ * Updates reparsed header with tt_tdb_pointer and has_tt_tdb.
+ * Returns JPL_OK on success (or tail absent), propagates IO/MEMORY errors. */
+static jpl_status parse_tt_tdb_tail(const jpl_byte_source *source,
+                                    jpl_byte_order order,
+                                    jpl_header *reparsed,
+                                    size_t width,
+                                    size_t tail_extra) {
+    size_t tail = 0;
+    int tail_inside = 0;
+    unsigned char raw_tail[24];
+    jpl_status rstatus;
+    if (reparsed->record_double_count > width / 8) return JPL_ERROR_FORMAT;
+    reparsed->record_double_count = width / 8;
+    reparsed->has_tt_tdb = 0;
+    /* Tail location inside the candidate header record. The byte
+     * tail is 2856 + 6*extra (extra = max(nconst-400,0)); the
+     * guard below rejects 6*extra overflow before multiplying,
+     * then rejects tail+24 overflow before adding. */
+    if (tail_extra <= (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE - 24) /
+            (size_t)JPL_CONSTANT_NAME_LENGTH) {
+        tail = (size_t)JPL_TT_TDB_TAIL_BASE +
+            tail_extra * (size_t)JPL_CONSTANT_NAME_LENGTH;
+        tail_inside = tail + 24 <= width ? 1 : 0;
+    }
+    if (tail_inside) {
+        rstatus = parser_read_bytes(source, tail, raw_tail, sizeof raw_tail);
+        if (rstatus != JPL_OK) {
+            if (rstatus == JPL_ERROR_MEMORY) return JPL_ERROR_MEMORY;
+            if (rstatus == JPL_ERROR_IO) return rstatus;
+            return JPL_OK; /* Treat read failure as absent tail */
+        }
+        parse_optional_tt_tdb(reparsed, raw_tail, order);
+    }
+    jpl_pointer tentative = reparsed->tt_tdb_pointer;
+    memset(&reparsed->tt_tdb_pointer, 0, sizeof reparsed->tt_tdb_pointer);
+    /* Span end (start-1)+coeff*sub is the exclusive upper index
+     * in zero-based record doubles. A span ending at width is
+     * valid: its last coefficient occupies slot width-1 and is
+     * interpolated. */
+    size_t end = 0;
+    if (tail_inside &&
+        tt_tdb_span_end(&tentative, &end) == 0 &&
+        end <= reparsed->record_double_count) {
+        reparsed->tt_tdb_pointer = tentative;
+        reparsed->has_tt_tdb = 1;
+    }
+    /* The classic parse never sees the 24-byte tail (fixed
+     * 2856-byte window), so a triple accepted here is genuine
+     * header metadata at its checked offset, never
+     * constants-record bytes. */
+    return JPL_OK;
+}
+
+/* Test a single record width candidate with given extra_records (2 or 3).
+ * Validates first/last/trailing endpoints and TT-TDB tail.
+ * Returns JPL_OK if candidate validates, JPL_ERROR_FORMAT if not.
+ * On IO/MEMORY error, returns that error directly. */
+static jpl_status test_width_candidate(const jpl_byte_source *source,
+                                       jpl_byte_order order,
+                                       const jpl_header *candidate,
+                                       size_t width,
+                                       size_t expected_records,
+                                       size_t extra_records,
+                                       jpl_header *out_header) {
+    double first[2] = {0.0, 0.0}, second[2] = {0.0, 0.0};
+    double sched_first[2] = {0.0, 0.0}, sched_last[2] = {0.0, 0.0}, sched_trail[2] = {0.0, 0.0};
+    double tfirst[2] = {0.0, 0.0}, tsecond[2] = {0.0, 0.0};
+    size_t off_last, off_trail;
+    jpl_status ep_status;
+    jpl_header reparsed = *candidate;
+
+    size_t data_off = width + width;
+    ep_status = header_record_endpoints(source, data_off, width, order, first, second);
+    if (ep_status != JPL_OK) return JPL_ERROR_FORMAT;
+
+    if (scheduled_endpoint(candidate->start_jd, candidate->step_days, 0, sched_first) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (scheduled_endpoint(candidate->start_jd, candidate->step_days, 1, sched_last) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (endpoints_match(sched_first, first[0]) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (endpoints_match(sched_last, second[0]) != JPL_OK) return JPL_ERROR_FORMAT;
+
+    off_last = width + expected_records * width;
+    if (header_record_endpoints(source, off_last, width, order, first, second) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (scheduled_endpoint(candidate->start_jd, candidate->step_days, expected_records - 1, sched_first) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (scheduled_endpoint(candidate->start_jd, candidate->step_days, expected_records, sched_last) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (endpoints_match(sched_first, first[0]) != JPL_OK) return JPL_ERROR_FORMAT;
+    if (endpoints_match(sched_last, second[0]) != JPL_OK) return JPL_ERROR_FORMAT;
+
+    if (extra_records == 3) {
+        off_trail = width + (expected_records + 1) * width;
+        if (header_record_endpoints(source, off_trail, width, order, tfirst, tsecond) != JPL_OK) return JPL_ERROR_FORMAT;
+        if (scheduled_endpoint(candidate->start_jd, candidate->step_days, expected_records, sched_trail) != JPL_OK) return JPL_ERROR_FORMAT;
+        if (endpoints_match(sched_trail, tfirst[0]) != JPL_OK) return JPL_ERROR_FORMAT;
+        /* Trailing record is physical only; its end need not tie
+         * to advertised coverage (checked as ordered/finite). */
+    }
+
+    size_t tail_extra = reparsed.constant_count > JPL_MAX_CONSTANT_NAMES ?
+        (size_t)(reparsed.constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
+    jpl_status tail_status = parse_tt_tdb_tail(source, order, &reparsed, width, tail_extra);
+    if (tail_status != JPL_OK) return tail_status;
+
+    *out_header = reparsed;
     return JPL_OK;
 }
 
@@ -2016,14 +2186,10 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
     return JPL_OK;
 }
 
-jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out[6]) {
-    /* Signature-preserving wrapper: Sun distance unknown, so the <=0.4uas
-     * solar term is omitted (see jpl_apply_aberration_full). */
-    return jpl_apply_aberration_full(state, observer_vel, 0.0, out);
-}
 
-jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                               double sun_distance_au, double out[6]) {
+
+jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3],
+                                double sun_distance_au, double out[6]) {
     /* Solar gravitational radius; ERFA ERFA_SRS, kept in jpl_private.h.
      * Published formula (cf. ERFA eraAb, Explanatory Supplement Expr. 7.40
      * + Klioner 2003 solar term): pnat = r/rn direction, beta = v/c,
@@ -2091,8 +2257,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
         }
     }
     /* Full eraAb including the Klioner (2003) solar gravitational term;
-     * finite nonpositive Sun distance explicitly omits the potential term
-     * (wrapper behavior). Nonfinite Sun distance was rejected above. */
+     * finite positive Sun distance includes the potential term; nonpositive omits it. Nonfinite Sun distance was rejected above. */
     bm1 = sqrt(1.0 - beta2);
     if (!isfinite(bm1)) return JPL_ERROR_NUMERIC;
     for (i = 0; i < 3; ++i) {
@@ -2102,7 +2267,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     w1 = 1.0 + pdv / (1.0 + bm1);
     if (!isfinite(w1)) return JPL_ERROR_NUMERIC;
     /* SRS/sun_distance overflows only when the term is genuinely
-     * unrepresentable; finite nonpositive distance omits it. */
+     * unrepresentable; finite positive distance includes it; nonpositive omits it. */
     if (sun_distance_au > 0.0) {
         w2 = SRS / sun_distance_au;
         if (!isfinite(w2)) return JPL_ERROR_NUMERIC;

@@ -11,6 +11,12 @@
 
 #include "jpl.h"
 
+/* libjpl requires 64-bit size_t to address multi-GiB ephemerides (DE431/DE441).
+ * 32-bit builds are explicitly unsupported. */
+#if UINTPTR_MAX != UINT64_MAX
+#error "libjpl requires 64-bit size_t (multi-GiB ephemerides)"
+#endif
+
 /* IAU / JPL physical constants (exact values used across the library).
  * The modern AU and SI light speed are the exact inputs; light speed in
  * AU/day is derived from them, never a rounded literal. */

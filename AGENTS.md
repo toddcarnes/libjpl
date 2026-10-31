@@ -24,6 +24,43 @@ Merge a branch into `main` only with explicit maintainer approval. Use
 history; never fast-forward, rebase, or squash the branch into `main`.
 Verify the merged result before removing the branch or its worktree.
 
+## Branch workflow
+
+All changes must be made on a working branch, not directly on `main`:
+
+1. **Create and switch** before any edits:
+   ```sh
+   git checkout -b <branch-name>
+   ```
+
+2. **Verify branch** before committing:
+   ```sh
+   git branch  # confirm * <branch-name>
+   ```
+
+3. **Commit to the branch** (not main):
+   ```sh
+   git add ...
+   git commit -m "..."
+   ```
+
+4. **Test on the branch** before merge.
+
+5. **Merge with `--no-ff`** to `main` only after verification:
+   ```sh
+   git checkout main
+   git merge --no-ff <branch-name>
+   ```
+
+6. **Tag and delete** branch after successful merge:
+   ```sh
+   git tag -a vX.Y.Z -m "Release ..."
+   git branch -d <branch-name>
+   ```
+
+Never commit directly to `main` without a branch. The `git merge --no-ff`
+requirement in the section above assumes the work was done on a branch.
+
 ## Layout
 
 - `include/` — public API: `jpl.h` (core), `jpl_frames.h` (ICRS frames),

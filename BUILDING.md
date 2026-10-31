@@ -70,7 +70,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug -R jpl_csharp_binding --output-on-failure
 ```
 
-Requires .NET 8 SDK (`dotnet --version >= 8`). Provides `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, and convenience functions. Test runs via a generated wrapper script that places `jpl.dll` / `libjpl.so` on the library path.
+Requires .NET 8 SDK (`dotnet --version >= 8`). Provides `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, and convenience functions. Test runs require `jpl.dll` / `libjpl.so` to be on the library path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux).
 
 ### VB.NET Binding (P/Invoke + SafeHandle)
 
@@ -95,7 +95,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent, never failing.
+Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent in a default build. CI jobs (e.g. `bindings-windows`) enforce toolchain presence via explicit registration checks.
 
 ## Building Documentation
 

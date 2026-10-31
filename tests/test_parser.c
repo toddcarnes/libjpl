@@ -173,9 +173,9 @@ static int check_360_t15_absent(const char *path, uint32_t s, uint32_t c, uint32
     test_mock_header(h360, 2451545.0, 2451546.0, 1.0, 2);
     test_put_ptr(h360, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
     test_put_ptr(h360, 12, 441, 0, 0); /* DENUM + absent libration */
-    test_put_u32(h360 + 2868, s);
-    test_put_u32(h360 + 2872, c);
-    test_put_u32(h360 + 2876, l);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, s);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 4, c);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 8, l);
     for (i = 0; i < PARSER_DOUBLES; ++i) const360[i] = 0.0;
     const360[0] = 11.0;
     const360[1] = 22.0;

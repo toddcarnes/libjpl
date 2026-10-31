@@ -367,7 +367,7 @@ int main(void) {
             memset(con, 0, sizeof con);
             memset(dat, 0, sizeof dat);
             test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-            test_put_f64(hdr + 2680, JPL_TEST_NONMODERN_AU_KM);
+            test_put_f64(hdr + JPL_HDR_AU_KM_OFFSET, JPL_TEST_NONMODERN_AU_KM);
             test_put_ptr(hdr, 3, 3, 2, 1);
             test_put_f64(con, 1.0);
             test_put_f64(con + 8, 2.0);

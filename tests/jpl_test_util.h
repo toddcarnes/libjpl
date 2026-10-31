@@ -14,6 +14,8 @@
 #include <string.h>
 #include <math.h>
 
+#include "jpl_private.h"
+
 #define JPL_TEST_RECORD_BYTES 2856
 #define JPL_TEST_HEADER_BYTES 2880
 #define JPL_TEST_AU_KM 149597870.7
@@ -73,8 +75,8 @@ static inline void test_put_f64be(unsigned char *at, double v) {
 }
 
 /* IPT coefficient-pointer entry: idx 0-11 addresses file offset 2696+idx*12;
- * pseudo-slot 12 addresses the DENUM+libration words at 2840 (DENUM first),
- * and pseudo-slots 13/14 address IPT entries 14/15 at 2856/2868. */
+ * pseudo-slot 12 addresses the DENUM+libration words at JPL_HDR_DENUM_OFFSET (DENUM first),
+ * and pseudo-slots 13/14 address IPT entries 14/15 at JPL_HDR_IPT14_OFFSET/JPL_HDR_IPT14_OFFSET+JPL_TT_TDB_TRIPLET_OFFSET. */
 static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
     /* Programming-error trap for out-of-range slots (negative idx would
      * otherwise wrap to a huge size_t and corrupt memory). JPL_TEST_CHECK
@@ -82,7 +84,7 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
      * Release (NDEBUG), so fail loudly on every build flavor. */
     JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
-                 idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
+                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * 12u;
     test_put_u32(rec + off, start);
     test_put_u32(rec + off + 4, coeff);
     test_put_u32(rec + off + 8, sub);
@@ -94,20 +96,19 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
  * scalar cannot preserve an arbitrary residual). */
 static inline void test_mock_header(unsigned char *rec, double start_jd, double end_jd,
                              double step_days, uint32_t nconst) {
-    test_put_f64(rec + 2652, start_jd);
-    test_put_f64(rec + 2660, end_jd);
-    test_put_f64(rec + 2668, step_days);
-    test_put_u32(rec + 2676, nconst);
-    test_put_f64(rec + 2680, JPL_TEST_AU_KM);
-    test_put_f64(rec + 2688, JPL_TEST_MASS_RATIO);
+    test_put_f64(rec + JPL_HDR_START_JD_OFFSET, start_jd);
+    test_put_f64(rec + JPL_HDR_END_JD_OFFSET, end_jd);
+    test_put_f64(rec + JPL_HDR_STEP_DAYS_OFFSET, step_days);
+    test_put_u32(rec + JPL_HDR_NCONST_OFFSET, nconst);
+    test_put_f64(rec + JPL_HDR_AU_KM_OFFSET, JPL_TEST_AU_KM);
+    test_put_f64(rec + JPL_HDR_EMRAT_OFFSET, JPL_TEST_MASS_RATIO);
 }
 
-/* BE variants to stop hand-rolled offsets. */
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
     /* Same programming-error trap as test_put_ptr (see comment there). */
     JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
     size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
-                 idx == 12 ? (size_t)2840 : (size_t)2856 + (size_t)(idx - 13) * 12u;
+                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * 12u;
     test_put_u32be(rec + off, start);
     test_put_u32be(rec + off + 4, coeff);
     test_put_u32be(rec + off + 8, sub);
@@ -115,12 +116,12 @@ static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, 
 
 static inline void test_mock_header_be(unsigned char *rec, double start_jd, double end_jd,
                                        double step_days, uint32_t nconst) {
-    test_put_f64be(rec + 2652, start_jd);
-    test_put_f64be(rec + 2660, end_jd);
-    test_put_f64be(rec + 2668, step_days);
-    test_put_u32be(rec + 2676, nconst);
-    test_put_f64be(rec + 2680, JPL_TEST_AU_KM);
-    test_put_f64be(rec + 2688, JPL_TEST_MASS_RATIO);
+    test_put_f64be(rec + JPL_HDR_START_JD_OFFSET, start_jd);
+    test_put_f64be(rec + JPL_HDR_END_JD_OFFSET, end_jd);
+    test_put_f64be(rec + JPL_HDR_STEP_DAYS_OFFSET, step_days);
+    test_put_u32be(rec + JPL_HDR_NCONST_OFFSET, nconst);
+    test_put_f64be(rec + JPL_HDR_AU_KM_OFFSET, JPL_TEST_AU_KM);
+    test_put_f64be(rec + JPL_HDR_EMRAT_OFFSET, JPL_TEST_MASS_RATIO);
 }
 
 static inline double test_norm3(const double v[3]) {
@@ -183,14 +184,14 @@ static inline int test_write_mock(const char *path, const jpl_test_mock *mock) {
     memcpy(hdr, mock->header, record_bytes);
     start_scalar = mock->start[0] + mock->start[1];
     end_scalar = mock->end[0] + mock->end[1];
-    test_write_f64_endian(hdr + 2652, start_scalar, mock->big_endian);
-    test_write_f64_endian(hdr + 2660, end_scalar, mock->big_endian);
-    test_write_f64_endian(hdr + 2668, mock->step_days, mock->big_endian);
-    test_write_u32_endian(hdr + 2676, mock->constant_count, mock->big_endian);
-    test_write_f64_endian(hdr + 2680, mock->au_km, mock->big_endian);
-    test_write_f64_endian(hdr + 2688, mock->emrat, mock->big_endian);
+    test_write_f64_endian(hdr + JPL_HDR_START_JD_OFFSET, start_scalar, mock->big_endian);
+    test_write_f64_endian(hdr + JPL_HDR_END_JD_OFFSET, end_scalar, mock->big_endian);
+    test_write_f64_endian(hdr + JPL_HDR_STEP_DAYS_OFFSET, mock->step_days, mock->big_endian);
+    test_write_u32_endian(hdr + JPL_HDR_NCONST_OFFSET, mock->constant_count, mock->big_endian);
+    test_write_f64_endian(hdr + JPL_HDR_AU_KM_OFFSET, mock->au_km, mock->big_endian);
+    test_write_f64_endian(hdr + JPL_HDR_EMRAT_OFFSET, mock->emrat, mock->big_endian);
     /* DENUM word only; the libration words beside it stay caller-owned. */
-    test_write_u32_endian(hdr + 2840, (uint32_t)mock->denum, mock->big_endian);
+    test_write_u32_endian(hdr + JPL_HDR_DENUM_OFFSET, (uint32_t)mock->denum, mock->big_endian);
     f = fopen(path, "wb");
     if (f == NULL) { free(hdr); return 1; }
     if (fwrite(hdr, 1, record_bytes, f) != record_bytes) ok = 0;

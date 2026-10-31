@@ -9,6 +9,7 @@
  * strict validators must reject. Uses the shared mock writer.
  * Exit 0 on success, 1 on any failure. */
 #include "jpl_test_util.h"
+#include "jpl_private.h"
 
 #include <errno.h>
 #include <math.h>
@@ -67,7 +68,7 @@ static int write_full_mock(const char *path, int denum, int with_jupiter) {    s
     test_put_u32(hdr + 2856, 1); /* T14 triple (ignored) */
     test_put_u32(hdr + 2860, 1000000u);
     test_put_u32(hdr + 2864, 1000000u);
-    test_put_u32(hdr + 2868, 939); /* T15 = TT-TDB triple */
+    test_put_u32(hdr + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, 939); /* T15 = TT-TDB triple */
     test_put_u32(hdr + 2872, 11);
     test_put_u32(hdr + 2876, 4);
     for (i = 0; i < GOOD_DOUBLES; ++i) {

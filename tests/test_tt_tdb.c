@@ -4,6 +4,7 @@
  */
 #include "jpl.h"
 #include "jpl_test_util.h"
+#include "jpl_private.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -290,9 +291,9 @@ int main(void) {
         test_mock_header(bhdr, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(bhdr, 11, 2, 178, 1);
         test_put_ptr(bhdr, 12, 441, 0, 0);
-        test_put_u32(bhdr + 2868, 358u);
-        test_put_u32(bhdr + 2872, 3u);
-        test_put_u32(bhdr + 2876, 1u);
+        test_put_u32(bhdr + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, 358u);
+        test_put_u32(bhdr + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 4, 3u);
+        test_put_u32(bhdr + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 8, 1u);
         for (bi = 0; bi < BDBL; ++bi) bcon[bi] = 0.0;
         bcon[0] = 1.0;
         bcon[1] = 2.0;

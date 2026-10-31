@@ -88,7 +88,7 @@ int main(void) {
         static const double jd[2] = {2451545.5, 0.0};
         double st_au[6], raw[360] = {0}, lt = -1.0, expect_lt;
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_f64(rec + 2680, JPL_TEST_NONMODERN_AU_KM); /* override file AU */
+        test_put_f64(rec + JPL_HDR_AU_KM_OFFSET, JPL_TEST_NONMODERN_AU_KM); /* override file AU */
         test_put_ptr(rec, 2, 6, 1, 1);   /* EMB: slots 6..8, one coeff */
         test_put_ptr(rec, 10, 9, 1, 1);  /* Sun: slots 9..11, one coeff */
         f = fopen(path, "wb"); JPL_TEST_CHECK(f);

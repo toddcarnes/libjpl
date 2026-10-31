@@ -57,12 +57,22 @@
  * a cursor (p += 8/4) so the two must agree when the layout changes. */
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
+#define JPL_HDR_START_JD_OFFSET 2652
+#define JPL_HDR_END_JD_OFFSET 2660
+#define JPL_HDR_STEP_DAYS_OFFSET 2668
+#define JPL_HDR_NCONST_OFFSET 2676
+#define JPL_HDR_AU_KM_OFFSET 2680
+#define JPL_HDR_EMRAT_OFFSET 2688
+#define JPL_HDR_DENUM_OFFSET 2840
+#define JPL_HDR_LIBRATION_OFFSET 2844
+#define JPL_HDR_IPT14_OFFSET 2856
 
 /* Base file offset of the IPT 14/15 extension triplets when the file
  * carries no overflow constant names (constant_count <= 400). Files with
  * more constants store the extra 6-character names first, so the triplets
  * start at JPL_TT_TDB_TAIL_BASE + 6 * (constant_count - 400). */
 #define JPL_TT_TDB_TAIL_BASE 2856
+#define JPL_TT_TDB_TRIPLET_OFFSET 12
 
 static inline double jpl_vec_norm3(const double v[3]) {
     /* Scale-safe Euclidean norm: nested hypot preserves tiny (1e-200)

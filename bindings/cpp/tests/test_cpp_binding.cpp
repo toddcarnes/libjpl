@@ -68,6 +68,28 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Apparent ecliptic position returns a five-field result struct.
+        auto ecliptic = eph.apparent_ecliptic_position({2451545.0, 0.0}, 10); // Moon
+        if (!(ecliptic.longitude_deg >= 0.0 && ecliptic.longitude_deg < 360.0)) {
+            std::cerr << "Bad ecliptic longitude: " << ecliptic.longitude_deg << "\n";
+            return 1;
+        }
+        if (!(std::abs(ecliptic.latitude_deg) <= 90.0)) {
+            std::cerr << "Bad ecliptic latitude: " << ecliptic.latitude_deg << "\n";
+            return 1;
+        }
+        if (!(ecliptic.range_au > 0.002 && ecliptic.range_au < 0.003)) {
+            std::cerr << "Bad Moon range: " << ecliptic.range_au << "\n";
+            return 1;
+        }
+        if (!std::isfinite(ecliptic.longitude_rate_deg_per_day) ||
+            !std::isfinite(ecliptic.range_rate_km_per_s) ||
+            std::abs(ecliptic.range_rate_km_per_s) >= 1.0) {
+            std::cerr << "Bad ecliptic rates: " << ecliptic.longitude_rate_deg_per_day
+                      << ", " << ecliptic.range_rate_km_per_s << "\n";
+            return 1;
+        }
+
         // Test aberration
         std::array<double, 6> geom_state = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
         std::array<double, 3> obs_vel = {0.0, 29.78, 0.0}; // ~Earth orbital velocity km/s

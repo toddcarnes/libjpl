@@ -22,23 +22,23 @@ Public Enum JplByteOrder
 End Enum
 
 Public Enum JplTarget
-    Mercury = 0
-    Venus = 1
-    Earth = 2
-    Mars = 3
-    Jupiter = 4
-    Saturn = 5
-    Uranus = 6
-    Neptune = 7
-    Pluto = 8
-    Moon = 9
-    Sun = 10
-    SolarSystemBarycenter = 11
-    EarthMoonBarycenter = 12
-    Nutations = 13
-    Librations = 14
-    TtTdb = 15
-    Ssb = 16
+    Ssb = 0
+    Mercury = 1
+    Venus = 2
+    Earth = 3
+    Mars = 4
+    Jupiter = 5
+    Saturn = 6
+    Uranus = 7
+    Neptune = 8
+    Pluto = 9
+    Moon = 10
+    Sun = 11
+    SolarSystemBarycenter = 12
+    EarthMoonBarycenter = 13
+    Nutations = 14
+    Librations = 15
+    TtTdb = 17
 End Enum
 
 Public Enum JplReferenceFrame

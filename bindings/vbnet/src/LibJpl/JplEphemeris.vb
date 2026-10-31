@@ -295,18 +295,18 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
+        Dim result As New JplApparentEclipticResultNative()
         Dim status As JplStatus = Native.jpl_apparent_ecliptic_position(
-            handle, jdTt, CInt(target),
-            Nothing, Nothing, Nothing, Nothing, Nothing)
+            handle, jdTt, CInt(target), result)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
         Return New ApparentEclipticResult With {
-            .LongitudeDeg = 0,
-            .LatitudeDeg = 0,
-            .RangeAu = 0,
-            .LongitudeRateDegPerDay = 0,
-            .RangeRateKmPerS = 0
+            .LongitudeDeg = result.LongitudeDeg,
+            .LatitudeDeg = result.LatitudeDeg,
+            .RangeAu = result.RangeAu,
+            .LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
+            .RangeRateKmPerS = result.RangeRateKmPerS
         }
     End Function
 

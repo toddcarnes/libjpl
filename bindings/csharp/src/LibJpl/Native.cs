@@ -52,6 +52,16 @@ internal struct JplHeaderNative
     public int ByteOrder;
 }
 
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 8)]
+internal struct JplApparentEclipticResultNative
+{
+    public double LongitudeDeg;
+    public double LatitudeDeg;
+    public double RangeAu;
+    public double LongitudeRateDegPerDay;
+    public double RangeRateKmPerS;
+}
+
 public static partial class Native
 {
     private const string DllName = "jpl";
@@ -184,15 +194,11 @@ public static partial class Native
         [Out] double[] state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern JplStatus jpl_apparent_ecliptic_position(
+    internal static extern JplStatus jpl_apparent_ecliptic_position(
         IntPtr ephem,
         double[] jd_tt,
         int target,
-        out double longitude_deg,
-        out double latitude_deg,
-        out double range_au,
-        out double longitude_rate_deg_per_day,
-        out double range_rate_km_per_s);
+        out JplApparentEclipticResultNative result);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_au_per_day_to_km_per_s(

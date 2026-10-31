@@ -87,31 +87,64 @@ internal static JplHeader FromNative(IntPtr headerPtr)
     if (headerPtr == IntPtr.Zero)
         throw new ArgumentException("Invalid header pointer");
 
-    // Read ephemeris_number directly using pointer arithmetic to verify struct layout
-    // Offset calculation:
-    // titles[3][85] = 255 bytes
-    // constant_names[400][7] = 2800 bytes (total 3055)
-    // start_jd[2] = 16 bytes, aligned to 8 -> offset 3056 (total 3072)
-    // end_jd[2] = 16 bytes (total 3088)
-    // step_days = 8 bytes (total 3096)
-    // constant_count = 4 bytes + 4 padding = 8 bytes (total 3104)
-    // astronomical_unit_km = 8 bytes (total 3112)
-    // earth_moon_mass_ratio = 8 bytes (total 3120)
-    // pointers[12] = 12 * 12 = 144 bytes (total 3264)
-    // ephemeris_number = 4 bytes at offset 3264
-    int ephemerisNumber = Marshal.ReadInt32(headerPtr, 3264);
-    
-    var h = new JplHeader
+    JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
+
+    static string FixedString(byte[] bytes, int offset, int length)
     {
-        EphemerisNumber = ephemerisNumber,
-        Titles = Array.Empty<string>(),
-        ConstantNames = Array.Empty<string>(),
-        StartJd = Array.Empty<double>(),
-        EndJd = Array.Empty<double>(),
-        Pointers = Array.Empty<JplPointer>()
+        int end = Array.IndexOf(bytes, (byte)0, offset, length);
+        if (end < 0)
+            end = offset + length;
+        return System.Text.Encoding.UTF8.GetString(bytes, offset, end - offset);
+    }
+
+    var titles = new string[3];
+    for (int i = 0; i < titles.Length; ++i)
+    {
+        titles[i] = FixedString(native.TitlesFlat, i * 85, 85);
+    }
+
+    int nameCount = Math.Clamp(native.ConstantCount, 0, 400);
+    var constantNames = new string[nameCount];
+    for (int i = 0; i < constantNames.Length; ++i)
+    {
+        constantNames[i] = FixedString(native.ConstantNamesFlat, i * 7, 7);
+    }
+
+    var pointers = new JplPointer[12];
+    for (int i = 0; i < pointers.Length; ++i)
+    {
+        pointers[i] = ToPointer(native.Pointers[i]);
+    }
+
+    return new JplHeader
+    {
+        Titles = titles,
+        ConstantNames = constantNames,
+        StartJd = new[] { native.StartJd[0], native.StartJd[1] },
+        EndJd = new[] { native.EndJd[0], native.EndJd[1] },
+        StepDays = native.StepDays,
+        AstronomicalUnitKm = native.AstronomicalUnitKm,
+        ConstantCount = native.ConstantCount,
+        EarthMoonMassRatio = native.EarthMoonMassRatio,
+        Pointers = pointers,
+        EphemerisNumber = native.EphemerisNumber,
+        ReferenceFrame = (JplReferenceFrame)native.ReferenceFrame,
+        LibrationPointer = ToPointer(native.LibrationPointer),
+        TtTdbPointer = ToPointer(native.TtTdbPointer),
+        HasTtTdb = native.HasTtTdb,
+        RecordDoubleCount = (long)native.RecordDoubleCount,
+        ByteOrder = (JplByteOrder)native.ByteOrder
     };
-    
-    return h;
+}
+
+private static JplPointer ToPointer(JplPointerNative p)
+{
+    return new JplPointer
+    {
+        StartIndex = p.StartIndex,
+        CoefficientsPerComponent = p.CoefficientsPerComponent,
+        Subintervals = p.Subintervals
+    };
 }
 }
 

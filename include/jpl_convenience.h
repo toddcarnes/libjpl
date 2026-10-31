@@ -123,8 +123,8 @@ typedef struct jpl_apparent_ecliptic_result {
  *       is applied. File coverage is not a promise of frame/time-model
  *       accuracy across the entire file span.
  * @note Longitude speed is a numerical derivative of the fully corrected
- *       apparent longitude at nearby TT epochs (normally +/-0.01 day).
- *       A one-sided estimate is used near coverage boundaries. Longitude
+ *       apparent longitude at nearby TT epochs (normally h = 0.01 day).
+ *       A one-sided or adaptive estimate is used near coverage boundaries. Longitude
  *       is unwrapped across 0/360 degrees before differentiation; its
  *       estimate may be less reliable very near the solar limb.
  *       Radial range-rate follows Horizons quantity 20: the mixed-epoch

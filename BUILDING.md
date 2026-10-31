@@ -40,7 +40,7 @@ Xcode); omit on single-config Makefiles/Ninja, which default to Release.
 
 ## Language Bindings
 
-All language bindings require the shared library (`-DLIBJPL_BUILD_SHARED=ON`) and link against it at runtime. Each binding has its own CMake option (default `OFF`) and can be built/tested independently.
+All language bindings require the shared library (`-DLIBJPL_BUILD_SHARED=ON`) and Python, C#, and VB.NET link against the shared library at runtime, while the C++ binding links against the static library. Each binding has its own CMake option (default `OFF`) and can be built/tested independently.
 
 ### C++ Binding (Header-only RAII Wrapper)
 
@@ -50,7 +50,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug -R jpl_cpp_binding --output-on-failure
 ```
 
-Headers are installed to `${CMAKE_INSTALL_INCLUDEDIR}/jpl/` and provide `jpl::Ephemeris`, `jpl::JplError`, and `jpl::planet_position`/`jpl::moon_position` helpers.
+Headers are installed to `${CMAKE_INSTALL_INCLUDEDIR}/jpl/` and provide `jpl::Ephemeris`, `jpl::JplError`, and `planet_position`, `moon_position`, and `tt_to_tdb` members of `jpl::Ephemeris`.
 
 ### Python Binding (cffi)
 
@@ -70,7 +70,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug -R jpl_csharp_binding --output-on-failure
 ```
 
-Requires .NET 8 SDK (`dotnet --version >= 8`). Provides `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, and convenience functions. Test runs via a generated wrapper script that places `jpl.dll` / `libjpl.so` on the library path.
+Requires .NET 8 SDK (`dotnet --version >= 8`). Provides `LibJpl.JplEphemeris : SafeHandle`, `LibJplApi.Open/OpenMmap`, and convenience functions. Test runs require `jpl.dll` / `libjpl.so` to be on the library path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux).
 
 ### VB.NET Binding (P/Invoke + SafeHandle)
 
@@ -95,7 +95,7 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent, never failing.
+Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent in a default build. CI jobs (e.g. `bindings-windows`) enforce toolchain presence via explicit registration checks.
 
 ## Building Documentation
 
@@ -137,4 +137,4 @@ network access or Python.
 
 - Use the Visual Studio generator (multi-config): always pass `-C Debug` or
   `-C Release` to `ctest`.
-- Warnings are treated at `/W4 /permissive-` with zero tolerance.
+- Warnings are treated at `/W4 /permissive-` with zero tolerance. CI builds opt in to fatal warnings via -DCMAKE_COMPILE_WARNING_AS_ERROR=ON.

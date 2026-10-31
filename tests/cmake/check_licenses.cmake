@@ -81,7 +81,15 @@ set(known ${JPL_LICENSE_FIRST_PARTY} ${JPL_LICENSE_EXEMPT_FILES})
 set(unlisted "")
 foreach(candidate IN LISTS candidates)
   string(REPLACE "\\" "/" candidate "${candidate}")
-  if(candidate MATCHES "^(src/erfa/|docs/superpowers/|docs/reviews/|build/|build_*/|out/|\\.worktrees/|.git/|.superpowers/|docs/html/|docs/latex/|cmake-build-)" OR candidate MATCHES "/obj/" OR candidate MATCHES "/bin/")
+  if(candidate MATCHES "^(src/erfa/|docs/specs/|docs/plans/|docs/reviews/|docs/html/|docs/latex/|out/|\\.worktrees/|\\.git/|\\.superpowers/|build[^/]*/|cmake-build-[^/]*/)" OR candidate MATCHES "/obj/" OR candidate MATCHES "/bin/")
+    continue()
+  endif()
+  # Build trees may use any name. Skip a top-level directory that carries a
+  # CMake cache marker so a local mybuild/ is not swept as first-party
+  # source, while a plain directory of the same shape still reaches the
+  # inventory check below.
+  string(REGEX MATCH "^[^/]+/" top_component "${candidate}")
+  if(NOT top_component STREQUAL "" AND EXISTS "${SOURCE}/${top_component}CMakeCache.txt")
     continue()
   endif()
   list(FIND known "${candidate}" found)

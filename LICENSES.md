@@ -56,6 +56,6 @@ without assuming `share`.
 Full license texts (`LICENSE`, `src/erfa/LICENSE`), non-commentable
 artifacts (binary fixture, authoritative reference data, hashed
 identity list), vendored `src/erfa/**`, and verbatim historical records
-(`docs/superpowers/`, `docs/reviews/`) are exempt from per-file
+(`docs/specs/`, `docs/plans/`, `docs/reviews/`) are exempt from per-file
 notices for the stated reasons. The exemption list is explicit in
 `tests/license_inventory.cmake`, not a blanket exclusion.

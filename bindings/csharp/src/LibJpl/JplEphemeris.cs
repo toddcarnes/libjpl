@@ -286,20 +286,19 @@ public sealed class JplEphemeris : SafeHandle
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
         JplStatus status = Native.jpl_apparent_ecliptic_position(
-            handle, jdTt, (int)target,
-            out double lon, out double lat, out double rng,
-            out double lonRate, out double rngRate);
+            handle, jdTt, (int)target, out JplApparentEclipticResultNative result);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
+
         return new ApparentEclipticResult
         {
-            LongitudeDeg = lon,
-            LatitudeDeg = lat,
-            RangeAu = rng,
-            LongitudeRateDegPerDay = lonRate,
-            RangeRateKmPerS = rngRate
+            LongitudeDeg = result.LongitudeDeg,
+            LatitudeDeg = result.LatitudeDeg,
+            RangeAu = result.RangeAu,
+            LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
+            RangeRateKmPerS = result.RangeRateKmPerS
         };
     }
 

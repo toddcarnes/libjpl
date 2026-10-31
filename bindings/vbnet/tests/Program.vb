@@ -3,6 +3,8 @@
 ' See LICENSE in the project root for the full license text.
 
 Imports System
+Imports System.Linq
+Imports System.Runtime.InteropServices
 
 Module Program
 
@@ -21,6 +23,57 @@ Module Program
                     Console.Error.WriteLine($"Expected ephemeris number 441, got {header.EphemerisNumber}")
                     Environment.Exit(1)
                 End If
+
+                ' The managed mirror of jpl_header must match the C layout, or
+                ' fields would be read from the wrong offsets.
+                If Marshal.SizeOf(Of LibJpl.JplHeaderNative)() <> 3320 Then
+                    Console.Error.WriteLine($"JplHeaderNative size is {Marshal.SizeOf(Of LibJpl.JplHeaderNative)()}, expected 3320")
+                    Environment.Exit(1)
+                End If
+                Dim ephemerisOffset = Marshal.OffsetOf(Of LibJpl.JplHeaderNative)(
+                    NameOf(LibJpl.JplHeaderNative.EphemerisNumber)).ToInt32()
+                If ephemerisOffset <> 3264 Then
+                    Console.Error.WriteLine($"EphemerisNumber offset is {ephemerisOffset}, expected 3264")
+                    Environment.Exit(1)
+                End If
+
+                ' Header metadata must be populated from the native struct.
+                If header.ConstantCount < 400 Then
+                    Console.Error.WriteLine($"Expected at least 400 constants, got {header.ConstantCount}")
+                    Environment.Exit(1)
+                End If
+                If Not (header.StartJd(0) < header.EndJd(0)) Then
+                    Console.Error.WriteLine($"Bad coverage: {header.StartJd(0)} .. {header.EndJd(0)}")
+                    Environment.Exit(1)
+                End If
+                If header.Titles.Length <> 3 OrElse header.Titles.Any(AddressOf String.IsNullOrEmpty) Then
+                    Console.Error.WriteLine($"Missing header titles: {String.Join(",", header.Titles)}")
+                    Environment.Exit(1)
+                End If
+                If header.AstronomicalUnitKm < 1.4959787E+08 OrElse header.AstronomicalUnitKm > 1.49597871E+08 Then
+                    Console.Error.WriteLine($"Bad AU: {header.AstronomicalUnitKm}")
+                    Environment.Exit(1)
+                End If
+                If header.EarthMoonMassRatio < 81.3 OrElse header.EarthMoonMassRatio > 81.31 Then
+                    Console.Error.WriteLine($"Bad EMRAT: {header.EarthMoonMassRatio}")
+                    Environment.Exit(1)
+                End If
+                If header.Pointers(CInt(LibJpl.JplTarget.Earth)).Subintervals <= 0 Then
+                    Console.Error.WriteLine("Earth pointer has no subintervals")
+                    Environment.Exit(1)
+                End If
+
+                Dim constants = eph.ReadConstants()
+                If constants.Length <> header.ConstantCount Then
+                    Console.Error.WriteLine($"Read {constants.Length} constants, expected {header.ConstantCount}")
+                    Environment.Exit(1)
+                End If
+                For Each value In constants
+                    If Not Double.IsFinite(value) Then
+                        Console.Error.WriteLine("Non-finite constant value")
+                        Environment.Exit(1)
+                    End If
+                Next
 
                 ' Read Earth-from-Sun at J2000.0
                 Dim jdTdb = New Double() {2451545.0, 0.0}
@@ -66,6 +119,30 @@ Module Program
                         Environment.Exit(1)
                     End If
                 Next
+
+                ' Apparent ecliptic position returns a five-double result struct;
+                ' a mismatched declaration would corrupt memory instead of
+                ' merely returning wrong values.
+                Dim ecliptic = eph.ApparentEclipticPosition(
+                    New Double() {2451545.0, 0.0}, LibJpl.JplTarget.Moon)
+                If Not (ecliptic.LongitudeDeg >= 0.0 AndAlso ecliptic.LongitudeDeg < 360.0) Then
+                    Console.Error.WriteLine($"Bad ecliptic longitude: {ecliptic.LongitudeDeg}")
+                    Environment.Exit(1)
+                End If
+                If Not (Math.Abs(ecliptic.LatitudeDeg) <= 90.0) Then
+                    Console.Error.WriteLine($"Bad ecliptic latitude: {ecliptic.LatitudeDeg}")
+                    Environment.Exit(1)
+                End If
+                If Not (ecliptic.RangeAu > 0.002 AndAlso ecliptic.RangeAu < 0.003) Then
+                    Console.Error.WriteLine($"Bad Moon range: {ecliptic.RangeAu}")
+                    Environment.Exit(1)
+                End If
+                If Not Double.IsFinite(ecliptic.LongitudeRateDegPerDay) OrElse
+                   Not Double.IsFinite(ecliptic.RangeRateKmPerS) OrElse
+                   Math.Abs(ecliptic.RangeRateKmPerS) >= 1.0 Then
+                    Console.Error.WriteLine($"Bad ecliptic rates: {ecliptic.LongitudeRateDegPerDay}, {ecliptic.RangeRateKmPerS}")
+                    Environment.Exit(1)
+                End If
 
                 ' Test aberration
                 Dim geomState = New Double() {1.0, 0.0, 0.0, 0.0, 0.0, 0.0}

@@ -321,19 +321,15 @@ class Ephemeris:
     def apparent_ecliptic_position(self, jd_tt, target):
         """Apparent geocentric true-ecliptic position and motion."""
         jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        lon = _ffi.new("double *")
-        lat = _ffi.new("double *")
-        rng = _ffi.new("double *")
-        lon_rate = _ffi.new("double *")
-        rng_rate = _ffi.new("double *")
+        result = _ffi.new("jpl_apparent_ecliptic_result *")
         _check(_lib.jpl_apparent_ecliptic_position(self._handle, jd, int(target),
-                                                  lon, lat, rng, lon_rate, rng_rate))
+                                                   result))
         return {
-            'longitude_deg': float(lon[0]),
-            'latitude_deg': float(lat[0]),
-            'range_au': float(rng[0]),
-            'longitude_rate_deg_per_day': float(lon_rate[0]),
-            'range_rate_km_per_s': float(rng_rate[0]),
+            'longitude_deg': float(result.longitude_deg),
+            'latitude_deg': float(result.latitude_deg),
+            'range_au': float(result.range_au),
+            'longitude_rate_deg_per_day': float(result.longitude_rate_deg_per_day),
+            'range_rate_km_per_s': float(result.range_rate_km_per_s),
         }
 
     @staticmethod

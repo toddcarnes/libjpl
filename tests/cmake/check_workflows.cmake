@@ -5,7 +5,8 @@
 # Reads .github/workflows/ci.yml and ephemerides.yml as text (no YAML
 # dependency) and enforces: dedicated local-runner labels, nonempty
 # JPLEPH/JPL_TESTPO variable guards with directory checks, explicit local
-# test registration inspection (no parser-only pass), top-level
+# test registration inspection (no parser-only pass), binding coverage with
+# a ctest -N registration proof, warnings-as-errors in CI, top-level
 # read-only permissions, and immutable pinned third-party actions.
 # Variables: SOURCE (required source root).
 if(NOT DEFINED SOURCE OR "${SOURCE}" STREQUAL "")
@@ -71,6 +72,42 @@ foreach(_wf IN ITEMS ci ephemerides)
     endif()
     if(_content MATCHES "-R 'jpl_all_ephemerides_local\\|jpl_testpo_'")
       message(FATAL_ERROR "ephemerides.yml: local sweep regex can pass on parser-only tests")
+    endif()
+  endif()
+  if(_wf STREQUAL "ci")
+    # Binding coverage: the bindings are optional targets, so nothing else
+    # compiles or runs them. At least one job must enable all four plus the
+    # shared library they load at run time.
+    foreach(_opt IN ITEMS
+        LIBJPL_BUILD_SHARED
+        LIBJPL_BUILD_CPP_BINDING
+        LIBJPL_BUILD_PYTHON_BINDING
+        LIBJPL_BUILD_CSHARP_BINDING
+        LIBJPL_BUILD_VBNET_BINDING)
+      if(NOT _content MATCHES "-D${_opt}=ON")
+        message(FATAL_ERROR "ci.yml: no job enables ${_opt}")
+      endif()
+    endforeach()
+    # Registration proof: a missing interpreter or SDK makes a binding test
+    # skip at configure time, and a run without that test still exits 0, so
+    # the job must inspect `ctest -N` output for all four names.
+    if(NOT _content MATCHES "ctest[^\n]*-N")
+      message(FATAL_ERROR "ci.yml: binding jobs lack a ctest -N registration proof")
+    endif()
+    foreach(_test IN ITEMS
+        jpl_cpp_binding
+        jpl_python_binding
+        jpl_csharp_binding
+        jpl_vbnet_binding)
+      if(NOT _content MATCHES "${_test}")
+        message(FATAL_ERROR "ci.yml: registration proof does not cover ${_test}")
+      endif()
+    endforeach()
+    # Warnings are errors in CI only: local builds stay usable on compilers
+    # that warn about vendored sources. CMake maps this knob to /WX, -Werror,
+    # or the compiler's equivalent.
+    if(NOT _content MATCHES "-DCMAKE_COMPILE_WARNING_AS_ERROR=ON")
+      message(FATAL_ERROR "ci.yml: jobs do not enable CMAKE_COMPILE_WARNING_AS_ERROR")
     endif()
   endif()
 endforeach()

@@ -48,6 +48,7 @@ jpl_license_case("intact source passes" 0
 # the nested file deliberately has no copyright notice.
 include("${INVENTORY}")
 set(worktree_source "${WORK}/source-with-worktree")
+file(REMOVE_RECURSE "${worktree_source}")
 foreach(rel IN LISTS JPL_LICENSE_FIRST_PARTY)
   get_filename_component(rel_dir "${rel}" DIRECTORY)
   file(MAKE_DIRECTORY "${worktree_source}/${rel_dir}")
@@ -58,6 +59,40 @@ file(MAKE_DIRECTORY "${worktree_source}/.worktrees/linked/build")
 file(WRITE "${worktree_source}/.worktrees/linked/build/unlisted.c" "int generated;\n")
 jpl_license_case("nested git worktree is ignored" 0
   "-DSOURCE=${worktree_source}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
+
+# Build a minimal source copy from the inventory so the sweep sees no
+# unlisted files unless a case deliberately adds one.
+function(jpl_license_source_copy dest)
+  foreach(rel IN LISTS JPL_LICENSE_FIRST_PARTY)
+    get_filename_component(rel_dir "${rel}" DIRECTORY)
+    file(MAKE_DIRECTORY "${dest}/${rel_dir}")
+    file(COPY_FILE "${SOURCE}/${rel}" "${dest}/${rel}")
+  endforeach()
+  file(COPY_FILE "${SOURCE}/LICENSE" "${dest}/LICENSE")
+endfunction()
+
+# Positive: a conventional build directory name is exempt before it is
+# even configured (name-based exemption).
+set(build_source "${WORK}/source-with-build")
+file(REMOVE_RECURSE "${build_source}")
+jpl_license_source_copy("${build_source}")
+file(MAKE_DIRECTORY "${build_source}/build_review")
+file(WRITE "${build_source}/build_review/generated.c" "int generated;\n")
+jpl_license_case("conventional build dir is ignored" 0
+  "-DSOURCE=${build_source}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
+
+# Positive: any configured build tree is exempt by marker, not by name.
+file(MAKE_DIRECTORY "${build_source}/mybuild")
+file(WRITE "${build_source}/mybuild/CMakeCache.txt" "# generated\n")
+file(WRITE "${build_source}/mybuild/generated.c" "int generated;\n")
+jpl_license_case("configured build dir of any name is ignored" 0
+  "-DSOURCE=${build_source}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
+
+# Negative: the same shape without a cache marker is still source.
+file(MAKE_DIRECTORY "${build_source}/plain")
+file(WRITE "${build_source}/plain/unlisted.c" "int generated;\n")
+jpl_license_case("plain directory is still swept" 1
+  "-DSOURCE=${build_source}" "-DINVENTORY=${INVENTORY}" -P "${CHECKER}")
 
 # Positive: a staged prefix holding both complete texts passes.
 file(MAKE_DIRECTORY "${WORK}/stage/${DATADIR}/licenses/libjpl")
@@ -75,7 +110,7 @@ jpl_license_case("missing root license fails" 1
 # Negative: a build-tree copy with the SPDX header stripped must fail.
 # Only inventoried files are copied (preserving relative paths), so the
 # sweep sees no unlisted files and the failure names src/jpl.c exactly.
-file(MAKE_DIRECTORY "${WORK}/neg")
+file(REMOVE_RECURSE "${WORK}/neg")
 include("${INVENTORY}")
 foreach(rel IN LISTS JPL_LICENSE_FIRST_PARTY)
   get_filename_component(rel_dir "${rel}" DIRECTORY)

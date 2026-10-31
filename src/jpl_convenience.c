@@ -47,26 +47,32 @@ static jpl_status observer_geometry(const jpl_ephemeris *e, const jpl_date *tdb,
     if (s != JPL_OK) return s;
     s = jpl_get_state(e, tdb, center, JPL_SSB, observer);
     if (s != JPL_OK) return s;
-    return jpl_get_state(e, tdb, center, JPL_SUN, sun_from_observer);
+    return jpl_get_state(e, tdb, JPL_SUN, center, sun_from_observer);
 }
 
 static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_tt,
                                     jpl_date *tt, jpl_date *tdb) {
     const jpl_header *header;
+    double cov_start_arr[2], cov_end_arr[2];
     jpl_date cov_start, cov_end;
     jpl_status s;
     if (!e || !jd_tt || !tt || !tdb) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(jd_tt, tt);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    s = jpl_date_normalize(jd_tt_arr, jd_tt_arr);
     if (s != JPL_OK) return s;
+    jpl_pair_to_date(jd_tt_arr, tt);
     s = jpl_tt_to_tdb(tt, tdb);
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(header->start_jd, &cov_start);
+    s = jpl_date_normalize(header->start_jd, cov_start_arr);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
-    s = jpl_date_normalize(header->end_jd, &cov_end);
+    jpl_pair_to_date(cov_start_arr, &cov_start);
+    s = jpl_date_normalize(header->end_jd, cov_end_arr);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
+    jpl_pair_to_date(cov_end_arr, &cov_end);
     if (jpl_date_compare(tdb, &cov_start) < 0 ||
         jpl_date_compare(tdb, &cov_end) > 0) return JPL_ERROR_RANGE;
     if (header->reference_frame != JPL_FRAME_ICRF) return JPL_ERROR_UNSUPPORTED;
@@ -76,7 +82,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
 jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, int planet, int center, jpl_state *st) {
     jpl_date tt, tdb;
     double lt;
-    jpl_state tmp, vobs, cst;
+    jpl_state tmp, cst;
     int eff_center;
     jpl_status s;
     if(!e||!st||!jd_tt) return JPL_ERROR_ARGUMENT;
@@ -115,22 +121,24 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     if (eff_center != JPL_SUN) {
         jpl_state sun_obs;
         double sdist;
+        double vobs[3];
         s = observer_geometry(e, &tdb, planet, center, &tmp, &cst, &sun_obs, &lt);
         if (s != JPL_OK) return s;
-        vobs.vx = cst.vx; vobs.vy = cst.vy; vobs.vz = cst.vz;
+        vobs[0] = cst.vx; vobs[1] = cst.vy; vobs[2] = cst.vz;
         sdist = jpl_vec_norm3(&sun_obs);
         if (!isfinite(sdist)) return JPL_ERROR_NUMERIC;
         /* Finite nonpositive Sun distance omits the potential term
          * inside the aberration call; nonfinite is ARGUMENT there. */
-        s = jpl_apply_aberration(&tmp, &vobs, sdist, &tmp);
+        s = jpl_apply_aberration(&tmp, vobs, sdist, &tmp);
         if (s != JPL_OK) return s;
     } else {
+        double vobs[3];
         s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, &lt);
         if (s != JPL_OK) return s;
         s = jpl_get_state(e, &tdb, eff_center, 0, &cst);
         if (s != JPL_OK) return s;
-        vobs.vx = cst.vx; vobs.vy = cst.vy; vobs.vz = cst.vz;
-        s = jpl_apply_aberration(&tmp, &vobs, 0.0, &tmp);
+        vobs[0] = cst.vx; vobs[1] = cst.vy; vobs[2] = cst.vz;
+        s = jpl_apply_aberration(&tmp, vobs, 0.0, &tmp);
         if (s != JPL_OK) return s;
     }
     *st = tmp;

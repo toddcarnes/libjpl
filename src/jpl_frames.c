@@ -48,7 +48,9 @@ jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
     }
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tt, tt);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    status = jpl_date_normalize(jd_tt_arr, tt);
     if (status != JPL_OK) return status;
     eraPnm06a(tt[0], tt[1], m);
     eraNut06a(tt[0], tt[1], &dpsi, &deps);
@@ -75,7 +77,9 @@ jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]) {
     if (!jd_tt || !R) return JPL_ERROR_ARGUMENT;
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tt, norm);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    status = jpl_date_normalize(jd_tt_arr, norm);
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     /* Pass both parts to ERFA: eraEcm06(date1, date2) keeps the small
      * residual alive instead of rounding a scalar full epoch. Compute
@@ -130,7 +134,9 @@ jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, j
     if (status != JPL_OK) return status;
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tt, norm);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    status = jpl_date_normalize(jd_tt_arr, norm);
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     eraEcm06(norm[0], norm[1], ecm);
     /* Mirror the rotation-matrix finiteness check: do not publish a
@@ -166,7 +172,9 @@ jpl_status jpl_tt_to_tdb(const jpl_date *jd_tt, jpl_date *jd_tdb) {
     if (!jd_tt || !jd_tdb) return JPL_ERROR_ARGUMENT;
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tt, norm);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    status = jpl_date_normalize(jd_tt_arr, norm);
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     correction = eraDtdb(norm[0], norm[1], 0.0, 0.0, 0.0, 0.0) / JPL_DAYSEC;
     if (!isfinite(correction)) return JPL_ERROR_NUMERIC;
@@ -189,7 +197,9 @@ jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt) {
     if (!jd_tdb || !jd_tt) return JPL_ERROR_ARGUMENT;
     status = check_date(jd_tdb);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tdb, input);
+    double jd_tdb_arr[2];
+    jpl_date_to_pair(jd_tdb, jd_tdb_arr);
+    status = jpl_date_normalize(jd_tdb_arr, input);
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     /* Start at TDB, then correct: predicted = candidate + dtdb(candidate),
      * residual = predicted - input, next = candidate - residual. */
@@ -225,7 +235,9 @@ jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **o
     if (!jd_tt || !out_context) return JPL_ERROR_ARGUMENT;
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(jd_tt, norm);
+    double jd_tt_arr[2];
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    status = jpl_date_normalize(jd_tt_arr, norm);
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     eraEcm06(norm[0], norm[1], ecm);
     eraTr(ecm, local);

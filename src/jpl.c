@@ -38,22 +38,6 @@ _Static_assert(offsetof(jpl_header, ephemeris_number) == 3264,
                "jpl_header.ephemeris_number moved: update the C#/VB bindings");
 #endif
 
-/* Conversion helpers between public struct types and internal double[2]/double[6] */
-static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
-    out[0] = d->hi; out[1] = d->lo;
-}
-static inline void jpl_pair_to_date(const double in[2], jpl_date *d) {
-    d->hi = in[0]; d->lo = in[1];
-}
-static inline void jpl_state_to_array(const jpl_state *s, double out[6]) {
-    out[0] = s->x; out[1] = s->y; out[2] = s->z;
-    out[3] = s->vx; out[4] = s->vy; out[5] = s->vz;
-}
-static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
-    s->x = in[0]; s->y = in[1]; s->z = in[2];
-    s->vx = in[3]; s->vy = in[4]; s->vz = in[5];
-}
-
 #if defined(_WIN32)
 #define JPL_FSEEK _fseeki64
 #define JPL_FTELL _ftelli64

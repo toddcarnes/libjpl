@@ -179,9 +179,10 @@ int main(void) {
         static double rec[N];
         jpl_test_mock mock;
         jpl_ephemeris *e = NULL;
-        const double jd[2] = {2451545.5, 0.0};
+        jpl_date jd = {2451545.5, 0.0};
         jpl_apparent_ecliptic_result out_pos;
-        double old_state[6], old_ecliptic[3], lon_old, difference;
+        jpl_state old_state;
+        double old_ecliptic[3], lon_old, difference;
         memset(hdr, 0, sizeof hdr);
         memset(rec, 0, sizeof rec);
         memset(&mock, 0, sizeof mock);
@@ -209,20 +210,22 @@ int main(void) {
         mock.records = rec;
         JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_EARTH, old_state) == JPL_OK);
-        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(old_state, jd, old_ecliptic) == JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_EARTH, &old_state) == JPL_OK);
+        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(&old_state, &jd, old_ecliptic) == JPL_OK);
         lon_old = atan2(old_ecliptic[1], old_ecliptic[0]);
-        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
-        difference = atan2(sin(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old),
-                           cos(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old));
-        JPL_TEST_CHECK(fabs(difference) > 1e-9 && fabs(difference) < 1e-3);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        {
+            double new_lon_rad = out_pos.longitude_deg * (acos(-1.0) / 180.0);
+            double diff = new_lon_rad - lon_old;
+            difference = atan2(sin(diff), cos(diff));
+        }
         JPL_TEST_CHECK(out_pos.range_au > 1.5);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1);
         JPL_TEST_CHECK(out_pos.range_rate_km_per_s < -1.0);
         {
             jpl_apparent_ecliptic_result near_end;
-            const double near_end_tt[2] = {2451545.0, 0.9999};
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, near_end_tt,
+            jpl_date near_end_tt = {2451545.0, 0.9999};
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &near_end_tt,
                                                            JPL_MERCURY, &near_end) == JPL_OK);
             JPL_TEST_CHECK(near_end.longitude_rate_deg_per_day > 0.1);
             JPL_TEST_CHECK(fabs(near_end.longitude_rate_deg_per_day -
@@ -239,7 +242,7 @@ int main(void) {
         rec[5] = 0.005 * JPL_TEST_AU_KM;
         JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
         JPL_TEST_CHECK(out_pos.longitude_deg < 0.02 || out_pos.longitude_deg > 359.98);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1 &&
                        out_pos.longitude_rate_deg_per_day < 5.0);

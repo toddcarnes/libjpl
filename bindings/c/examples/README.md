@@ -27,21 +27,21 @@ cmake --build build --config Debug
 
 int main(int argc, char** argv) {
     jpl_ephemeris *de;
-    const double jd_tdb[2] = {2451545.0, 0.0};  // J2000.0 TDB
-    double state[6];
+    const jpl_date jd_tdb = {2451545.0, 0.0};  // J2000.0 TDB
+    jpl_state state;
 
     if (jpl_open("DE441.eph", &de) != JPL_OK)
         return 1;
 
-    if (jpl_get_state(de, jd_tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) {
+    if (jpl_get_state(de, &jd_tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) {
         jpl_close(de);
         return 1;
     }
 
     printf("Earth from Sun at J2000:\n");
-    printf("  X: %.6f AU  Y: %.6f AU  Z: %.6f AU\n", state[0], state[1], state[2]);
+    printf("  X: %.6f AU  Y: %.6f AU  Z: %.6f AU\n", state.x, state.y, state.z);
     printf("  VX: %.6f AU/d  VY: %.6f AU/d  VZ: %.6f AU/d\n",
-           state[3], state[4], state[5]);
+           state.vx, state.vy, state.vz);
 
     jpl_close(de);
     return 0;
@@ -53,24 +53,30 @@ int main(int argc, char** argv) {
 ```c
 static int moon_and_planets(const char *path) {
     jpl_ephemeris *de;
-    static const double jd_tt[2] = {2451545.0, 0.0};  // J2000.0 TT
-    double jd_tdb[2], moon_earth[6], earth_sun[6], moon_sun[6];
+    static const jpl_date jd_tt = {2451545.0, 0.0};  // J2000.0 TT
+    jpl_date jd_tdb = {0.0, 0.0};
+    jpl_state moon_earth, earth_sun, moon_sun;
 
     if (jpl_open(path, &de) != JPL_OK) return 1;
-    if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
 
     // Moon position (Earth-centered)
-    if (jpl_moon_position(de, jd_tt, moon_earth) != JPL_OK) {
+    if (jpl_moon_position(de, &jd_tt, &moon_earth) != JPL_OK) {
         jpl_close(de); return 1;
     }
 
     // Earth from Sun
-    if (jpl_planet_position(de, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) {
+    if (jpl_planet_position(de, &jd_tt, JPL_EARTH, JPL_SUN, &earth_sun) != JPL_OK) {
         jpl_close(de); return 1;
     }
 
     // Moon from Sun = Moon from Earth + Earth from Sun
-    for (int i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];
+    moon_sun.x = moon_earth.x + earth_sun.x;
+    moon_sun.y = moon_earth.y + earth_sun.y;
+    moon_sun.z = moon_earth.z + earth_sun.z;
+    moon_sun.vx = moon_earth.vx + earth_sun.vx;
+    moon_sun.vy = moon_earth.vy + earth_sun.vy;
+    moon_sun.vz = moon_earth.vz + earth_sun.vz;
 
     jpl_close(de);
     return 0;
@@ -82,23 +88,25 @@ static int moon_and_planets(const char *path) {
 ```c
 static int light_and_aberration(const char *path) {
     jpl_ephemeris *de;
-    static const double jd_tt[2] = {2451545.0, 0.0};
-    double jd_tdb[2], geo[6], app[6], lt;
+    static const jpl_date jd_tt = {2451545.0, 0.0};
+    jpl_date jd_tdb = {0.0, 0.0};
+    jpl_state geo, app;
+    double lt;
 
     if (jpl_open(path, &de) != JPL_OK) return 1;
-    if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
 
     // Geometric state (light-time corrected, no aberration)
-    if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) {
+    if (jpl_get_state_lighttime(de, &jd_tdb, JPL_MARS, JPL_SUN, &geo, &lt) != JPL_OK) {
         jpl_close(de); return 1;
     }
 
     // Apparent state (light-time + aberration)
-    if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) {
+    if (jpl_planet_position(de, &jd_tt, JPL_MARS, JPL_SUN, &app) != JPL_OK) {
         jpl_close(de); return 1;
     }
 
-    printf("Geometric: %f  Apparent: %f  Light time: %f days\n", geo[0], app[0], lt);
+    printf("Geometric: %f  Apparent: %f  Light time: %f days\n", geo.x, app.x, lt);
 
     jpl_close(de);
     return 0;
@@ -110,22 +118,25 @@ static int light_and_aberration(const char *path) {
 ```c
 static int frames(const char *path) {
     jpl_ephemeris *de;
-    static const double jd_tt[2] = {2451545.0, 0.0};
-    double state[6], icrs[6], ecliptic[6], R[3][3];
+    static const jpl_date jd_tt = {2451545.0, 0.0};
+    jpl_date jd_tdb = {0.0, 0.0};
+    jpl_state state, icrs, ecliptic;
+    double R[3][3];
 
     if (jpl_open(path, &de) != JPL_OK) return 1;
-    if (jpl_get_state(de, jd_tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) {
+    if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_get_state(de, &jd_tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) {
         jpl_close(de); return 1;
     }
 
     // Ecliptic -> ICRS
-    if (jpl_ecliptic_to_icrs(state, jd_tt, icrs) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_ecliptic_to_icrs(&state, &jd_tt, &icrs) != JPL_OK) { jpl_close(de); return 1; }
 
     // ICRS -> Ecliptic
-    if (jpl_icrs_to_ecliptic(state, jd_tt, ecliptic) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_icrs_to_ecliptic(&state, &jd_tt, &ecliptic) != JPL_OK) { jpl_close(de); return 1; }
 
     // Rotation matrix
-    if (jpl_frame_rotation_matrix(jd_tt, R) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_frame_rotation_matrix(&jd_tt, R) != JPL_OK) { jpl_close(de); return 1; }
 
     jpl_close(de);
     return 0;
@@ -137,19 +148,19 @@ static int frames(const char *path) {
 ```c
 static int time_conv(const char *path) {
     jpl_ephemeris *de;
-    double jd_tt[2] = {2451545.0, 0.0};
-    double jd_tdb[2], jd_tt2[2];
+    jpl_date jd_tt = {2451545.0, 0.0};
+    jpl_date jd_tdb = {0.0, 0.0}, jd_tt2 = {0.0, 0.0};
 
     if (jpl_open(path, &de) != JPL_OK) return 1;
 
     // TT -> TDB
-    if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { jpl_close(de); return 1; }
 
     // TDB -> TT (round-trip)
-    if (jpl_tdb_to_tt(jd_tdb, jd_tt2) != JPL_OK) { jpl_close(de); return 1; }
+    if (jpl_tdb_to_tt(&jd_tdb, &jd_tt2) != JPL_OK) { jpl_close(de); return 1; }
 
     // Round-trip should be accurate to ~1e-15 days
-    double diff = fabs(jd_tt2[0] - jd_tt[0]) + fabs(jd_tt2[1] - jd_tt[1]);
+    double diff = fabs(jd_tt2.hi - jd_tt.hi) + fabs(jd_tt2.lo - jd_tt.lo);
     printf("Round-trip error: %.3e days\n", diff);
 
     jpl_close(de);
@@ -170,9 +181,9 @@ cmake --build build --config Debug
 
 ## Key Points
 
-1. **Two-part dates**: Always use `double[2]` for Julian dates (day + fraction). Never compute a scalar and split it.
+1. **Two-part dates**: Always use `jpl_date` structs (high + low parts). Never compute a scalar and split it.
 2. **Error handling**: Every function returns `jpl_status`. Check for `JPL_OK`.
 3. **Thread safety**: Use `jpl_ephemeris_clone()` for concurrent reads on FILE path.
 4. **Frame restrictions**: `jpl_planet_position` requires `JPL_FRAME_ICRF`.
-5. **Two-part dates**: Build day+fraction pairs directly. Never split a scalar epoch.
+5. **Two-part dates**: Build `jpl_date` high+low parts directly. Never split a scalar epoch.
 6. **Resource cleanup**: Always call `jpl_close()` exactly once per handle.

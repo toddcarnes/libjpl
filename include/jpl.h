@@ -395,8 +395,9 @@ JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const jpl_date 
  *       State velocity is the mixed-epoch difference
  *       v_target(emission) - v_center(reception); it is not the derivative
  *       of apparent position with respect to reception time. Aberration is
- *       not applied (use jpl_apply_aberration_full with the observer
- *       velocity at reception).
+ *       not applied (use jpl_apply_aberration with the observer velocity
+ *       at reception, passing the Sun distance to include the solar term
+ *       or 0.0 to omit it).
  * @note Computed state and optional light-time output are unchanged on
  *       failure.
  */

@@ -46,6 +46,22 @@ Friend Structure JplHeaderNative
 End Structure
 
 <StructLayout(LayoutKind.Sequential, Pack:=8)>
+Friend Structure JplDateNative
+    Public Hi As Double
+    Public Lo As Double
+End Structure
+
+<StructLayout(LayoutKind.Sequential, Pack:=8)>
+Friend Structure JplStateNative
+    Public X As Double
+    Public Y As Double
+    Public Z As Double
+    Public Vx As Double
+    Public Vy As Double
+    Public Vz As Double
+End Structure
+
+<StructLayout(LayoutKind.Sequential, Pack:=8)>
 Friend Structure JplApparentEclipticResultNative
     Public LongitudeDeg As Double
     Public LatitudeDeg As Double
@@ -101,7 +117,7 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_tt_minus_tdb(
         ephemeris As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tdb As Double(),
+        jd_tdb As JplDateNative,
         <Out()> ByRef seconds As Double,
         <Out()> ByRef rate_per_day As Double) As JplStatus
     End Function
@@ -113,35 +129,28 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_state(
         ephemeris As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tdb As Double(),
+        jd_tdb As JplDateNative,
         target As Integer,
         center As Integer,
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double()) As JplStatus
+        <Out()> ByRef state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_state_lighttime(
         ephemeris As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tdb As Double(),
+        jd_tdb As JplDateNative,
         target As Integer,
         center As Integer,
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double(),
+        <Out()> ByRef state As JplStateNative,
         <Out()> ByRef out_light_time As Double) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_apply_aberration(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double(),
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=3)> observer_vel As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> out_state As Double()) As JplStatus
-    End Function
-
-    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
-    Public Function jpl_apply_aberration_full(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double(),
+        ByRef state As JplStateNative,
         <MarshalAs(UnmanagedType.LPArray, SizeConst:=3)> observer_vel As Double(),
         sun_distance_au As Double,
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> out_state As Double()) As JplStatus
+        <Out()> ByRef out_state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
@@ -159,57 +168,57 @@ Friend Module Native
     ' jpl_frames.h - frame conversions and time conversions
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_ecliptic_to_icrs(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double(),
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> out_state As Double()) As JplStatus
+        ByRef state As JplStateNative,
+        jd_tt As JplDateNative,
+        <Out()> ByRef out_state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_icrs_to_ecliptic(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double(),
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> out_state As Double()) As JplStatus
+        ByRef state As JplStateNative,
+        jd_tt As JplDateNative,
+        <Out()> ByRef out_state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_frame_rotation_matrix(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray)> R As Double(,)) As JplStatus
+        jd_tt As JplDateNative,
+        <Out(), MarshalAs(UnmanagedType.LPArray)> R As Double(,)) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_tt_to_tdb(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tdb As Double()) As JplStatus
+        jd_tt As JplDateNative,
+        <Out()> ByRef jd_tdb As JplDateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_tdb_to_tt(
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tdb As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double()) As JplStatus
+        jd_tdb As JplDateNative,
+        <Out()> ByRef jd_tt As JplDateNative) As JplStatus
     End Function
 
     ' jpl_convenience.h - planet/Moon helpers and unit conversions
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_planet_position(
         ephem As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
+        jd_tt As JplDateNative,
         planet As Integer,
         center As Integer,
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double()) As JplStatus
+        <Out()> ByRef state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_moon_position(
         ephem As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
-        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=6)> state As Double()) As JplStatus
+        jd_tt As JplDateNative,
+        <Out()> ByRef state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_apparent_ecliptic_position(
         ephem As IntPtr,
-        <MarshalAs(UnmanagedType.LPArray, SizeConst:=2)> jd_tt As Double(),
+        jd_tt As JplDateNative,
         target As Integer,
         ByRef result As JplApparentEclipticResultNative) As JplStatus
     End Function

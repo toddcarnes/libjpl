@@ -31,8 +31,8 @@ The complete usage contract (two-part dates, status returns, error and
 output-on-error behaviour, frame gating, modern AU) lives in
 [`docs/migration-two-part-dates.md`](docs/migration-two-part-dates.md) and
 in the Doxygen API reference for `jpl.h`, `jpl_frames.h`, and
-`jpl_convenience.h`. Build dates as two-part arrays directly (a day part
-plus a fraction part): never compute a scalar full epoch first and split
+`jpl_convenience.h`. Build dates as `jpl_date` structs directly (a high part
+plus a low part): never compute a scalar full epoch first and split
 it afterward, because the already-rounded scalar cannot be repaired by
 splitting. On-disk record epochs stay scalar; only in-memory computation
 uses pairs.
@@ -42,9 +42,9 @@ uses pairs.
 
 jpl_ephemeris *de;
 if (jpl_open("de440.bin", &de) == JPL_OK) {
-    double earth_from_sun[6];
-    static const double jd_tdb[2] = {2451545.0, 0.0};
-    if (jpl_get_state(de, jd_tdb, JPL_EARTH, JPL_SUN, earth_from_sun) != JPL_OK) { /* handle error */ }
+    jpl_state earth_from_sun;
+    static const jpl_date jd_tdb = {2451545.0, 0.0};
+    if (jpl_get_state(de, &jd_tdb, JPL_EARTH, JPL_SUN, &earth_from_sun) != JPL_OK) { /* handle error */ }
     /* x,y,z in AU; vx,vy,vz in AU/day */
     jpl_close(de);
 }
@@ -61,12 +61,17 @@ JPL/NASA and ensure they use the standard binary record layout.
 #include <jpl_convenience.h>
 
 jpl_ephemeris *de; /* from jpl_open(...) */
-static const double jd_tt[2] = {2451545.0, 0.0};
-double moon_earth[6], earth_sun[6], moon_sun[6];
+static const jpl_date jd_tt = {2451545.0, 0.0};
+jpl_state moon_earth, earth_sun, moon_sun;
 /* jd_tt is Terrestrial Time; geometric calls take TDB (millisecond-scale apart). */
-if (jpl_moon_position(de, jd_tt, moon_earth) != JPL_OK) { /* handle error */ }
-if (jpl_planet_position(de, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) { /* handle error */ }
-for (int i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];
+if (jpl_moon_position(de, &jd_tt, &moon_earth) != JPL_OK) { /* handle error */ }
+if (jpl_planet_position(de, &jd_tt, JPL_EARTH, JPL_SUN, &earth_sun) != JPL_OK) { /* handle error */ }
+moon_sun.x = moon_earth.x + earth_sun.x;
+moon_sun.y = moon_earth.y + earth_sun.y;
+moon_sun.z = moon_earth.z + earth_sun.z;
+moon_sun.vx = moon_earth.vx + earth_sun.vx;
+moon_sun.vy = moon_earth.vy + earth_sun.vy;
+moon_sun.vz = moon_earth.vz + earth_sun.vz;
 ```
 
 Note: adding apparent legs mixes emission epochs; approximate only (see jpl_convenience.h).
@@ -77,10 +82,11 @@ Note: adding apparent legs mixes emission epochs; approximate only (see jpl_conv
 #include <jpl_convenience.h>
 
 jpl_ephemeris *ephemeris; /* from jpl_open(...) */
-const double tt[2] = {2451545.0, 0.125};
-double tdb[2], state[6];
-if (jpl_tt_to_tdb(tt, tdb) != JPL_OK) return 1;
-if (jpl_get_state(ephemeris, tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) return 1;
+const jpl_date tt = {2451545.0, 0.125};
+jpl_date tdb = {0.0, 0.0};
+jpl_state state;
+if (jpl_tt_to_tdb(&tt, &tdb) != JPL_OK) return 1;
+if (jpl_get_state(ephemeris, &tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) return 1;
 ```
 
 ```c
@@ -89,12 +95,13 @@ if (jpl_get_state(ephemeris, tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) return 1
 #include <jpl_convenience.h>
 
 jpl_ephemeris *de; /* from jpl_open(...) */
-static const double jd_tt[2] = {2451545.0, 0.0};
-double jd_tdb[2];
-double geo[6], app[6], lt;
-if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { /* handle error */ }
-if (jpl_get_state_lighttime(de, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) { /* handle error */ }
-if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handle error */ }
+static const jpl_date jd_tt = {2451545.0, 0.0};
+jpl_date jd_tdb = {0.0, 0.0};
+jpl_state geo, app;
+double lt;
+if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { /* handle error */ }
+if (jpl_get_state_lighttime(de, &jd_tdb, JPL_MARS, JPL_SUN, &geo, &lt) != JPL_OK) { /* handle error */ }
+if (jpl_planet_position(de, &jd_tt, JPL_MARS, JPL_SUN, &app) != JPL_OK) { /* handle error */ }
 ```
 
 ### Geocentric apparent ecliptic position
@@ -104,9 +111,9 @@ if (jpl_planet_position(de, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) { /* handl
 #include <jpl_convenience.h>
 
 jpl_ephemeris *de; /* from jpl_open(...) */
-static const double jd_tt[2] = {2451545.0, 0.0};
+static const jpl_date jd_tt = {2451545.0, 0.0};
 jpl_apparent_ecliptic_result position;
-if (jpl_apparent_ecliptic_position(de, jd_tt, JPL_MOON, &position) != JPL_OK) { /* handle error */ }
+if (jpl_apparent_ecliptic_position(de, &jd_tt, JPL_MOON, &position) != JPL_OK) { /* handle error */ }
 /* position.longitude_deg, position.latitude_deg, position.range_au;
  * longitude_rate_deg_per_day indicates prograde or retrograde motion;
  * range_rate_km_per_s is Horizons-style line-of-sight radial motion,

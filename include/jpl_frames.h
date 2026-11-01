@@ -114,14 +114,14 @@ JPL_API jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt);
  *         JPL_ERROR_NUMERIC on unrepresentable arithmetic, JPL_ERROR_MEMORY on allocation failure.
  * @note The context is immutable after creation and can be reused for many vector rotations.
  *       Destroy with jpl_frame_context_destroy().
- * @since 0.6.0
+ * @since 0.7.0
  */
 JPL_API jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context);
 
 /**
  * @brief Destroys a frame conversion context.
  * @param context Context from jpl_frame_context_create(); NULL is a no-op.
- * @since 0.6.0
+ * @since 0.7.0
  */
 JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
 
@@ -131,7 +131,7 @@ JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
  * @param in Input position vector (AU). Must be non-NULL.
  * @param out Output position vector (AU). Must be non-NULL; may alias in.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
- * @since 0.6.0
+ * @since 0.7.0
  */
 JPL_API jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]);
 
@@ -141,7 +141,7 @@ JPL_API jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context,
  * @param in Input velocity vector (AU/day). Must be non-NULL.
  * @param out Output velocity vector (AU/day). Must be non-NULL; may alias in.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
- * @since 0.6.0
+ * @since 0.7.0
  */
 JPL_API jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]);
 
@@ -151,7 +151,7 @@ JPL_API jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context,
  * @param state Input state (position AU + velocity AU/day). Must be non-NULL.
  * @param out_state Output state. Must be non-NULL; may alias state.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
- * @since 0.6.0
+ * @since 0.7.0
  */
 JPL_API jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
 

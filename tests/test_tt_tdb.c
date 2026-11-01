@@ -42,20 +42,20 @@ int main(void) {
         JPL_TEST_CHECK(jpl_has_tt_tdb(NULL) == 0);
         /* A valid in-coverage query for a missing dataset reports
          * UNSUPPORTED, while an out-of-coverage query stays RANGE. */
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0 - 10.0, 0.0}, &sec, &rate) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.0 - 10.0, 0.0}, &sec, &rate) == JPL_ERROR_RANGE);
         /* Transactional outputs: both optionals unchanged on failure. */
         sec = 9.0; rate = 9.0;
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(NULL, (const double[2]){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, NULL, &rate) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(NULL, &(const jpl_date){2451545.5, 0.0}, &sec, &rate) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5, 0.0}, NULL, &rate) == JPL_ERROR_ARGUMENT);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
     /* Present dataset, NULL rate allowed; out-of-coverage is RANGE. */
     {
-        static const double t16_mid[2] = {2451545.0, 0.5};
+        static const jpl_date t16_mid = {2451545.0, 0.5};
         unsigned char rec[2880] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
@@ -78,7 +78,7 @@ int main(void) {
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e) != 0);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5, 0.0}, &sec, NULL) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5, 0.0}, &sec, NULL) == JPL_OK);
         /* Exact independent value/rate for the first linear mock:
          * c0=0.001, c1=0.00002 per unit Chebyshev argument, so at the
          * midpoint (x=0) the value is c0 and the daily rate is
@@ -87,7 +87,7 @@ int main(void) {
         {
             static const double mid[2] = {2451545.0, 0.5};
             (void)mid;
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, t16_mid, &sec, &rate) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &t16_mid, &sec, &rate) == JPL_OK);
             JPL_TEST_CHECK(fabs(sec - 0.001) < 1e-18);
             JPL_TEST_CHECK(fabs(rate - 0.00004) < 1e-19);
         }
@@ -137,13 +137,13 @@ int main(void) {
             JPL_TEST_CHECK(test_write_mock("jpl_test_tttdb_be.bin", &bm) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_tttdb_be.bin", &be) == JPL_OK);
             JPL_TEST_CHECK(jpl_get_header(be)->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, t16_mid, &bsec, &brate) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, &t16_mid, &bsec, &brate) == JPL_OK);
             JPL_TEST_CHECK(fabs(bsec - 0.001) < 1e-18);
             JPL_TEST_CHECK(fabs(brate - 0.00004) < 1e-19);
             jpl_close(be);
             JPL_TEST_CHECK(remove("jpl_test_tttdb_be.bin") == 0);
         }
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0 - 10.0, 0.0}, &sec, &rate) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.0 - 10.0, 0.0}, &sec, &rate) == JPL_ERROR_RANGE);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -206,13 +206,13 @@ int main(void) {
          * split pair ({hi,lo} with tiny lo) must agree, and each end of
          * every subinterval plus low-part offsets around each interior
          * boundary selects the expected neighbor. */
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.003) < 1e-15 && fabs(rate - 8.0 * -0.00001) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.001) < 1e-15 && fabs(rate - 8.0 * 0.00002) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.002) < 1e-15 && fabs(rate - 8.0 * 0.00003) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.004) < 1e-15 && fabs(rate - 8.0 * 0.00005) < 1e-12);
         /* Same file via mmap: FILE and mmap share one validator, so
          * width, constants, and all four subinterval midpoints must agree
@@ -220,13 +220,13 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == RDBL);
         JPL_TEST_CHECK(jpl_get_header(m)->has_tt_tdb == 1);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.001) < 1e-15 && fabs(rate - 8.0 * 0.00002) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.002) < 1e-15 && fabs(rate - 8.0 * 0.00003) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.003) < 1e-15 && fabs(rate - 8.0 * -0.00001) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.004) < 1e-15 && fabs(rate - 8.0 * 0.00005) < 1e-12);
         /* Equivalent split of the first midpoint plus both ends of
          * every subinterval. Neighbor offsets around each interior
@@ -240,30 +240,30 @@ int main(void) {
           * separately encoded BE mock above checks foreign byte order. */
         {
             double s2 = 0.0, r2 = 0.0;
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - 0.001) < 1e-15 && fabs(r2 - 8.0 * 0.00002) < 1e-12);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.0, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.001 - 0.00002)) < 1e-15);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451546.0, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451546.0, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.004 + 0.00005)) < 1e-15);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.25 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.25 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.001 + 0.00002)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.25 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.25 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.002 - 0.00003)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.002 + 0.00003)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.003 + 0.00001)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.75 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.75 - 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.003 - 0.00001)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.75 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.75 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.004 - 0.00005)) < 1e-9);
             /* Byte-order duplicate: the same checks on the mmap handle,
              * which shares the swap-aware read path (read_f64/order). */
             JPL_TEST_CHECK(jpl_get_header(m)->byte_order == jpl_get_header(e)->byte_order);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - 0.001) < 1e-15 && fabs(r2 - 8.0 * 0.00002) < 1e-12);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.003 + 0.00001)) < 1e-9);
         }
         jpl_close(m);
@@ -323,11 +323,11 @@ int main(void) {
         bh = jpl_get_header(be);
         JPL_TEST_CHECK(bh != NULL && bh->has_tt_tdb == 1);
         JPL_TEST_CHECK(bh->record_double_count == BDBL);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, (const double[2]){2451545.5, 0.0}, &bsec, &brate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, &(const jpl_date){2451545.5, 0.0}, &bsec, &brate) == JPL_OK);
         JPL_TEST_CHECK(fabs(bsec - 0.009) < 1e-18);
         JPL_TEST_CHECK(fabs(brate) < 1e-18);
         JPL_TEST_CHECK(jpl_open_mmap(path, &bm) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(bm, (const double[2]){2451545.5, 0.0}, &bsec, &brate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(bm, &(const jpl_date){2451545.5, 0.0}, &bsec, &brate) == JPL_OK);
         JPL_TEST_CHECK(fabs(bsec - 0.009) < 1e-18);
         JPL_TEST_CHECK(fabs(brate) < 1e-18);
         jpl_close(bm);
@@ -397,13 +397,13 @@ int main(void) {
         JPL_TEST_CHECK(jpl_record_count(e) == 1);
         JPL_TEST_CHECK(jpl_read_constants(e, cons, RDBL) == JPL_OK);
         JPL_TEST_CHECK(cons[0] == 1.0 && cons[1] == 2.0);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.007) < 1e-15 && fabs(rate - 8.0 * 0.00006) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.005) < 1e-15 && fabs(rate - 8.0 * 0.00004) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.006) < 1e-15 && fabs(rate - 8.0 * 0.00005) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.008) < 1e-15 && fabs(rate - 8.0 * 0.00007) < 1e-12);
         /* Same file via mmap: FILE and mmap share one validator, so
          * width, constants, and the mid-coverage value/rate agree. */
@@ -411,25 +411,25 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == RDBL);
         JPL_TEST_CHECK(jpl_get_header(m)->constant_count == NCONST);
         JPL_TEST_CHECK(jpl_get_header(m)->has_tt_tdb == 1);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.005) < 1e-15 && fabs(rate - 8.0 * 0.00004) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.006) < 1e-15 && fabs(rate - 8.0 * 0.00005) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.625, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.007) < 1e-15 && fabs(rate - 8.0 * 0.00006) < 1e-12);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.875, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.008) < 1e-15 && fabs(rate - 8.0 * 0.00007) < 1e-12);
         /* Representative split/endpoint/low-part cases on the
          * overflow-names layout, both backends. */
         {
             double s2 = 0.0, r2 = 0.0;
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - 0.005) < 1e-15 && fabs(r2 - 8.0 * 0.00004) < 1e-12);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - (0.007 - 0.00006)) < 1e-9);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - 0.005) < 1e-15 && fabs(r2 - 8.0 * 0.00004) < 1e-12);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, (const double[2]){2451546.0, 0.0}, &s2, &r2) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451546.0, 0.0}, &s2, &r2) == JPL_OK);
         }
         jpl_close(m);
         jpl_close(e);

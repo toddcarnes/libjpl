@@ -167,7 +167,8 @@ int main(int argc, char **argv) {
                 snprintf(detail, sizeof detail, "TT-TDB row but binary has no TT-TDB dataset");
                 return fail_row(lineno, "invalid row", detail, file, ephemeris);
             }
-            status = jpl_get_tt_minus_tdb(ephemeris, row.jd, &sec, &rate);
+            { jpl_date jd = {row.jd[0], row.jd[1]};
+              status = jpl_get_tt_minus_tdb(ephemeris, &jd, &sec, &rate); }
             if (status != JPL_OK) {
                 snprintf(detail, sizeof detail, "tt-tdb query failed: %s", status_name(status));
                 return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
@@ -224,8 +225,9 @@ int main(int argc, char **argv) {
             }
         }
         {
-            double state[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-            status = jpl_get_state(ephemeris, row.jd, row.target, row.center, state);
+            jpl_date jd = {row.jd[0], row.jd[1]};
+            jpl_state state = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+            status = jpl_get_state(ephemeris, &jd, row.target, row.center, &state);
             if (status != JPL_OK) {
                 /* In-coverage body errors fail unconditionally: an
                  * UNSUPPORTED here means a missing ordinary body (or a
@@ -237,7 +239,7 @@ int main(int argc, char **argv) {
                          row.target, row.center, status_name(status));
                 return fail_row(lineno, "reference mismatch", detail, file, ephemeris);
             }
-            actual = state[slot];
+            actual = test_state_component(&state, slot);
             tolerance = jpl_testpo_tolerance(&row);
             /* Body-only reference conversion: public output is modern
              * AU while historical references are file AU. Convert the

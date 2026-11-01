@@ -258,12 +258,13 @@ void jpl_frame_context_destroy(jpl_frame_context *context) {
 }
 
 jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]) {
-    double pr[3];
+    double p[3], pr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
+        p[i] = in[i];
     }
-    eraRxp(context->matrix, in, pr);
+    eraRxp(context->matrix, p, pr);
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(pr[i])) return JPL_ERROR_NUMERIC;
     }
@@ -272,12 +273,13 @@ jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const d
 }
 
 jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]) {
-    double vr[3];
+    double v[3], vr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
+        v[i] = in[i];
     }
-    eraRxp(context->matrix, in, vr);
+    eraRxp(context->matrix, v, vr);
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(vr[i])) return JPL_ERROR_NUMERIC;
     }

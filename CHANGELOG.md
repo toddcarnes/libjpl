@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-01
+
+### Changed
+
+- **BREAKING**: Type-safe public API: dates are now `jpl_date {hi, lo}` structs and states are `jpl_state {x, y, z, vx, vy, vz}` structs instead of `double[2]`/`double[6]` arrays. All public entry points (`jpl_get_state`, `jpl_get_state_lighttime`, `jpl_apply_aberration`, `jpl_tt_to_tdb`, `jpl_tdb_to_tt`, `jpl_get_tt_minus_tdb`, `jpl_ecliptic_to_icrs`, `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, `jpl_planet_position`, `jpl_moon_position`, `jpl_apparent_ecliptic_position`) take pointers to these structs. Internal `double[2]`/`double[6]` helpers remain in `jpl_private.h` (convert at the boundary with `jpl_date_to_pair`/`jpl_pair_to_date`/`jpl_state_to_array`/`jpl_array_to_state`).
+
+### Fixed
+
+- Gravitational light-deflection direction in `jpl_apparent_ecliptic_position()`: the source unit vector was built from the x-component alone, collapsing every apparent direction onto the (1,1,1) diagonal (up to ~138 deg error vs Horizons); the full state vector is now normalized.
+
 ## [0.6.0] - 2026-10-31
 
 ### Changed

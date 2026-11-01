@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
         jpl_testpo_row row;
         int parsed_row;
         size_t linelen = strlen(line);
-        double state[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        jpl_state state = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
         double actual, tolerance;
         int slot;
         jpl_status status;
@@ -179,7 +179,8 @@ int main(int argc, char **argv) {
             }
             /* Fixture binaries carry no TT-TDB dataset: T#17 rows always
              * fail here rather than silently passing. */
-            status17 = jpl_get_tt_minus_tdb(ephemeris, row.jd, &sec, &rate);
+            { jpl_date jd = {row.jd[0], row.jd[1]};
+              status17 = jpl_get_tt_minus_tdb(ephemeris, &jd, &sec, &rate); }
             (void)sec;
             (void)rate;
             fprintf(stderr, "line %ld: fixture slice must be T#17-free (binary has no TT-TDB, query %s)\n",
@@ -232,7 +233,8 @@ int main(int argc, char **argv) {
                 continue;
             }
         }
-        status = jpl_get_state(ephemeris, row.jd, row.target, row.center, state);
+        { jpl_date jd = {row.jd[0], row.jd[1]};
+          status = jpl_get_state(ephemeris, &jd, row.target, row.center, &state); }
         if (status != JPL_OK) {
             fprintf(stderr, "line %ld: jpl_get_state failed for target %d center %d: %s\n",
                     lineno, row.target, row.center, jpl_status_string(status));
@@ -240,7 +242,7 @@ int main(int argc, char **argv) {
             jpl_close(ephemeris);
             return 1;
         }
-        actual = state[slot];
+        actual = test_state_component(&state, slot);
         tolerance = jpl_testpo_tolerance(&row);
         /* Body-only reference conversion: public output is modern AU
          * while historical references are file AU. Convert the actual value

@@ -95,7 +95,7 @@ typedef enum jpl_target {
  * @note The represented epoch is the mathematical sum (hi + lo). Both parts
  *       are preserved through all arithmetic and ERFA calls. This type
  *       replaces the legacy `double[2]` array in all public APIs.
- * @since 0.6.0
+ * @since 0.7.0
  */
 typedef struct {
     double hi;  /**< @brief High part (typically the integral days). */
@@ -106,7 +106,7 @@ typedef struct {
  * @brief Six-degree-of-freedom state vector: position (AU) + velocity (AU/day).
  * @note Replaces the legacy `double[6]` array in all public APIs. The
  *       component order is x, y, z, vx, vy, vz.
- * @since 0.6.0
+ * @since 0.7.0
  */
 typedef struct {
     double x; /**< @brief Position X in AU. */
@@ -121,7 +121,7 @@ typedef struct {
  * @brief Opaque frame conversion context for repeated transformations at one epoch.
  * @note Caches the precession-nutation matrix for efficient reuse. Created with
  *       jpl_frame_context_create() and destroyed with jpl_frame_context_destroy().
- * @since 0.6.0
+ * @since 0.7.0
  */
 typedef struct jpl_frame_context jpl_frame_context;
 

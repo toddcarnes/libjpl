@@ -85,15 +85,15 @@ typedef struct worker_args {
 
 static void run_queries(worker_args *a) {
     for (int k = 0; k < THR_ITERS; ++k) {
-        double jd[2] = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
-        double state[6];
-        if (jpl_get_state(a->ephemeris, jd, JPL_MARS, 0, state) != JPL_OK) {
+        jpl_date jd = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
+        jpl_state state;
+        if (jpl_get_state(a->ephemeris, &jd, JPL_MARS, 0, &state) != JPL_OK) {
             a->failed = 1;
             return;
         }
         /* For this mock x(t) = 1 + 0.01*(t-2451545), in modern AU. */
-        double expected = 1.0 + 0.01*((jd[0]-2451545.0)+jd[1]);
-        if (fabs(state[0]-expected) > THR_POS_TOL || fabs(state[3]-0.01) > THR_VEL_TOL) {
+        double expected = 1.0 + 0.01*((jd.hi-2451545.0)+jd.lo);
+        if (fabs(state.x-expected) > THR_POS_TOL || fabs(state.vx-0.01) > THR_VEL_TOL) {
             a->failed = 1;
             return;
         }
@@ -102,11 +102,11 @@ static void run_queries(worker_args *a) {
 
 static void run_tttdb_queries(worker_args *a) {
     for (int k = 0; k < THR_ITERS; ++k) {
-        double jd[2] = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
+        jpl_date jd = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
         double sec = 0.0, rate = -1.0;
         double rec = (double)((k + a->worker_index) % 8);
         double expected = 0.001 + 0.0001 * rec;
-        if (jpl_get_tt_minus_tdb(a->ephemeris, jd, &sec, &rate) != JPL_OK) {
+        if (jpl_get_tt_minus_tdb(a->ephemeris, &jd, &sec, &rate) != JPL_OK) {
             a->failed = 1;
             return;
         }
@@ -119,18 +119,18 @@ static void run_tttdb_queries(worker_args *a) {
 
 static void run_angular_queries(worker_args *a) {
     for (int k = 0; k < THR_ITERS; ++k) {
-        double jd[2] = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
-        double state[6];
+        jpl_date jd = {2451545.0 + (double)((k + a->worker_index) % 8), 0.25};
+        jpl_state state;
         double rec = (double)((k + a->worker_index) % 8);
         double want_dpsi = 0.01 + 0.001 * rec;
         double want_deps = 0.02 + 0.001 * rec;
-        if (jpl_get_state(a->ephemeris, jd, JPL_NUTATIONS, 0, state) != JPL_OK) {
+        if (jpl_get_state(a->ephemeris, &jd, JPL_NUTATIONS, 0, &state) != JPL_OK) {
             a->failed = 1;
             return;
         }
-        if (fabs(state[0] - want_dpsi) > THR_SMALL_TOL || fabs(state[1] - want_deps) > THR_SMALL_TOL ||
-            fabs(state[3]) > THR_SMALL_TOL || fabs(state[4]) > THR_SMALL_TOL ||
-            fabs(state[2]) > THR_SMALL_TOL || fabs(state[5]) > THR_SMALL_TOL) {
+        if (fabs(state.x - want_dpsi) > THR_SMALL_TOL || fabs(state.y - want_deps) > THR_SMALL_TOL ||
+            fabs(state.vx) > THR_SMALL_TOL || fabs(state.vy) > THR_SMALL_TOL ||
+            fabs(state.z) > THR_SMALL_TOL || fabs(state.vz) > THR_SMALL_TOL) {
             a->failed = 1;
             return;
         }

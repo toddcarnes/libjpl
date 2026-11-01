@@ -128,6 +128,20 @@ static inline double test_norm3(const double v[3]) {
     return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }
 
+/* Component access by legacy slot index (0..5 -> x,y,z,vx,vy,vz).
+ * Returns NAN for an out-of-range slot so test bugs surface as failures. */
+static inline double test_state_component(const jpl_state *s, int index) {
+    switch (index) {
+    case 0: return s->x;
+    case 1: return s->y;
+    case 2: return s->z;
+    case 3: return s->vx;
+    case 4: return s->vy;
+    case 5: return s->vz;
+    default: return NAN;
+    }
+}
+
 /* Minimum physical record width in bytes (classic 2856-byte header). Used
  * to bound record-count conversions by file geometry. */
 #define JPL_TEST_MIN_RECORD_BYTES 2856

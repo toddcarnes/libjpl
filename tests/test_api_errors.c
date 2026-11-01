@@ -35,17 +35,37 @@
 
 enum { ERR_DOUBLES = 360, ERR_BYTES = ERR_DOUBLES * 8 };
 
-static int check_unchanged(const double got[6], const double want[6]) {
-    size_t i;
-    for (i = 0; i < 6; ++i) {
-        if (got[i] != want[i]) return 0;
-    }
-    return 1;
+static int check_unchanged(const jpl_state *got, const jpl_state *want) {
+    return got->x == want->x && got->y == want->y && got->z == want->z &&
+           got->vx == want->vx && got->vy == want->vy && got->vz == want->vz;
 }
 
-static void fill_state(double s[6], double v) {
-    size_t i;
-    for (i = 0; i < 6; ++i) s[i] = v;
+static void fill_state(jpl_state *s, double v) {
+    s->x = v;
+    s->y = v;
+    s->z = v;
+    s->vx = v;
+    s->vy = v;
+    s->vz = v;
+}
+
+/* The private light-time hook still takes the internal array layout; adapt
+ * the public struct types at that boundary and copy the hook's output back. */
+static jpl_status lighttime_with_budget(const jpl_ephemeris *ephemeris,
+                                        const jpl_date *jd, int target, int center,
+                                        jpl_state *state, double *delay,
+                                        int fast_iterations,
+                                        int safeguarded_iterations) {
+    double jd_pair[2];
+    double state_array[6];
+    jpl_status status;
+    jpl_date_to_pair(jd, jd_pair);
+    jpl_state_to_array(state, state_array);
+    status = jpl_test_lighttime_with_budget(ephemeris, jd_pair, target, center,
+                                            state_array, delay, fast_iterations,
+                                            safeguarded_iterations);
+    jpl_array_to_state(state_array, state);
+    return status;
 }
 
 int main(void) {
@@ -58,14 +78,14 @@ int main(void) {
     size_t i;
     /* Linear mock near 8000016.5: record 0 holds x=1, record 1 holds x=2
      * so the low-part interval-side test distinguishes adjacent intervals. */
-    static const double cov_start[2] = {8000016.5, 0.0};
-    static const double cov_end[2] = {8000018.5, 0.0};
-    static const double left[2] = {2451546.5, -0x1p-40};
-    static const double right[2] = {2451546.5, 0x1p-40};
-    static const double nan_hi[2] = {NAN, 0.0};
-    static const double nan_lo[2] = {2451545.0, NAN};
-    static const double inf_hi[2] = {INFINITY, 0.0};
-    static const double inf_lo[2] = {2451545.0, -INFINITY};
+    static const jpl_date cov_start = {8000016.5, 0.0};
+    static const jpl_date cov_end = {8000018.5, 0.0};
+    static const jpl_date left = {2451546.5, -0x1p-40};
+    static const jpl_date right = {2451546.5, 0x1p-40};
+    static const jpl_date nan_hi = {NAN, 0.0};
+    static const jpl_date nan_lo = {2451545.0, NAN};
+    static const jpl_date inf_hi = {INFINITY, 0.0};
+    static const jpl_date inf_lo = {2451545.0, -INFINITY};
 
     memset(hdr, 0, sizeof hdr);
     memcpy(hdr, "api errors", 10);
@@ -87,10 +107,10 @@ int main(void) {
     mock.advertised_records = 2;
     mock.denum = 441;
     mock.constant_count = 2;
-    mock.start[0] = cov_start[0];
-    mock.start[1] = cov_start[1];
-    mock.end[0] = cov_end[0];
-    mock.end[1] = cov_end[1];
+    mock.start[0] = cov_start.hi;
+    mock.start[1] = cov_start.lo;
+    mock.end[0] = cov_end.hi;
+    mock.end[1] = cov_end.lo;
     mock.step_days = 1.0;
     mock.au_km = JPL_TEST_AU_KM;
     mock.emrat = JPL_TEST_MASS_RATIO;
@@ -102,113 +122,119 @@ int main(void) {
 
     /* NULL dates and nonfinite parts report ARGUMENT. */
     {
-        double s[6];
-        fill_state(s, 7.0);
-        JPL_TEST_CHECK(jpl_get_state(e, NULL, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, nan_lo, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, inf_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, inf_lo, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e, NULL, JPL_MARS, 0, s, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, NULL, &s[0], NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, nan_lo, &s[0], NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_tt_to_tdb(NULL, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_tt_to_tdb(nan_hi, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_tdb_to_tt(NULL, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_frame_rotation_matrix(NULL, (double[3][3]){{0}}) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(NULL, cov_start, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_icrs_to_ecliptic(s, NULL, s) == JPL_ERROR_ARGUMENT);
+        jpl_state s;
+        double sec_sink = 0.0;
+        jpl_date date_sink = {0.0, 0.0};
+        double rmat_sink[3][3];
+        fill_state(&s, 7.0);
+        JPL_TEST_CHECK(jpl_get_state(e, NULL, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_hi, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_lo, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &inf_hi, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &inf_lo, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, NULL, JPL_MARS, 0, &s, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, NULL, &sec_sink, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &nan_lo, &sec_sink, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(NULL, &date_sink) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&nan_hi, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_tdb_to_tt(NULL, &date_sink) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_rotation_matrix(NULL, rmat_sink) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(NULL, &cov_start, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&s, NULL, &s) == JPL_ERROR_ARGUMENT);
         /* Standalone aberration/frame validation and transactional
          * outputs. Invalid velocities and nonfinite Sun distance are
          * ARGUMENT; nonfinite states are ARGUMENT; failures leave the
          * caller buffers unchanged. */
         {
             double c_au_day = JPL_TEST_C_KM_PER_SECOND * JPL_TEST_DAYSEC / JPL_TEST_AU_KM;
-            double st[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
+            jpl_state st = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
             double vv[3] = {0.0, 0.01, 0.0};
-            double bad[6], bv[3], oo[6], before[6];
+            jpl_state bad, oo, before;
+            double bv[3];
             double R[3][3], Rbefore[3][3];
             size_t a, b;
             for (a = 0; a < 3; ++a) for (b = 0; b < 3; ++b) { R[a][b] = 5.0; Rbefore[a][b] = 5.0; }
-            memcpy(bad, st, sizeof bad); bad[0] = NAN;
-            memcpy(oo, (double[6]){11, 22, 33, 44, 55, 66}, sizeof oo);
-            memcpy(before, oo, sizeof oo);
-            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, 0.0, oo) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
+            bad = st; bad.x = NAN;
+            oo = (jpl_state){11, 22, 33, 44, 55, 66};
+            before = oo;
+            JPL_TEST_CHECK(jpl_apply_aberration(&bad, vv, 0.0, &oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&oo, &before, sizeof oo) == 0);
             bv[0] = 2.0 * c_au_day; bv[1] = 0.0; bv[2] = 0.0;
-            JPL_TEST_CHECK(jpl_apply_aberration(st, bv, 0.0, oo) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
-            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, NAN, oo) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(memcmp(oo, before, sizeof oo) == 0);
-            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, 0.0, NULL) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_frame_rotation_matrix(nan_lo, R) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apply_aberration(&st, bv, 0.0, &oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&oo, &before, sizeof oo) == 0);
+            JPL_TEST_CHECK(jpl_apply_aberration(&st, vv, NAN, &oo) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&oo, &before, sizeof oo) == 0);
+            JPL_TEST_CHECK(jpl_apply_aberration(&st, vv, 0.0, NULL) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_frame_rotation_matrix(&nan_lo, R) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
         }
     }
 
     /* Invalid target/center combinations. */
     {
-        double s[6];
-        static const double q[2] = {8000017.0, 0.0};
-        static const double outside[2] = {8000020.0, 0.0};
-        double sentinel[6], before[6];
-        JPL_TEST_CHECK(jpl_get_state(e, q, 0, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, q, 99, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_NUTATIONS, 1, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_MARS, 0, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(NULL, q, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 99, 0, s, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, 0, 0, s, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e, q, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s, NULL) == JPL_OK);
+        jpl_state s;
+        static const jpl_date q = {8000017.0, 0.0};
+        static const jpl_date outside = {8000020.0, 0.0};
+        jpl_state sentinel, before;
+        JPL_TEST_CHECK(jpl_get_state(e, &q, 0, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q, 99, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_NUTATIONS, 1, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_MARS, 0, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(NULL, &q, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, &q, 99, 0, &s, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, &q, 0, 0, &s, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, &q, JPL_SOLAR_SYSTEM_BARYCENTER, 0, &s, NULL) == JPL_OK);
         /* Invalid bodies take precedence over out-of-range dates and
          * missing datasets, with outputs unchanged. This prevents an
          * invalid code from being reported as RANGE or UNSUPPORTED. */
-        fill_state(sentinel, 7.0);
-        memcpy(before, sentinel, sizeof before);
-        memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_get_state(e, outside, 99, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(NULL, outside, 99, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_VENUS, 99, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, outside, 0, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_MARS, 99, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_NUTATIONS, 1, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_TT_TDB, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
+        fill_state(&sentinel, 7.0);
+        before = sentinel;
+        s = before;
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, 99, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(NULL, &outside, 99, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_VENUS, 99, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, 0, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_MARS, 99, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_NUTATIONS, 1, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_TT_TDB, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
     }
 
     /* Finite-overflow dates report NUMERIC with outputs unchanged.
      * {DBL_MAX, DBL_MAX} is finite in both parts but unrepresentable as a
       * sum; {NAN, 0} and {INFINITY, 0} stay ARGUMENT. */
     {
-        static const double overflow[2] = {DBL_MAX, DBL_MAX};
-        double s[6], before[6], sec = 9.0, rate = 9.0, lt = -7.0;
+        static const jpl_date overflow = {DBL_MAX, DBL_MAX};
+        jpl_state s, before;
+        double sec = 9.0, rate = 9.0, lt = -7.0;
         double R[3][3], Rbefore[3][3];
         size_t a, b;
         for (a = 0; a < 3; ++a) for (b = 0; b < 3; ++b) { R[a][b] = 5.0; Rbefore[a][b] = 5.0; }
-        fill_state(before, 7.0);
-        memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_get_state(e, overflow, JPL_MARS, 0, s) == JPL_ERROR_NUMERIC);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, inf_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e, overflow, JPL_MARS, 0, s, &lt) == JPL_ERROR_NUMERIC);
-        JPL_TEST_CHECK(check_unchanged(s, before));
+        fill_state(&before, 7.0);
+        s = before;
+        JPL_TEST_CHECK(jpl_get_state(e, &overflow, JPL_MARS, 0, &s) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_hi, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &inf_hi, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, &overflow, JPL_MARS, 0, &s, &lt) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
         JPL_TEST_CHECK(lt == -7.0);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, overflow, &sec, &rate) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &overflow, &sec, &rate) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
-        JPL_TEST_CHECK(jpl_frame_rotation_matrix(overflow, R) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(jpl_frame_rotation_matrix(&overflow, R) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
-        memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(s, overflow, s) == JPL_ERROR_NUMERIC);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_apply_aberration(s, (const double[3]){0.0, 0.0, 0.0}, 1.0, s) == JPL_OK);
+        s = before;
+        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&s, &overflow, &s) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        s = before;
+        { double zero_vel[3] = {0.0, 0.0, 0.0};
+          JPL_TEST_CHECK(jpl_apply_aberration(&s, zero_vel, 1.0, &s) == JPL_OK); }
     }
 
     /* Missing datasets report UNSUPPORTED after valid checks.
@@ -217,34 +243,35 @@ int main(void) {
      * bodies, NULL dates, nonfinite dates and out-of-coverage queries
      * keep their earlier categories. */
     {
-        double s[6];
-        static const double q[2] = {8000017.0, 0.0};
-        static const double outside[2] = {8000020.0, 0.0};
-        double before[6], sec = 9.0, rate = 9.0;
-        fill_state(before, 7.0);
-        memcpy(s, before, sizeof s);
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_VENUS, 0, s) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_JUPITER, 0, s) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_NUTATIONS, 0, s) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_state(e, q, JPL_LIBRATIONS, 0, s) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(check_unchanged(s, before));
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, q, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
+        jpl_state s;
+        static const jpl_date q = {8000017.0, 0.0};
+        static const jpl_date outside = {8000020.0, 0.0};
+        jpl_state before;
+        double sec = 9.0, rate = 9.0;
+        fill_state(&before, 7.0);
+        s = before;
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_VENUS, 0, &s) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_JUPITER, 0, &s) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_NUTATIONS, 0, &s) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_state(e, &q, JPL_LIBRATIONS, 0, &s) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &q, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
         /* Nonfinite dates and out-of-coverage queries keep precedence
          * over the missing-dataset report. */
-        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_VENUS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_VENUS, 0, s) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_hi, JPL_VENUS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_VENUS, 0, &s) == JPL_ERROR_RANGE);
         /* Coverage precedes the absent-dataset report in the
          * shared engine too, so out-of-coverage angular queries stay RANGE
          * even though the nutation/libration datasets are absent. */
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_NUTATIONS, 0, s) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_LIBRATIONS, 0, s) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, nan_hi, &sec, NULL) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, outside, &sec, NULL) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_NUTATIONS, 0, &s) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_LIBRATIONS, 0, &s) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &nan_hi, &sec, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &outside, &sec, NULL) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
     }
 
     /* A NaN used coefficient reports FORMAT with no partial output,
@@ -258,9 +285,9 @@ int main(void) {
     {
         /* q sits inside the corrupt middle record; the clean-record
          * baseline below uses 8000016.75 in the first record. */
-        static const double q[2] = {8000017.75, 0.0};
-        static const double t09_start[2] = {8000016.5, 0.0};
-        static const double t09_end[2] = {8000019.5, 0.0};
+        static const jpl_date q = {8000017.75, 0.0};
+        static const jpl_date t09_start = {8000016.5, 0.0};
+        static const jpl_date t09_end = {8000019.5, 0.0};
         static const int bes[2] = {0, 1};
         int bi;
         for (bi = 0; bi < 2; ++bi) {
@@ -270,7 +297,7 @@ int main(void) {
                 static double frec[3 * ERR_DOUBLES];
                 jpl_test_mock fm;
                 jpl_ephemeris *fe = NULL, *fmap = NULL;
-                double out[6], before[6], good[6];
+                jpl_state out, before, good;
                 size_t k, r;
                 const char *fpath = bi == 0 ? "jpl_test_api_finite_le.bin" : "jpl_test_api_finite_be.bin";
                 int big_endian = bes[bi];
@@ -308,10 +335,10 @@ int main(void) {
                 }
                 fm.denum = 441;
                 fm.constant_count = 2;
-                fm.start[0] = t09_start[0];
-                fm.start[1] = t09_start[1];
-                fm.end[0] = t09_end[0];
-                fm.end[1] = t09_end[1];
+                fm.start[0] = t09_start.hi;
+                fm.start[1] = t09_start.lo;
+                fm.end[0] = t09_end.hi;
+                fm.end[1] = t09_end.lo;
                 fm.step_days = 1.0;
                 fm.au_km = JPL_TEST_AU_KM;
                 fm.emrat = JPL_TEST_MASS_RATIO;
@@ -322,20 +349,22 @@ int main(void) {
                 JPL_TEST_CHECK(jpl_open(fpath, &fe) == JPL_OK);
                 JPL_TEST_CHECK(jpl_open_mmap(fpath, &fmap) == JPL_OK);
                 /* Baseline: clean record 0 reads fine on both handles. */
-                JPL_TEST_CHECK(jpl_get_state(fe, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, good) == JPL_OK);
-                JPL_TEST_CHECK(jpl_get_state(fmap, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, good) == JPL_OK);
-                JPL_TEST_CHECK(good[0] == 2.0 && good[1] == 3.0);
+                { static const jpl_date clean = {8000016.75, 0.0};
+                  JPL_TEST_CHECK(jpl_get_state(fe, &clean, JPL_NUTATIONS, 0, &good) == JPL_OK);
+                  JPL_TEST_CHECK(jpl_get_state(fmap, &clean, JPL_NUTATIONS, 0, &good) == JPL_OK); }
+                JPL_TEST_CHECK(good.x == 2.0 && good.y == 3.0);
                 /* Sentinels detect writes before the corrupt-record error. */
-                memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
-                memcpy(before, out, sizeof out);
-                JPL_TEST_CHECK(jpl_get_state(fe, q, JPL_NUTATIONS, 0, out) == JPL_ERROR_FORMAT);
-                JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
-                memcpy(out, before, sizeof out);
-                JPL_TEST_CHECK(jpl_get_state(fmap, q, JPL_NUTATIONS, 0, out) == JPL_ERROR_FORMAT);
-                JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
+                out = (jpl_state){11, 22, 33, 44, 55, 66};
+                before = out;
+                JPL_TEST_CHECK(jpl_get_state(fe, &q, JPL_NUTATIONS, 0, &out) == JPL_ERROR_FORMAT);
+                JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
+                out = before;
+                JPL_TEST_CHECK(jpl_get_state(fmap, &q, JPL_NUTATIONS, 0, &out) == JPL_ERROR_FORMAT);
+                JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
                 /* Cache not poisoned: the clean record still reads. */
-                JPL_TEST_CHECK(jpl_get_state(fe, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, out) == JPL_OK);
-                JPL_TEST_CHECK(out[0] == good[0]);
+                { static const jpl_date clean = {8000016.75, 0.0};
+                  JPL_TEST_CHECK(jpl_get_state(fe, &clean, JPL_NUTATIONS, 0, &out) == JPL_OK); }
+                JPL_TEST_CHECK(out.x == good.x);
                 jpl_close(fmap);
                 jpl_close(fe);
                 JPL_TEST_CHECK(remove(fpath) == 0);
@@ -350,7 +379,7 @@ int main(void) {
      * as c1 of the first component in the middle record only. */
     {
         enum { ODBL = 984, OBYTES = ODBL * 8 };
-        static const double oq[2] = {8000017.75, 0.0};
+        static const jpl_date oq = {8000017.75, 0.0};
         static const int obes[2] = {0, 1};
         int obi;
         for (obi = 0; obi < 2; ++obi) {
@@ -359,7 +388,7 @@ int main(void) {
             static double orec[3 * ODBL];
             jpl_test_mock om;
             jpl_ephemeris *oe = NULL, *omap = NULL;
-            double out[6], before[6], good[6];
+            jpl_state out, before, good;
             size_t k, r;
             const char *opath = obi == 0 ? "jpl_test_api_overflow_le.bin" : "jpl_test_api_overflow_be.bin";
             memset(ohdr, 0, sizeof ohdr);
@@ -401,17 +430,19 @@ int main(void) {
             JPL_TEST_CHECK(test_write_mock(opath, &om) == 0);
             JPL_TEST_CHECK(jpl_open(opath, &oe) == JPL_OK);
             JPL_TEST_CHECK(jpl_open_mmap(opath, &omap) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(oe, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, good) == JPL_OK);
-            JPL_TEST_CHECK(good[0] == 2.0 && good[1] == 3.0 && good[3] == 0.0 && good[4] == 0.0);
-            memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
-            memcpy(before, out, sizeof out);
-            JPL_TEST_CHECK(jpl_get_state(oe, oq, JPL_NUTATIONS, 0, out) == JPL_ERROR_NUMERIC);
-            JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
-            memcpy(out, before, sizeof out);
-            JPL_TEST_CHECK(jpl_get_state(omap, oq, JPL_NUTATIONS, 0, out) == JPL_ERROR_NUMERIC);
-            JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
-            JPL_TEST_CHECK(jpl_get_state(oe, (const double[2]){8000016.75, 0.0}, JPL_NUTATIONS, 0, out) == JPL_OK);
-            JPL_TEST_CHECK(out[0] == good[0]);
+            { static const jpl_date clean = {8000016.75, 0.0};
+              JPL_TEST_CHECK(jpl_get_state(oe, &clean, JPL_NUTATIONS, 0, &good) == JPL_OK); }
+            JPL_TEST_CHECK(good.x == 2.0 && good.y == 3.0 && good.vx == 0.0 && good.vy == 0.0);
+            out = (jpl_state){11, 22, 33, 44, 55, 66};
+            before = out;
+            JPL_TEST_CHECK(jpl_get_state(oe, &oq, JPL_NUTATIONS, 0, &out) == JPL_ERROR_NUMERIC);
+            JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
+            out = before;
+            JPL_TEST_CHECK(jpl_get_state(omap, &oq, JPL_NUTATIONS, 0, &out) == JPL_ERROR_NUMERIC);
+            JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
+            { static const jpl_date clean = {8000016.75, 0.0};
+              JPL_TEST_CHECK(jpl_get_state(oe, &clean, JPL_NUTATIONS, 0, &out) == JPL_OK); }
+            JPL_TEST_CHECK(out.x == good.x);
             jpl_close(omap);
             jpl_close(oe);
             JPL_TEST_CHECK(remove(opath) == 0);
@@ -425,10 +456,10 @@ int main(void) {
         static unsigned char ahdr[ERR_BYTES];
         static double aconst[ERR_DOUBLES];
         static double arec[ERR_DOUBLES];
-        static const double aq[2] = {8000017.0, 0.0};
+        static const jpl_date aq = {8000017.0, 0.0};
         jpl_test_mock am;
         jpl_ephemeris *ae = NULL;
-        double out[6], before[6];
+        jpl_state out, before;
         size_t k;
         memset(ahdr, 0, sizeof ahdr);
         memcpy(ahdr, "angular txn", 11);
@@ -458,10 +489,10 @@ int main(void) {
         am.records = arec;
         JPL_TEST_CHECK(test_write_mock("jpl_test_api_angular.bin", &am) == 0);
         JPL_TEST_CHECK(jpl_open("jpl_test_api_angular.bin", &ae) == JPL_OK);
-        memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
-        memcpy(before, out, sizeof out);
-        JPL_TEST_CHECK(jpl_get_state(ae, aq, JPL_NUTATIONS, 0, out) == JPL_ERROR_FORMAT);
-        JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
+        out = (jpl_state){11, 22, 33, 44, 55, 66};
+        before = out;
+        JPL_TEST_CHECK(jpl_get_state(ae, &aq, JPL_NUTATIONS, 0, &out) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
         jpl_close(ae);
         JPL_TEST_CHECK(remove("jpl_test_api_angular.bin") == 0);
     }
@@ -473,10 +504,10 @@ int main(void) {
         static unsigned char lhdr[ERR_BYTES];
         static double lconst[ERR_DOUBLES];
         static double lrec[ERR_DOUBLES];
-        static const double lq[2] = {8000017.0, 0.0};
+        static const jpl_date lq = {8000017.0, 0.0};
         jpl_test_mock lm;
         jpl_ephemeris *le = NULL;
-        double out[6], before[6];
+        jpl_state out, before;
         size_t k;
         memset(lhdr, 0, sizeof lhdr);
         memcpy(lhdr, "libration txn", 13);
@@ -507,10 +538,10 @@ int main(void) {
         lm.records = lrec;
         JPL_TEST_CHECK(test_write_mock("jpl_test_api_libration.bin", &lm) == 0);
         JPL_TEST_CHECK(jpl_open("jpl_test_api_libration.bin", &le) == JPL_OK);
-        memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
-        memcpy(before, out, sizeof out);
-        JPL_TEST_CHECK(jpl_get_state(le, lq, JPL_LIBRATIONS, 0, out) == JPL_ERROR_FORMAT);
-        JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
+        out = (jpl_state){11, 22, 33, 44, 55, 66};
+        before = out;
+        JPL_TEST_CHECK(jpl_get_state(le, &lq, JPL_LIBRATIONS, 0, &out) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
         jpl_close(le);
         JPL_TEST_CHECK(remove("jpl_test_api_libration.bin") == 0);
     }
@@ -525,9 +556,10 @@ int main(void) {
             static double erec[ERR_DOUBLES];
             jpl_test_mock em;
             jpl_ephemeris *ee = NULL;
-            double earth[6], moon[6], emb[6], gm[6], ratio;
+            jpl_state earth, moon, emb, gm;
+            double ratio;
             size_t k;
-            static const double eq[2] = {8000017.0, 0.0};
+            static const jpl_date eq = {8000017.0, 0.0};
             memset(ehdr, 0, sizeof ehdr);
             memcpy(ehdr, "earth moon", 10);
             test_mock_header(ehdr, 8000016.5, 8000018.5, 1.0, 2);
@@ -562,10 +594,10 @@ int main(void) {
             JPL_TEST_CHECK(test_write_mock("jpl_test_api_earthmoon.bin", &em) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_api_earthmoon.bin", &ee) == JPL_OK);
             ratio = JPL_TEST_MASS_RATIO;
-            JPL_TEST_CHECK(jpl_get_state(ee, eq, JPL_EARTH_MOON_BARYCENTER, 0, emb) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(ee, eq, JPL_MOON, JPL_EARTH_MOON_BARYCENTER, gm) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(ee, eq, JPL_EARTH, 0, earth) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(ee, eq, JPL_MOON, 0, moon) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(ee, &eq, JPL_EARTH_MOON_BARYCENTER, 0, &emb) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(ee, &eq, JPL_MOON, JPL_EARTH_MOON_BARYCENTER, &gm) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(ee, &eq, JPL_EARTH, 0, &earth) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(ee, &eq, JPL_MOON, 0, &moon) == JPL_OK);
             for (k = 0; k < 6; ++k) {
                 /* Earth/Moon reconstruction: barycentric_state derives
                  * Earth = EMB - Moon_raw/(1+emrat) and Moon = Earth +
@@ -581,13 +613,15 @@ int main(void) {
                 double mraw_km = (k < 3 ? (k == 0 ? 1.0 : (k == 1 ? 2.0 : 3.0)) : 0.0) * JPL_TEST_AU_KM;
                 double want_earth = (emb_km - mraw_km / (1.0 + ratio)) / JPL_TEST_AU_KM;
                 double want_moon = (emb_km - mraw_km / (1.0 + ratio) + mraw_km) / JPL_TEST_AU_KM;
-                JPL_TEST_CHECK(fabs(emb[k] - emb_km / JPL_TEST_AU_KM) < 1e-12);
-                JPL_TEST_CHECK(fabs(earth[k] - want_earth) < 1e-9);
-                JPL_TEST_CHECK(fabs(moon[k] - want_moon) < 1e-9);
+                JPL_TEST_CHECK(fabs(test_state_component(&emb, (int)k) - emb_km / JPL_TEST_AU_KM) < 1e-12);
+                JPL_TEST_CHECK(fabs(test_state_component(&earth, (int)k) - want_earth) < 1e-9);
+                JPL_TEST_CHECK(fabs(test_state_component(&moon, (int)k) - want_moon) < 1e-9);
             }
             /* Boundary record dates. */
-            JPL_TEST_CHECK(jpl_get_state(ee, (const double[2]){8000016.5, 0.0}, JPL_EARTH, 0, earth) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(ee, (const double[2]){8000018.5, 0.0}, JPL_EARTH, 0, earth) == JPL_OK);
+            { static const jpl_date cov_lo = {8000016.5, 0.0};
+              static const jpl_date cov_hi = {8000018.5, 0.0};
+              JPL_TEST_CHECK(jpl_get_state(ee, &cov_lo, JPL_EARTH, 0, &earth) == JPL_OK);
+              JPL_TEST_CHECK(jpl_get_state(ee, &cov_hi, JPL_EARTH, 0, &earth) == JPL_OK); }
             jpl_close(ee);
             /* Invalid EMRAT/AU via dedicated corrupt-header mocks: the
              * open-time validator rejects them as FORMAT. */
@@ -617,7 +651,7 @@ int main(void) {
             static double irec[2 * ERR_DOUBLES];
             jpl_test_mock im;
             jpl_ephemeris *ie = NULL;
-            double out[6], before[6];
+            jpl_state out, before;
             size_t k;
             FILE *tf;
             memset(ihdr, 0, sizeof ihdr);
@@ -640,10 +674,10 @@ int main(void) {
             im.advertised_records = 2;
             im.denum = 441;
             im.constant_count = 2;
-            im.start[0] = cov_start[0];
-            im.start[1] = cov_start[1];
-            im.end[0] = cov_end[0];
-            im.end[1] = cov_end[1];
+            im.start[0] = cov_start.hi;
+            im.start[1] = cov_start.lo;
+            im.end[0] = cov_end.hi;
+            im.end[1] = cov_end.lo;
             im.step_days = 1.0;
             im.au_km = JPL_TEST_AU_KM;
             im.emrat = JPL_TEST_MASS_RATIO;
@@ -661,23 +695,24 @@ int main(void) {
             JPL_TEST_CHECK(ftruncate(fileno(tf), (off_t)(3 * ERR_BYTES)) == 0);
 #endif
             JPL_TEST_CHECK(fclose(tf) == 0);
-            memcpy(out, (double[6]){11, 22, 33, 44, 55, 66}, sizeof out);
-            memcpy(before, out, sizeof out);
-            JPL_TEST_CHECK(jpl_get_state(ie, (const double[2]){8000017.5, 0.0}, JPL_MARS, 0, out) == JPL_ERROR_IO);
-            JPL_TEST_CHECK(memcmp(out, before, sizeof out) == 0);
+            out = (jpl_state){11, 22, 33, 44, 55, 66};
+            before = out;
+            { static const jpl_date io_q = {8000017.5, 0.0};
+              JPL_TEST_CHECK(jpl_get_state(ie, &io_q, JPL_MARS, 0, &out) == JPL_ERROR_IO); }
+            JPL_TEST_CHECK(memcmp(&out, &before, sizeof out) == 0);
             jpl_close(ie);
             JPL_TEST_CHECK(remove("jpl_test_api_io.bin") == 0);
         }
     }
     /* Target zero is invalid; SSB dates validate coverage normally. */
     {
-        double s[6];
-        static const double inside[2] = {8000017.0, 0.0};
-        static const double outside[2] = {8000020.0, 0.0};
-        JPL_TEST_CHECK(jpl_get_state(e, inside, 0, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, inside, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_SOLAR_SYSTEM_BARYCENTER, 0, s) == JPL_ERROR_ARGUMENT);
+        jpl_state s;
+        static const jpl_date inside = {8000017.0, 0.0};
+        static const jpl_date outside = {8000020.0, 0.0};
+        JPL_TEST_CHECK(jpl_get_state(e, &inside, 0, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &inside, JPL_SOLAR_SYSTEM_BARYCENTER, 0, &s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_SOLAR_SYSTEM_BARYCENTER, 0, &s) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_hi, JPL_SOLAR_SYSTEM_BARYCENTER, 0, &s) == JPL_ERROR_ARGUMENT);
     }
 
     /* Light-time status matrix: non-convergence after the iteration
@@ -686,24 +721,24 @@ int main(void) {
      * unchanged. The private budget hook supplies deterministic
      * exhaustion coverage without public options. */
     {
-        static const double q[2] = {8000017.0, 0.0};
-        double s[6], before[6];
+        static const jpl_date q = {8000017.0, 0.0};
+        jpl_state s, before;
         double lt = -7.0;
-        fill_state(s, 5.0);
-        memcpy(before, s, sizeof s);
+        fill_state(&before, 5.0);
+        s = before;
         /* Zero budgets on a non-root case: no iteration family may run,
          * so the bounded solve exhausts without an accepted epoch. */
-        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, q, JPL_MARS, 0, s, &lt, 0, 0) == JPL_ERROR_CONVERGENCE);
-        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(lighttime_with_budget(e, &q, JPL_MARS, 0, &s, &lt, 0, 0) == JPL_ERROR_CONVERGENCE);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
         JPL_TEST_CHECK(lt == -7.0);
         /* Failed budget validation is ARGUMENT, also transactional. */
-        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, q, JPL_MARS, 0, s, &lt, 0, -1) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, before));
+        JPL_TEST_CHECK(lighttime_with_budget(e, &q, JPL_MARS, 0, &s, &lt, 0, -1) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
         /* Identical bodies are an exact zero-delay root accepted even
          * with zero budgets; NULL delay output is accepted too. */
-        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, q, JPL_MARS, JPL_MARS, s, &lt, 0, 0) == JPL_OK);
-        JPL_TEST_CHECK(s[0] == 0.0 && s[5] == 0.0 && lt == 0.0);
-        JPL_TEST_CHECK(jpl_test_lighttime_with_budget(e, q, JPL_MARS, JPL_MARS, s, NULL, 0, 0) == JPL_OK);
+        JPL_TEST_CHECK(lighttime_with_budget(e, &q, JPL_MARS, JPL_MARS, &s, &lt, 0, 0) == JPL_OK);
+        JPL_TEST_CHECK(s.x == 0.0 && s.vz == 0.0 && lt == 0.0);
+        JPL_TEST_CHECK(lighttime_with_budget(e, &q, JPL_MARS, JPL_MARS, &s, NULL, 0, 0) == JPL_OK);
     }
 
     /* The private selector must reject a finite date far beyond coverage
@@ -712,34 +747,36 @@ int main(void) {
         const double far_date[2] = {DBL_MAX, 0.0};
         const double inside[2] = {8000017.0, 0.0};
         double start[2] = {-5.0, -6.0}, end[2] = {-7.0, -8.0};
-        double state[6];
         size_t index = SIZE_MAX;
+        jpl_date inside_date = {inside[0], inside[1]};
+        jpl_state out_state;
         JPL_TEST_CHECK(jpl_test_select_record(e, far_date, &index, start, end) == JPL_ERROR_RANGE);
         JPL_TEST_CHECK(index == SIZE_MAX && start[0] == -5.0 && start[1] == -6.0);
         JPL_TEST_CHECK(end[0] == -7.0 && end[1] == -8.0);
         JPL_TEST_CHECK(jpl_test_select_record(e, inside, &index, start, end) == JPL_OK);
         JPL_TEST_CHECK(index == 0 && start[0] == 8000016.5 && end[0] == 8000017.5);
-        JPL_TEST_CHECK(jpl_get_state(e, inside, JPL_MARS, 0, state) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, &inside_date, JPL_MARS, 0, &out_state) == JPL_OK);
     }
 
     /* Output sentinels stay unchanged on failure. */
     {
-        double s[6], want[6], sec = 9.0, rate = 9.0;
-        static const double outside[2] = {8000020.0, 0.0};
-        fill_state(s, 3.0);
-        fill_state(want, 3.0);
-        JPL_TEST_CHECK(jpl_get_state(e, outside, JPL_MARS, 0, s) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(check_unchanged(s, want));
-        fill_state(s, 3.0);
-        JPL_TEST_CHECK(jpl_get_state(e, nan_hi, JPL_MARS, 0, s) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(check_unchanged(s, want));
+        jpl_state s, want;
+        double sec = 9.0, rate = 9.0;
+        static const jpl_date outside = {8000020.0, 0.0};
+        fill_state(&s, 3.0);
+        fill_state(&want, 3.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_MARS, 0, &s) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(check_unchanged(&s, &want));
+        fill_state(&s, 3.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &nan_hi, JPL_MARS, 0, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(check_unchanged(&s, &want));
         /* The api-errors mock carries no TT-TDB dataset, so a valid
          * in-coverage query reports UNSUPPORTED while an out-of-coverage
          * query stays RANGE; both leave outputs unchanged. */
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, cov_start, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &cov_start, &sec, &rate) == JPL_ERROR_UNSUPPORTED);
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
         sec = 9.0; rate = 9.0;
-        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, outside, &sec, &rate) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &outside, &sec, &rate) == JPL_ERROR_RANGE);
         JPL_TEST_CHECK(sec == 9.0 && rate == 9.0);
         {
             double r[3][3], before[3][3];
@@ -750,7 +787,7 @@ int main(void) {
                     before[a][b] = 5.0;
                 }
             }
-            JPL_TEST_CHECK(jpl_frame_rotation_matrix(nan_lo, r) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_frame_rotation_matrix(&nan_lo, r) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(r, before, sizeof r) == 0);
         }
     }
@@ -763,7 +800,7 @@ int main(void) {
         static double rec2[2 * ERR_DOUBLES];
         jpl_test_mock m2;
         jpl_ephemeris *e2 = NULL;
-        double a[6], b[6];
+        jpl_state a, b;
         size_t k;
         memset(hdr2, 0, sizeof hdr2);
         memcpy(hdr2, "interval sides", 14);
@@ -793,15 +830,15 @@ int main(void) {
         JPL_TEST_CHECK(test_write_mock("jpl_test_api_sides.bin", &m2) == 0);
         JPL_TEST_CHECK(jpl_open("jpl_test_api_sides.bin", &e2) == JPL_OK);
         {
-            jpl_status sa = jpl_get_state(e2, left, JPL_MARS, 0, a);
-            jpl_status sb = jpl_get_state(e2, right, JPL_MARS, 0, b);
+            jpl_status sa = jpl_get_state(e2, &left, JPL_MARS, 0, &a);
+            jpl_status sb = jpl_get_state(e2, &right, JPL_MARS, 0, &b);
             if (sa != JPL_OK || sb != JPL_OK) {
                 jpl_close(e2);
                 return 1;
             }
         }
         /* The fixture places distinct constants in the two adjacent intervals. */
-        JPL_TEST_CHECK(a[0] == 1.0 && b[0] == 2.0);
+        JPL_TEST_CHECK(a.x == 1.0 && b.x == 2.0);
         jpl_close(e2);
         JPL_TEST_CHECK(remove("jpl_test_api_sides.bin") == 0);
     }
@@ -809,10 +846,10 @@ int main(void) {
     /* Final endpoint with and without a trailing record: both select the
      * last advertised interval. */
     {
-        static const double endpt[2] = {8000018.5, 0.0};
-        double s[6];
-        JPL_TEST_CHECK(jpl_get_state(e, endpt, JPL_MARS, 0, s) == JPL_OK);
-        JPL_TEST_CHECK(s[0] == 2.0);
+        static const jpl_date endpt = {8000018.5, 0.0};
+        jpl_state s;
+        JPL_TEST_CHECK(jpl_get_state(e, &endpt, JPL_MARS, 0, &s) == JPL_OK);
+        JPL_TEST_CHECK(s.x == 2.0);
     }
 
     /* A trailing record stays raw-readable but never serves a date.
@@ -824,7 +861,8 @@ int main(void) {
         static double trec[3 * ERR_DOUBLES];
         jpl_test_mock tm;
         jpl_ephemeris *te = NULL, *tmmap = NULL;
-        double s[6], raw[ERR_DOUBLES];
+        jpl_state s;
+        double raw[ERR_DOUBLES];
         size_t k;
         memset(thdr, 0, sizeof thdr);
         memcpy(thdr, "trailing endpoint", 17);
@@ -861,10 +899,11 @@ int main(void) {
         JPL_TEST_CHECK(jpl_record_count(te) == 3);
         JPL_TEST_CHECK(jpl_read_record(te, 2, raw, ERR_DOUBLES) == JPL_OK);
         JPL_TEST_CHECK(raw[2] == 99.0 * JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(te, (const double[2]){8000018.5, 0.0}, JPL_MARS, 0, s) == JPL_OK);
-        JPL_TEST_CHECK(s[0] == 2.0);
-        JPL_TEST_CHECK(jpl_get_state(tmmap, (const double[2]){8000018.5, 0.0}, JPL_MARS, 0, s) == JPL_OK);
-        JPL_TEST_CHECK(s[0] == 2.0);
+        { static const jpl_date trail_end = {8000018.5, 0.0};
+          JPL_TEST_CHECK(jpl_get_state(te, &trail_end, JPL_MARS, 0, &s) == JPL_OK);
+          JPL_TEST_CHECK(s.x == 2.0);
+          JPL_TEST_CHECK(jpl_get_state(tmmap, &trail_end, JPL_MARS, 0, &s) == JPL_OK);
+          JPL_TEST_CHECK(s.x == 2.0); }
         jpl_close(tmmap);
         jpl_close(te);
         JPL_TEST_CHECK(remove("jpl_test_api_trailing.bin") == 0);
@@ -872,12 +911,12 @@ int main(void) {
 
     /* Arbitrary equivalent splits of one epoch agree. */
     {
-        double a[6], b[6];
-        static const double split_a[2] = {8000017.0, 0.25};
-        static const double split_b[2] = {8000017.25, 0.0};
-        JPL_TEST_CHECK(jpl_get_state(e, split_a, JPL_MARS, 0, a) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e, split_b, JPL_MARS, 0, b) == JPL_OK);
-        JPL_TEST_CHECK(a[0] == b[0] && a[3] == b[3]);
+        jpl_state a, b;
+        static const jpl_date split_a = {8000017.0, 0.25};
+        static const jpl_date split_b = {8000017.25, 0.0};
+        JPL_TEST_CHECK(jpl_get_state(e, &split_a, JPL_MARS, 0, &a) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, &split_b, JPL_MARS, 0, &b) == JPL_OK);
+        JPL_TEST_CHECK(a.x == b.x && a.vx == b.vx);
     }
 
     /* Clone lifetime contracts: NULL outputs/sources, deterministic
@@ -890,8 +929,8 @@ int main(void) {
         jpl_ephemeris *c1 = NULL, *c2 = NULL;
         jpl_ephemeris *m = NULL, *mc1 = NULL, *mc2 = NULL;
         const jpl_header *h;
-        double s[6];
-        static const double tq[2] = {8000017.0, 0.0};
+        jpl_state s;
+        static const jpl_date tq = {8000017.0, 0.0};
         /* NULL out_clone never writes through; NULL source NULLs output. */
         JPL_TEST_CHECK(jpl_ephemeris_clone(e, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_ephemeris_clone(NULL, &null_out) == JPL_ERROR_ARGUMENT);
@@ -906,14 +945,14 @@ int main(void) {
         jpl_close(e); e = NULL;
         h = jpl_get_header(c1);
         JPL_TEST_CHECK(h != NULL && h->constant_count == 2 && jpl_record_count(c1) == 2);
-        JPL_TEST_CHECK(jpl_get_state(c1, tq, JPL_MARS, 0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(c1, &tq, JPL_MARS, 0, &s) == JPL_OK);
         h = jpl_get_header(c2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(c2) == 2);
-        JPL_TEST_CHECK(jpl_get_state(c2, tq, JPL_MARS, 0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(c2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(c1); c1 = NULL;
         h = jpl_get_header(c2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(c2) == 2);
-        JPL_TEST_CHECK(jpl_get_state(c2, tq, JPL_MARS, 0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(c2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(c2); c2 = NULL;
         /* mmap siblings: same close order, survivors stay readable. */
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK && m != NULL);
@@ -922,11 +961,11 @@ int main(void) {
         jpl_close(m); m = NULL;
         h = jpl_get_header(mc1);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(mc1) == 2);
-        JPL_TEST_CHECK(jpl_get_state(mc1, tq, JPL_MARS, 0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(mc1, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(mc1); mc1 = NULL;
         h = jpl_get_header(mc2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(mc2) == 2);
-        JPL_TEST_CHECK(jpl_get_state(mc2, tq, JPL_MARS, 0, s) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(mc2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(mc2); mc2 = NULL;
         /* Reopen the FILE handle for the shared tail below. */
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK && e != NULL);
@@ -935,18 +974,18 @@ int main(void) {
     /* Untouched outputs for the time/frame error categories (NULL
      * date, nonfinite part) plus equivalent-split agreement. */
     {
-        double tdb[2] = {9.0, 9.0};
-        static const double split_a[2] = {2451545.0, 0.5};
-        static const double split_b[2] = {2451545.5, 0.0};
-        double ta[2], tb[2];
-        JPL_TEST_CHECK(jpl_tt_to_tdb(NULL, tdb) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(tdb[0] == 9.0 && tdb[1] == 9.0);
-        JPL_TEST_CHECK(jpl_tt_to_tdb(nan_lo, tdb) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(tdb[0] == 9.0 && tdb[1] == 9.0);
+        jpl_date tdb = {9.0, 9.0};
+        static const jpl_date split_a = {2451545.0, 0.5};
+        static const jpl_date split_b = {2451545.5, 0.0};
+        jpl_date ta = {0.0, 0.0}, tb = {0.0, 0.0};
+        JPL_TEST_CHECK(jpl_tt_to_tdb(NULL, &tdb) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(tdb.hi == 9.0 && tdb.lo == 9.0);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&nan_lo, &tdb) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(tdb.hi == 9.0 && tdb.lo == 9.0);
         /* Equivalent splits of one epoch agree exactly. */
-        JPL_TEST_CHECK(jpl_tt_to_tdb(split_a, ta) == JPL_OK);
-        JPL_TEST_CHECK(jpl_tt_to_tdb(split_b, tb) == JPL_OK);
-        JPL_TEST_CHECK(ta[0] == tb[0] && ta[1] == tb[1]);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&split_a, &ta) == JPL_OK);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&split_b, &tb) == JPL_OK);
+        JPL_TEST_CHECK(ta.hi == tb.hi && ta.lo == tb.lo);
     }
 
     jpl_close(e);

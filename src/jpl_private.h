@@ -105,6 +105,22 @@ static inline double jpl_vec_norm3(const double v[3]) {
     return hypot(hypot(v[0], v[1]), v[2]);
 }
 
+/* Atomic light-time geometry for one target/center/epoch. Everything a
+ * convenience caller needs, computed once in coverage-then-read order:
+ * the retarded relative state, the solved delay, the observer's
+ * reception-epoch velocity, the observer-to-Sun vector, and the emission
+ * epoch (tdb minus delay via compensated subtraction). Mixing reception
+ * and emission inputs is a type-level impossibility for callers: they
+ * read named fields instead of threading three epochs by hand.
+ * sun_vec is all zeros when the center is the Sun (no Sun leg needed). */
+typedef struct jpl_geometry {
+    jpl_state rel_state;
+    double light_time_days;
+    double observer_vel[3];
+    double sun_vec[3];
+    jpl_date emission;
+} jpl_geometry;
+
 /* Conversion helpers between public struct types and internal double[2]/double[6] */
 static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
     out[0] = d->hi; out[1] = d->lo;

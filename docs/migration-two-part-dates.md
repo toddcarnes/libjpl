@@ -10,7 +10,33 @@ This guide covers the 0.3.0 breaking changes also summarized in
 `CHANGELOG.md`. No scalar compatibility wrapper is offered: replace
 scalar-date call sites directly.
 
-## Before / after signatures
+## 0.7.0: arrays to structs (supplement)
+
+Version 0.7.0 replaces the `double[2]` dates and `double[6]` states with
+`jpl_date {hi, lo}` and `jpl_state {x, y, z, vx, vy, vz}` structs; every
+public entry point takes pointers to them. No array compatibility wrapper
+is offered: replace array call sites directly.
+
+| Before (arrays) | After (structs) |
+| --- | --- |
+| `const double jd[2] = {hi, lo}; f(e, jd, ...)` | `const jpl_date jd = {hi, lo}; f(e, &jd, ...)` |
+| `double st[6]; f(e, jd, ..., st); st[0]` | `jpl_state st; f(e, &jd, ..., &st); st.x` |
+| `double tdb[2]; jpl_tt_to_tdb(tt, tdb)` | `jpl_date tdb; jpl_tt_to_tdb(&tt, &tdb)` |
+
+```c
+const jpl_date tt = {2451545.0, 0.125};
+jpl_date tdb = {0.0, 0.0};
+jpl_state state;
+if (jpl_tt_to_tdb(&tt, &tdb) != JPL_OK) return 1;
+if (jpl_get_state(ephemeris, &tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) return 1;
+```
+
+Internal `double[2]`/`double[6]` helpers remain in `src/jpl_private.h`;
+convert at the boundary with `jpl_date_to_pair` / `jpl_pair_to_date` /
+`jpl_state_to_array` / `jpl_array_to_state`. Raw on-disk record epochs
+stay scalar, as before.
+
+## Before / after signatures (0.3.0)
 
 | Before (scalar) | After (two-part) |
 | --- | --- |

@@ -46,6 +46,21 @@ ffi.cdef("""
     typedef struct jpl_ephemeris jpl_ephemeris;
 
     typedef struct {
+        double hi;
+        double lo;
+    } jpl_date;
+
+    typedef struct {
+        double x;
+        double y;
+        double z;
+        double vx;
+        double vy;
+        double vz;
+    } jpl_state;
+
+
+    typedef struct {
         double longitude_deg;
         double latitude_deg;
         double range_au;
@@ -64,31 +79,30 @@ ffi.cdef("""
     jpl_status jpl_read_record(const jpl_ephemeris *ephemeris, size_t record_index,
                                double *values, size_t value_count);
     size_t jpl_record_count(const jpl_ephemeris *ephemeris);
-    jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+    jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
                                     double *seconds, double *rate_per_day);
     int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
-    jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                             int target, int center, double state[6]);
-    jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                                       int target, int center, double state[6], double *out_light_time);
-    jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
-    jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                                         double sun_distance_au, double out_state[6]);
+    jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
+                             int target, int center, jpl_state *state);
+    jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
+                                       int target, int center, jpl_state *state, double *out_light_time);
+    jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_vel[3],
+                                    double sun_distance_au, jpl_state *out_state);
     jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
     jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
 
     /* jpl_frames.h - frame conversions and time conversions */
-    jpl_status jpl_ecliptic_to_icrs(const double state[6], const double jd_tt[2], double out_state[6]);
-    jpl_status jpl_icrs_to_ecliptic(const double state[6], const double jd_tt[2], double out_state[6]);
-    jpl_status jpl_frame_rotation_matrix(const double jd_tt[2], double R[3][3]);
-    jpl_status jpl_tt_to_tdb(const double jd_tt[2], double jd_tdb[2]);
-    jpl_status jpl_tdb_to_tt(const double jd_tdb[2], double jd_tt[2]);
+    jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
+    jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
+    jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]);
+    jpl_status jpl_tt_to_tdb(const jpl_date *jd_tt, jpl_date *jd_tdb);
+    jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt);
 
     /* jpl_convenience.h - planet/Moon helpers and unit conversions */
-    jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const double jd_tt[2], int planet, int center, double state[6]);
-    jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const double jd_tt[2], double state[6]);
+    jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, int planet, int center, jpl_state *state);
+    jpl_status jpl_moon_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, jpl_state *state);
     jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *ephem,
-                                              const double jd_tt[2], int target,
+                                              const jpl_date *jd_tt, int target,
                                               jpl_apparent_ecliptic_result *out);
     jpl_status jpl_au_per_day_to_km_per_s(const double vel_au_day[3], double vel_km_s[3]);
     jpl_status jpl_km_to_au(double km, double *au);

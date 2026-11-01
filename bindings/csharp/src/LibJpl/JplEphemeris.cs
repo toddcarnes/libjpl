@@ -130,7 +130,8 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        JplStatus status = Native.jpl_get_tt_minus_tdb(handle, jdTdb, out double seconds, out double rate);
+        var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
+        JplStatus status = Native.jpl_get_tt_minus_tdb(handle, jd, out double seconds, out double rate);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
@@ -145,13 +146,13 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        double[] state = new double[6];
-        JplStatus status = Native.jpl_get_state(handle, jdTdb, (int)target, (int)center, state);
+        var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
+        JplStatus status = Native.jpl_get_state(handle, jd, (int)target, (int)center, out JplState state);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return state;
+        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
     }
 
     public (double[] State, double LightTimeDays) GetStateLighttime(double[] jdTdb, JplTarget target, JplTarget center)
@@ -159,13 +160,13 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        double[] state = new double[6];
-        JplStatus status = Native.jpl_get_state_lighttime(handle, jdTdb, (int)target, (int)center, state, out double lt);
+        var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
+        JplStatus status = Native.jpl_get_state_lighttime(handle, jd, (int)target, (int)center, out JplState state, out double lt);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return (state, lt);
+        return (new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz }, lt);
     }
 
 
@@ -173,30 +174,33 @@ public sealed class JplEphemeris : SafeHandle
     // Frame conversions
     public static double[] EclipticToIcrs(double[] state, double[] jdTt)
     {
-        double[] outState = new double[6];
-        JplStatus status = Native.jpl_ecliptic_to_icrs(state, jdTt, outState);
+        var st = new JplState { X = state[0], Y = state[1], Z = state[2], Vx = state[3], Vy = state[4], Vz = state[5] };
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_ecliptic_to_icrs(st, jd, out JplState outState);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return outState;
+        return new double[] { outState.X, outState.Y, outState.Z, outState.Vx, outState.Vy, outState.Vz };
     }
 
     public static double[] IcrsToEcliptic(double[] state, double[] jdTt)
     {
-        double[] outState = new double[6];
-        JplStatus status = Native.jpl_icrs_to_ecliptic(state, jdTt, outState);
+        var st = new JplState { X = state[0], Y = state[1], Z = state[2], Vx = state[3], Vy = state[4], Vz = state[5] };
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_icrs_to_ecliptic(st, jd, out JplState outState);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return outState;
+        return new double[] { outState.X, outState.Y, outState.Z, outState.Vx, outState.Vy, outState.Vz };
     }
 
     public static double[,] FrameRotationMatrix(double[] jdTt)
     {
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         double[,] R = new double[3, 3];
-        JplStatus status = Native.jpl_frame_rotation_matrix(jdTt, R);
+        JplStatus status = Native.jpl_frame_rotation_matrix(jd, R);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
@@ -206,35 +210,35 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[] TtToTdb(double[] jdTt)
     {
-        double[] jdTdb = new double[2];
-        JplStatus status = Native.jpl_tt_to_tdb(jdTt, jdTdb);
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_tt_to_tdb(jd, out JplDate jdTdb);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return jdTdb;
+        return new double[] { jdTdb.Hi, jdTdb.Lo };
     }
 
     public static double[] TdbToTt(double[] jdTdb)
     {
-        double[] jdTt = new double[2];
-        JplStatus status = Native.jpl_tdb_to_tt(jdTdb, jdTt);
+        var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
+        JplStatus status = Native.jpl_tdb_to_tt(jd, out JplDate jdTt);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return jdTt;
+        return new double[] { jdTt.Hi, jdTt.Lo };
     }
 
     public static double[] ApplyAberration(double[] geomState, double[] obsVel)
     {
-        double[] outState = new double[6];
-        JplStatus status = Native.jpl_apply_aberration(geomState, obsVel, outState);
+        var st = new JplState { X = geomState[0], Y = geomState[1], Z = geomState[2], Vx = geomState[3], Vy = geomState[4], Vz = geomState[5] };
+        JplStatus status = Native.jpl_apply_aberration(st, obsVel, 0.0, out JplState outState);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return outState;
+        return new double[] { outState.X, outState.Y, outState.Z, outState.Vx, outState.Vy, outState.Vz };
     }
 
     // Convenience: Clone returning JplEphemeris
@@ -257,13 +261,13 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        double[] state = new double[6];
-        JplStatus status = Native.jpl_planet_position(handle, jdTt, (int)planet, (int)center, state);
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_planet_position(handle, jd, (int)planet, (int)center, out JplState state);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return state;
+        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
     }
 
     public double[] MoonPosition(double[] jdTt)
@@ -271,13 +275,13 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        double[] state = new double[6];
-        JplStatus status = Native.jpl_moon_position(handle, jdTt, state);
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_moon_position(handle, jd, out JplState state);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return state;
+        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
     }
 
     public ApparentEclipticResult ApparentEclipticPosition(double[] jdTt, JplTarget target)
@@ -285,8 +289,9 @@ public sealed class JplEphemeris : SafeHandle
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         JplStatus status = Native.jpl_apparent_ecliptic_position(
-            handle, jdTt, (int)target, out JplApparentEclipticResultNative result);
+            handle, jd, (int)target, out JplApparentEclipticResultNative result);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);

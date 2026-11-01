@@ -52,6 +52,24 @@ internal struct JplHeaderNative
     public int ByteOrder;
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct JplDate
+{
+    public double Hi;
+    public double Lo;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public struct JplState
+{
+    public double X;
+    public double Y;
+    public double Z;
+    public double Vx;
+    public double Vy;
+    public double Vz;
+}
+
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 8)]
 internal struct JplApparentEclipticResultNative
 {
@@ -103,7 +121,7 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_tt_minus_tdb(
         IntPtr ephemeris,
-        double[] jd_tdb,
+        JplDate jd_tdb,
         out double seconds,
         out double rate_per_day);
 
@@ -113,32 +131,26 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_state(
         IntPtr ephemeris,
-        double[] jd_tdb,
+        JplDate jd_tdb,
         int target,
         int center,
-        [Out] double[] state);
+        out JplState state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_state_lighttime(
         IntPtr ephemeris,
-        double[] jd_tdb,
+        JplDate jd_tdb,
         int target,
         int center,
-        [Out] double[] state,
+        out JplState state,
         out double out_light_time);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_apply_aberration(
-        double[] state,
-        double[] observer_vel,
-        [Out] double[] out_state);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern JplStatus jpl_apply_aberration_full(
-        double[] state,
+        in JplState state,
         double[] observer_vel,
         double sun_distance_au,
-        [Out] double[] out_state);
+        out JplState out_state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_open_mmap(
@@ -153,50 +165,50 @@ public static partial class Native
     // jpl_frames.h - frame conversions and time conversions
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_ecliptic_to_icrs(
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 6)] double[] state,
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tt,
-        [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 6)] double[] out_state);
+        in JplState state,
+        JplDate jd_tt,
+        out JplState out_state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_icrs_to_ecliptic(
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 6)] double[] state,
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tt,
-        [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 6)] double[] out_state);
+        in JplState state,
+        JplDate jd_tt,
+        out JplState out_state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_frame_rotation_matrix(
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tt,
+        JplDate jd_tt,
         [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 9)] double[,] R);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_tt_to_tdb(
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tt,
-        [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tdb);
+        JplDate jd_tt,
+        out JplDate jd_tdb);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_tdb_to_tt(
-        [In, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tdb,
-        [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 2)] double[] jd_tt);
+        JplDate jd_tdb,
+        out JplDate jd_tt);
 
     // jpl_convenience.h - planet/Moon helpers and unit conversions
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_planet_position(
         IntPtr ephem,
-        double[] jd_tt,
+        JplDate jd_tt,
         int planet,
         int center,
-        [Out] double[] state);
+        out JplState state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_moon_position(
         IntPtr ephem,
-        double[] jd_tt,
-        [Out] double[] state);
+        JplDate jd_tt,
+        out JplState state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern JplStatus jpl_apparent_ecliptic_position(
         IntPtr ephem,
-        double[] jd_tt,
+        JplDate jd_tt,
         int target,
         out JplApparentEclipticResultNative result);
 

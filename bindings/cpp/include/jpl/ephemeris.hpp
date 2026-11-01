@@ -149,9 +149,9 @@ public:
     };
 
     [[nodiscard]] TT_TDB_Result tt_minus_tdb(const std::array<double, 2>& jd_tdb) const {
-        double jd[2] = {jd_tdb[0], jd_tdb[1]};
+        jpl_date jd{jd_tdb[0], jd_tdb[1]};
         double sec, rate;
-        throw_if_error(::jpl_get_tt_minus_tdb(handle_, jd, &sec, &rate));
+        throw_if_error(::jpl_get_tt_minus_tdb(handle_, &jd, &sec, &rate));
         return {sec, rate};
     }
 
@@ -161,10 +161,10 @@ public:
 
     [[nodiscard]] std::array<double, 6> get_state(const std::array<double, 2>& jd_tdb,
                                                   int target, int center) const {
-        double jd[2] = {jd_tdb[0], jd_tdb[1]};
-        double state[6];
-        throw_if_error(::jpl_get_state(handle_, jd, target, center, state));
-        return {state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_date jd{jd_tdb[0], jd_tdb[1]};
+        jpl_state state;
+        throw_if_error(::jpl_get_state(handle_, &jd, target, center, &state));
+        return {state.x, state.y, state.z, state.vx, state.vy, state.vz};
     }
 
     struct LightTimeResult {
@@ -174,26 +174,29 @@ public:
 
     [[nodiscard]] LightTimeResult get_state_lighttime(const std::array<double, 2>& jd_tdb,
                                                       int target, int center) const {
-        double jd[2] = {jd_tdb[0], jd_tdb[1]};
-        double state[6];
+        jpl_date jd{jd_tdb[0], jd_tdb[1]};
+        jpl_state state;
         double lt;
-        throw_if_error(::jpl_get_state_lighttime(handle_, jd, target, center, state, &lt));
-        return {{state[0], state[1], state[2], state[3], state[4], state[5]}, lt};
+        throw_if_error(::jpl_get_state_lighttime(handle_, &jd, target, center, &state, &lt));
+        return {{state.x, state.y, state.z, state.vx, state.vy, state.vz}, lt};
     }
 
     [[nodiscard]] static std::array<double, 6> apply_aberration(const std::array<double, 6>& state,
                                                                  const std::array<double, 3>& observer_vel) {
-        double out[6];
-        throw_if_error(::jpl_apply_aberration(state.data(), observer_vel.data(), out));
-        return {out[0], out[1], out[2], out[3], out[4], out[5]};
+        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_state out;
+        /* Sun distance 0 omits the solar term (legacy wrapper behaviour). */
+        throw_if_error(::jpl_apply_aberration(&in, observer_vel.data(), 0.0, &out));
+        return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }
 
     [[nodiscard]] static std::array<double, 6> apply_aberration_full(const std::array<double, 6>& state,
                                                                       const std::array<double, 3>& observer_vel,
                                                                       double sun_distance_au) {
-        double out[6];
-        throw_if_error(::jpl_apply_aberration_full(state.data(), observer_vel.data(), sun_distance_au, out));
-        return {out[0], out[1], out[2], out[3], out[4], out[5]};
+        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_state out;
+        throw_if_error(::jpl_apply_aberration(&in, observer_vel.data(), sun_distance_au, &out));
+        return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }
 
     Ephemeris clone() const {
@@ -207,21 +210,26 @@ public:
     // Frame conversions
     [[nodiscard]] static std::array<double, 6> ecliptic_to_icrs(const std::array<double, 6>& state,
                                                                  const std::array<double, 2>& jd_tt) {
-        double out[6];
-        throw_if_error(::jpl_ecliptic_to_icrs(state.data(), jd_tt.data(), out));
-        return {out[0], out[1], out[2], out[3], out[4], out[5]};
+        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_state out;
+        throw_if_error(::jpl_ecliptic_to_icrs(&in, &jd, &out));
+        return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }
 
     [[nodiscard]] static std::array<double, 6> icrs_to_ecliptic(const std::array<double, 6>& state,
                                                                  const std::array<double, 2>& jd_tt) {
-        double out[6];
-        throw_if_error(::jpl_icrs_to_ecliptic(state.data(), jd_tt.data(), out));
-        return {out[0], out[1], out[2], out[3], out[4], out[5]};
+        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_state out;
+        throw_if_error(::jpl_icrs_to_ecliptic(&in, &jd, &out));
+        return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }
 
     [[nodiscard]] static std::array<std::array<double, 3>, 3> frame_rotation_matrix(const std::array<double, 2>& jd_tt) {
+        jpl_date jd{jd_tt[0], jd_tt[1]};
         double R[3][3];
-        throw_if_error(::jpl_frame_rotation_matrix(jd_tt.data(), R));
+        throw_if_error(::jpl_frame_rotation_matrix(&jd, R));
         std::array<std::array<double, 3>, 3> result;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
@@ -230,31 +238,33 @@ public:
     }
 
     [[nodiscard]] static std::array<double, 2> tt_to_tdb(const std::array<double, 2>& jd_tt) {
-        double jd_tdb[2];
-        throw_if_error(::jpl_tt_to_tdb(jd_tt.data(), jd_tdb));
-        return {jd_tdb[0], jd_tdb[1]};
+        jpl_date in{jd_tt[0], jd_tt[1]};
+        jpl_date jd_tdb;
+        throw_if_error(::jpl_tt_to_tdb(&in, &jd_tdb));
+        return {jd_tdb.hi, jd_tdb.lo};
     }
 
     [[nodiscard]] static std::array<double, 2> tdb_to_tt(const std::array<double, 2>& jd_tdb) {
-        double jd_tt[2];
-        throw_if_error(::jpl_tdb_to_tt(jd_tdb.data(), jd_tt));
-        return {jd_tt[0], jd_tt[1]};
+        jpl_date in{jd_tdb[0], jd_tdb[1]};
+        jpl_date jd_tt;
+        throw_if_error(::jpl_tdb_to_tt(&in, &jd_tt));
+        return {jd_tt.hi, jd_tt.lo};
     }
 
     // Convenience functions
     [[nodiscard]] std::array<double, 6> planet_position(const std::array<double, 2>& jd_tt,
                                                         int planet, int center) const {
-        double jd[2] = {jd_tt[0], jd_tt[1]};
-        double state[6];
-        throw_if_error(::jpl_planet_position(handle_, jd, planet, center, state));
-        return {state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_state state;
+        throw_if_error(::jpl_planet_position(handle_, &jd, planet, center, &state));
+        return {state.x, state.y, state.z, state.vx, state.vy, state.vz};
     }
 
     [[nodiscard]] std::array<double, 6> moon_position(const std::array<double, 2>& jd_tt) const {
-        double jd[2] = {jd_tt[0], jd_tt[1]};
-        double state[6];
-        throw_if_error(::jpl_moon_position(handle_, jd, state));
-        return {state[0], state[1], state[2], state[3], state[4], state[5]};
+        jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_state state;
+        throw_if_error(::jpl_moon_position(handle_, &jd, &state));
+        return {state.x, state.y, state.z, state.vx, state.vy, state.vz};
     }
 
     struct ApparentEclipticResult {
@@ -266,9 +276,9 @@ public:
     };
 
     [[nodiscard]] ApparentEclipticResult apparent_ecliptic_position(const std::array<double, 2>& jd_tt, int target) const {
-        double jd[2] = {jd_tt[0], jd_tt[1]};
+        jpl_date jd{jd_tt[0], jd_tt[1]};
         jpl_apparent_ecliptic_result result;
-        throw_if_error(::jpl_apparent_ecliptic_position(handle_, jd, target, &result));
+        throw_if_error(::jpl_apparent_ecliptic_position(handle_, &jd, target, &result));
         return {result.longitude_deg, result.latitude_deg, result.range_au,
                 result.longitude_rate_deg_per_day, result.range_rate_km_per_s};
     }

@@ -22,6 +22,24 @@ def _check(status):
         raise JplError(status)
 
 
+def _jpl_date(jd):
+    """Build a jpl_date cdata from a [hi, lo] pair."""
+    return _ffi.new("jpl_date *", {'hi': float(jd[0]), 'lo': float(jd[1])})
+
+
+def _jpl_state(state):
+    """Build a jpl_state cdata from a [x, y, z, vx, vy, vz] sequence."""
+    return _ffi.new("jpl_state *", {'x': float(state[0]), 'y': float(state[1]),
+                                    'z': float(state[2]), 'vx': float(state[3]),
+                                    'vy': float(state[4]), 'vz': float(state[5])})
+
+
+def _state_list(state):
+    """Read a jpl_state cdata back into a Python list."""
+    return [float(state.x), float(state.y), float(state.z),
+            float(state.vx), float(state.vy), float(state.vz)]
+
+
 # Type constants for convenience
 class JplStatus:
     OK = 0
@@ -203,7 +221,7 @@ class Ephemeris:
 
     def tt_minus_tdb(self, jd_tdb):
         """Get TT-TDB at TDB Julian date. Returns (seconds, rate_per_day)."""
-        jd = _ffi.new("double[2]", [float(jd_tdb[0]), float(jd_tdb[1])])
+        jd = _jpl_date(jd_tdb)
         sec = _ffi.new("double *")
         rate = _ffi.new("double *")
         _check(_lib.jpl_get_tt_minus_tdb(self._handle, jd, sec, rate))
@@ -214,34 +232,34 @@ class Ephemeris:
 
     def get_state(self, jd_tdb, target, center):
         """Get state vector for target at jd_tdb relative to center."""
-        jd = _ffi.new("double[2]", [float(jd_tdb[0]), float(jd_tdb[1])])
-        out = _ffi.new("double[6]")
+        jd = _jpl_date(jd_tdb)
+        out = _ffi.new("jpl_state *")
         _check(_lib.jpl_get_state(self._handle, jd, int(target), int(center), out))
-        return [float(out[i]) for i in range(6)]
+        return _state_list(out)
 
     def get_state_lighttime(self, jd_tdb, target, center):
         """Get light-time-corrected state. Returns (state, light_time_days)."""
-        jd = _ffi.new("double[2]", [float(jd_tdb[0]), float(jd_tdb[1])])
-        out = _ffi.new("double[6]")
+        jd = _jpl_date(jd_tdb)
+        out = _ffi.new("jpl_state *")
         lt = _ffi.new("double *")
         _check(_lib.jpl_get_state_lighttime(self._handle, jd, int(target), int(center), out, lt))
-        return ([float(out[i]) for i in range(6)], float(lt[0]))
+        return (_state_list(out), float(lt[0]))
 
     def apply_aberration(self, state, observer_vel):
         """Apply stellar aberration (without solar term). Returns aberrated state."""
-        in_state = _ffi.new("double[6]", [float(x) for x in state])
+        in_state = _jpl_state(state)
         in_vel = _ffi.new("double[3]", [float(x) for x in observer_vel])
-        out = _ffi.new("double[6]")
-        _check(_lib.jpl_apply_aberration(in_state, in_vel, out))
-        return [float(out[i]) for i in range(6)]
+        out = _ffi.new("jpl_state *")
+        _check(_lib.jpl_apply_aberration(in_state, in_vel, 0.0, out))
+        return _state_list(out)
 
     def apply_aberration_full(self, state, observer_vel, sun_distance_au):
         """Apply full stellar aberration with solar term. Returns aberrated state."""
-        in_state = _ffi.new("double[6]", [float(x) for x in state])
+        in_state = _jpl_state(state)
         in_vel = _ffi.new("double[3]", [float(x) for x in observer_vel])
-        out = _ffi.new("double[6]")
-        _check(_lib.jpl_apply_aberration_full(in_state, in_vel, float(sun_distance_au), out))
-        return [float(out[i]) for i in range(6)]
+        out = _ffi.new("jpl_state *")
+        _check(_lib.jpl_apply_aberration(in_state, in_vel, float(sun_distance_au), out))
+        return _state_list(out)
 
     @staticmethod
     def open_mmap(path):
@@ -264,25 +282,25 @@ class Ephemeris:
     @staticmethod
     def ecliptic_to_icrs(state, jd_tt):
         """Rotate ecliptic-of-date state to ICRS."""
-        in_state = _ffi.new("double[6]", [float(x) for x in state])
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        out = _ffi.new("double[6]")
+        in_state = _jpl_state(state)
+        jd = _jpl_date(jd_tt)
+        out = _ffi.new("jpl_state *")
         _check(_lib.jpl_ecliptic_to_icrs(in_state, jd, out))
-        return [float(out[i]) for i in range(6)]
+        return _state_list(out)
 
     @staticmethod
     def icrs_to_ecliptic(state, jd_tt):
         """Rotate ICRS state to ecliptic of date."""
-        in_state = _ffi.new("double[6]", [float(x) for x in state])
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        out = _ffi.new("double[6]")
+        in_state = _jpl_state(state)
+        jd = _jpl_date(jd_tt)
+        out = _ffi.new("jpl_state *")
         _check(_lib.jpl_icrs_to_ecliptic(in_state, jd, out))
-        return [float(out[i]) for i in range(6)]
+        return _state_list(out)
 
     @staticmethod
     def frame_rotation_matrix(jd_tt):
         """Get ecliptic-of-date to ICRS rotation matrix."""
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
+        jd = _jpl_date(jd_tt)
         R = _ffi.new("double[3][3]")
         _check(_lib.jpl_frame_rotation_matrix(jd, R))
         return [[float(R[i][j]) for j in range(3)] for i in range(3)]
@@ -290,37 +308,37 @@ class Ephemeris:
     @staticmethod
     def tt_to_tdb(jd_tt):
         """Convert TT Julian date to TDB."""
-        jd_tt_arr = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        jd_tdb = _ffi.new("double[2]")
-        _check(_lib.jpl_tt_to_tdb(jd_tt_arr, jd_tdb))
-        return [float(jd_tdb[0]), float(jd_tdb[1])]
+        jd_tt_in = _jpl_date(jd_tt)
+        jd_tdb = _ffi.new("jpl_date *")
+        _check(_lib.jpl_tt_to_tdb(jd_tt_in, jd_tdb))
+        return [float(jd_tdb.hi), float(jd_tdb.lo)]
 
     @staticmethod
     def tdb_to_tt(jd_tdb):
         """Convert TDB Julian date to TT."""
-        jd_tdb_arr = _ffi.new("double[2]", [float(jd_tdb[0]), float(jd_tdb[1])])
-        jd_tt = _ffi.new("double[2]")
-        _check(_lib.jpl_tdb_to_tt(jd_tdb_arr, jd_tt))
-        return [float(jd_tt[0]), float(jd_tt[1])]
+        jd_tdb_in = _jpl_date(jd_tdb)
+        jd_tt = _ffi.new("jpl_date *")
+        _check(_lib.jpl_tdb_to_tt(jd_tdb_in, jd_tt))
+        return [float(jd_tt.hi), float(jd_tt.lo)]
 
     # Convenience functions
     def planet_position(self, jd_tt, planet, center):
         """Apparent planet position (light-time + aberration, ICRS)."""
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        out = _ffi.new("double[6]")
+        jd = _jpl_date(jd_tt)
+        out = _ffi.new("jpl_state *")
         _check(_lib.jpl_planet_position(self._handle, jd, int(planet), int(center), out))
-        return [float(out[i]) for i in range(6)]
+        return _state_list(out)
 
     def moon_position(self, jd_tt):
         """Apparent Moon position, Earth-centered ICRS."""
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
-        out = _ffi.new("double[6]")
+        jd = _jpl_date(jd_tt)
+        out = _ffi.new("jpl_state *")
         _check(_lib.jpl_moon_position(self._handle, jd, out))
-        return [float(out[i]) for i in range(6)]
+        return _state_list(out)
 
     def apparent_ecliptic_position(self, jd_tt, target):
         """Apparent geocentric true-ecliptic position and motion."""
-        jd = _ffi.new("double[2]", [float(jd_tt[0]), float(jd_tt[1])])
+        jd = _jpl_date(jd_tt)
         result = _ffi.new("jpl_apparent_ecliptic_result *")
         _check(_lib.jpl_apparent_ecliptic_position(self._handle, jd, int(target),
                                                    result))

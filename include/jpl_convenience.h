@@ -49,7 +49,8 @@ extern "C" {
  * @note Apparent means light-time (mixed-epoch velocity
  *       v_target(emission) - v_center(reception), not an apparent tracking
  *       rate) plus special-relativistic stellar aberration with the
- *       <=0.4uas solar-potential term (via jpl_apply_aberration_full)
+ *       <=0.4uas solar-potential term (via jpl_apply_aberration with the
+ *       Sun-observer distance; 0.0 omits it)
  *       whenever the observer is neither the SSB nor the Sun itself; the
  *       term is not gravitational light bending. SSB-observer calls apply
  *       no aberration. state.vx,vy,vz is the retarded-epoch velocity, passed

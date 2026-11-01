@@ -138,9 +138,10 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
+        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
         Dim seconds As Double
         Dim rate As Double
-        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jdTdb, seconds, rate)
+        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jd, seconds, rate)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
@@ -158,12 +159,13 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
-        Dim state(5) As Double
-        Dim status As JplStatus = Native.jpl_get_state(handle, jdTdb, CInt(target), CInt(center), state)
+        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
+        Dim stNative As JplStateNative
+        Dim status As JplStatus = Native.jpl_get_state(handle, jd, CInt(target), CInt(center), stNative)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return state
+        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
     End Function
 
     Public Function GetStateLighttime(jdTdb As Double(), target As JplTarget, center As JplTarget) As (State As Double(), LightTimeDays As Double)
@@ -171,13 +173,14 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
-        Dim state(5) As Double
+        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
+        Dim stNative As JplStateNative
         Dim lt As Double
-        Dim status As JplStatus = Native.jpl_get_state_lighttime(handle, jdTdb, CInt(target), CInt(center), state, lt)
+        Dim status As JplStatus = Native.jpl_get_state_lighttime(handle, jd, CInt(target), CInt(center), stNative, lt)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return (state, lt)
+        Return ({stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}, lt)
     End Function
 
     Public Function GetTtMinusTdbResult(jdTdb As Double()) As TtMinusTdbResult
@@ -185,9 +188,10 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
+        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
         Dim seconds As Double
         Dim rate As Double
-        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jdTdb, seconds, rate)
+        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jd, seconds, rate)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
@@ -196,26 +200,33 @@ Public NotInheritable Class JplEphemeris
 
     ' Frame conversions
     Public Shared Function EclipticToIcrs(state As Double(), jdTt As Double()) As Double()
-        Dim outState(5) As Double
-        Dim status As JplStatus = Native.jpl_ecliptic_to_icrs(state, jdTt, outState)
+        Dim nativeIn As New JplStateNative With {.X = state(0), .Y = state(1), .Z = state(2),
+                                                .Vx = state(3), .Vy = state(4), .Vz = state(5)}
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim nativeOut As JplStateNative
+        Dim status As JplStatus = Native.jpl_ecliptic_to_icrs(nativeIn, jd, nativeOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return outState
+        Return {nativeOut.X, nativeOut.Y, nativeOut.Z, nativeOut.Vx, nativeOut.Vy, nativeOut.Vz}
     End Function
 
     Public Shared Function IcrsToEcliptic(state As Double(), jdTt As Double()) As Double()
-        Dim outState(5) As Double
-        Dim status As JplStatus = Native.jpl_icrs_to_ecliptic(state, jdTt, outState)
+        Dim nativeIn As New JplStateNative With {.X = state(0), .Y = state(1), .Z = state(2),
+                                                .Vx = state(3), .Vy = state(4), .Vz = state(5)}
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim nativeOut As JplStateNative
+        Dim status As JplStatus = Native.jpl_icrs_to_ecliptic(nativeIn, jd, nativeOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return outState
+        Return {nativeOut.X, nativeOut.Y, nativeOut.Z, nativeOut.Vx, nativeOut.Vy, nativeOut.Vz}
     End Function
 
     Public Shared Function FrameRotationMatrix(jdTt As Double()) As Double(,)
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
         Dim R(2, 2) As Double
-        Dim status As JplStatus = Native.jpl_frame_rotation_matrix(jdTt, R)
+        Dim status As JplStatus = Native.jpl_frame_rotation_matrix(jd, R)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
@@ -223,30 +234,34 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function TtToTdb(jdTt As Double()) As Double()
-        Dim jdTdb(1) As Double
-        Dim status As JplStatus = Native.jpl_tt_to_tdb(jdTt, jdTdb)
+        Dim jdIn As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim jdOut As JplDateNative
+        Dim status As JplStatus = Native.jpl_tt_to_tdb(jdIn, jdOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return jdTdb
+        Return {jdOut.Hi, jdOut.Lo}
     End Function
 
     Public Shared Function TdbToTt(jdTdb As Double()) As Double()
-        Dim jdTt(1) As Double
-        Dim status As JplStatus = Native.jpl_tdb_to_tt(jdTdb, jdTt)
+        Dim jdIn As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
+        Dim jdOut As JplDateNative
+        Dim status As JplStatus = Native.jpl_tdb_to_tt(jdIn, jdOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return jdTt
+        Return {jdOut.Hi, jdOut.Lo}
     End Function
 
     Public Shared Function ApplyAberration(geomState As Double(), obsVel As Double()) As Double()
-        Dim outState(5) As Double
-        Dim status As JplStatus = Native.jpl_apply_aberration(geomState, obsVel, outState)
+        Dim nativeIn As New JplStateNative With {.X = geomState(0), .Y = geomState(1), .Z = geomState(2),
+                                                .Vx = geomState(3), .Vy = geomState(4), .Vz = geomState(5)}
+        Dim nativeOut As JplStateNative
+        Dim status As JplStatus = Native.jpl_apply_aberration(nativeIn, obsVel, 0.0, nativeOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return outState
+        Return {nativeOut.X, nativeOut.Y, nativeOut.Z, nativeOut.Vx, nativeOut.Vy, nativeOut.Vz}
     End Function
 
     ' Convenience: Clone returning JplEphemeris
@@ -269,12 +284,13 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
-        Dim state(5) As Double
-        Dim status As JplStatus = Native.jpl_planet_position(handle, jdTt, CInt(planet), CInt(center), state)
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim stNative As JplStateNative
+        Dim status As JplStatus = Native.jpl_planet_position(handle, jd, CInt(planet), CInt(center), stNative)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return state
+        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
     End Function
 
     Public Function MoonPosition(jdTt As Double()) As Double()
@@ -282,12 +298,13 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
-        Dim state(5) As Double
-        Dim status As JplStatus = Native.jpl_moon_position(handle, jdTt, state)
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim stNative As JplStateNative
+        Dim status As JplStatus = Native.jpl_moon_position(handle, jd, stNative)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return state
+        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
     End Function
 
     Public Function ApparentEclipticPosition(jdTt As Double(), target As JplTarget) As ApparentEclipticResult
@@ -295,9 +312,10 @@ Public NotInheritable Class JplEphemeris
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
         Dim result As New JplApparentEclipticResultNative()
         Dim status As JplStatus = Native.jpl_apparent_ecliptic_position(
-            handle, jdTt, CInt(target), result)
+            handle, jd, CInt(target), result)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If

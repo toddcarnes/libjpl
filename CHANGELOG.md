@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with debug assertions on the internal seam (`JPL_ASSERT_NORMALIZED`). Added normalization-idempotence tests. No behavior change (audit found no redundant or missing normalizations).
+
 - Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize once via `jpl_date_normalize`, internals consume normalized pairs, and `add_core()` asserts it in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test pinning the funnel.
 - Interpolation internals now thread an `interp_work` bundle through a single `jpl_evaluate()` seam instead of seven helpers with five-plus parameters each; the `interp_select_record` passthrough was folded into its caller. No behavior change.
 - New atomic `jpl_geometry` (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) built once by `jpl_compute_geometry()` in coverage-then-read order; both convenience call sites consume its named fields instead of threading three epochs by hand (replacing `observer_geometry()` and the inline duplicate).

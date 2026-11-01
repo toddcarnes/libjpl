@@ -12,7 +12,7 @@
 
 - C17 with `C_EXTENSIONS OFF` (enforced by CMake).
 - MSVC: `/W4 /permissive-` zero warnings; GCC **and Clang**: `-Wall -Wextra -Wpedantic` zero warnings (Clang also enforces `-Wnewline-eof`; keep trailing newlines).
-- Public headers (`include/jpl.h`, `include/jpl_frames.h`, `include/jpl_convenience.h`) must not change — no semver impact, 0.7.0 stands.
+- Public headers: no *new* public API (deletions per C6 only). Breaking changes are free pre-release — zero consumers, nothing published — but additions would force a version rethink; none are planned.
 - ERFA vendored sources must not be modified; raw ERFA entry points are called from exactly one place per concern after each step.
 - Two-part date arithmetic stays compensated; public/legacy on-disk scalar epochs untouched.
 - Physics constants only from `src/jpl_private.h`.
@@ -64,7 +64,7 @@ New module/role names are recorded in `GLOSSARY.md` (created alongside this plan
 
 **Status:** implemented on `refactor/bindings-struct-api` and merged to `main` as `311995e`. Binding public surfaces kept byte-identical (conversions happen at the FFI boundary); the removed `..._apply_aberration_full` entry points forward to unified `jpl_apply_aberration` with an explicit Sun distance. Existing binding tests ran unmodified as regression oracles. CI bindings legs unblocked. Kept here as the record.
 
-**Rationale:** The 0.7.0 struct migration left all four language bindings calling the old array API — and calling `jpl_apply_aberration_full`, which no longer exists. The C++ binding fails to compile under CI's warnings-as-errors; the Python cffi `cdef` references a missing export (import-time failure); C#/VB.NET P/Invoke a missing entry point (call-time failure). `ci.yml` requires all four binding tests registered and passing, so the bindings legs fail on the next push. This step is independent of C1–C6 (public C API is stable) and unblocks CI, so it goes first.
+**Rationale:** The 0.7.0 struct migration left all four language bindings calling the old array API — and calling `jpl_apply_aberration_full`, which no longer exists. The C++ binding fails to compile under CI's warnings-as-errors; the Python cffi `cdef` references a missing export (import-time failure); C#/VB.NET P/Invoke a missing entry point (call-time failure). `ci.yml` requires all four binding tests registered and passing, so the bindings legs fail on the next push. This step is independent of C1–C6 (public C API is stable) and unblocked CI, so it went first.
 
 **Strategy (applies to all four bindings): keep each binding's public surface byte-for-byte identical; convert to `jpl_date`/`jpl_state` only at the FFI boundary.** Binding tests and examples then run unmodified and become regression oracles proving behavior preservation. The removed `..._full` variants forward to unified `jpl_apply_aberration` (with the Sun distance, or `0.0` to omit the term).
 
@@ -99,10 +99,10 @@ Risks/rollback: per-language commits if possible; any binding that cannot be ver
   - Normalized-date discipline: entry points normalize; internal code assumes normalized pairs (debug-asserted, as `jpl_date_compare` already does)
   - `EpochFrame` rotation entry shape as candidate 3's final stage wants it: `rotate(state, which_epoch /*mean|true*/)`
 
-- [ ] **Step 0.1: Record the three sketches above in the step branches that need them (no implementation)**
-- [ ] **Step 0.2: Confirm no public-header change is required for any sketch (0.7.0 stands)**
+- [x] **Step 0.1: Consumer-facing seams sketched below (single implementation branch consumes them directly)**
+- [x] **Step 0.2: Confirmed: sketches require no NEW public API (C6 deletions only); 0.7.0 stands**
 
-Acceptance: each of Steps 2/4/5/6 cites its sketch; no sketch may demand a public signature change (defer to a later release if it does).
+Acceptance: each of Steps 2/4/5/6 cites its sketch; no sketch demands new public API (C6 deletions only).
 
 ---
 
@@ -255,9 +255,9 @@ Risks/rollback: behaviour must be bit-identical — the Horizons tests are the t
 
 ## Execution Notes
 
-- Implement in order 0→6 (Step 0 is design notes, no branch). Steps 1 and 2 are independent of each other and may overlap; both must land before Step 3.
-- One branch per step (`refactor/<slug>`), `git merge --no-ff` into `main` only when the verification matrix is fully green; delete the branch after merge (repo convention).
+- Implement in strict order: B (done) → Step 0 → C5 → C4 → C1 → C2 → C6 → C3. Only C5 is independent (test-infra only; may overlap anything after Step 0). C2 consumes C1's evaluation interface; C3 consumes C2/C4/C6 — those orderings are load-bearing, not advisory.
+- Single implementation branch (`refactor/module-deepening`), one commit per completed step; `git merge --no-ff` into `main` only when the full verification matrix is green at the sequence tip (per-step commits preserve bisectability; repo convention: branch + explicit approval before merge).
 - If any test fails, STOP and debug before continuing — the ratchet is the point.
-- Do not touch `src/erfa/`, do not change public headers, do not weaken assertions to make a step pass.
+- Do not touch `src/erfa/`, do not add public API (deletions per C6 only), do not weaken assertions to make a step pass.
 - Newly coined module names go in `GLOSSARY.md` as they land (created with this plan).
 - Version stays 0.7.0 through the sequence: breaking changes are free pre-release (zero consumers, nothing published), and no step adds public API. Move the `v0.7.0` tag to the sequence tip on completion.

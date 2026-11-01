@@ -174,6 +174,64 @@ jpl_status jpl_moon_position(const jpl_ephemeris *e, const jpl_date *jd_tt, jpl_
     return jpl_planet_position(e, jd_tt, JPL_MOON, JPL_EARTH, st);
 }
 
+/* Solar-deflection stage (eraLd with one solar mass): bend the unit
+ * observer-to-target direction around the Sun and return the bent
+ * direction (unit; the caller restores the geometric range, which
+ * deflection preserves). The eraLd argument order is pinned here, the
+ * single place it can be wrong: p = observer->target, q = observer->Sun,
+ * e = Sun->observer, em = observer->Sun distance (AU). Directions arrive
+ * constructed, so malformed vectors fail before eraLd instead of bending
+ * silently (regression guard for the 2026-10-31 e-vector fix). */
+static jpl_status apparent_apply_deflection(const jpl_direction *p,
+                                            const jpl_direction *to_sun,
+                                            double sun_distance, double dlim,
+                                            jpl_direction *bent) {
+    jpl_direction from_sun;
+    double pv[3], qv[3], ev[3], bv[3], bent_norm;
+    if (!p || !to_sun || !bent) return JPL_ERROR_ARGUMENT;
+    if (!isfinite(sun_distance) || !isfinite(dlim)) return JPL_ERROR_ARGUMENT;
+    jpl_direction_negate(to_sun, &from_sun);
+    /* eraLd takes mutable arrays; copy the validated directions so the
+     * stage owns its inputs (same transactional discipline as elsewhere:
+     * bent is untouched unless the deflection succeeds). */
+    memcpy(pv, p->v, sizeof pv);
+    memcpy(qv, to_sun->v, sizeof qv);
+    memcpy(ev, from_sun.v, sizeof ev);
+    eraLd(1.0, pv, qv, ev, sun_distance, dlim, bv);
+    bent_norm = jpl_vec_norm3(bv);
+    if (!isfinite(bent_norm) || !(bent_norm > 0.0)) return JPL_ERROR_NUMERIC;
+    bent->v[0] = bv[0] / bent_norm;
+    bent->v[1] = bv[1] / bent_norm;
+    bent->v[2] = bv[2] / bent_norm;
+    return JPL_OK;
+}
+/* True-ecliptic projection stage: rotate the aberrated ICRS state to true
+ * ecliptic of date and report longitude/latitude in degrees. The /norm
+ * renormalization is the direction constructor (same arithmetic as the
+ * manual division it replaces, so Horizons goldens cannot move). */
+static jpl_status apparent_project_ecliptic(const jpl_state *aberrated,
+                                            const jpl_date *tt,
+                                            double *longitude_deg,
+                                            double *latitude_deg) {
+    jpl_direction unit;
+    double aberrated_arr[6], ecliptic[3], u[3];
+    double longitude, latitude, angular_distance;
+    jpl_status s;
+    if (!aberrated || !tt || !longitude_deg || !latitude_deg) return JPL_ERROR_ARGUMENT;
+    jpl_state_to_array(aberrated, aberrated_arr);
+    s = jpl_icrs_to_true_ecliptic_position(aberrated_arr, tt, ecliptic);
+    if (s != JPL_OK) return s;
+    s = jpl_direction_from_raw(ecliptic, &unit);
+    if (s != JPL_OK) return s;
+    /* eraP2s takes a mutable array; the direction is already validated,
+     * so this copy cannot fail. */
+    memcpy(u, unit.v, sizeof u);
+    eraP2s(u, &longitude, &latitude, &angular_distance);
+    *longitude_deg = eraAnp(longitude) * (180.0 / acos(-1.0));
+    if (*longitude_deg >= 360.0) *longitude_deg = 0.0;
+    *latitude_deg = latitude * (180.0 / acos(-1.0));
+    return JPL_OK;
+}
 static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
                                           const jpl_date *jd_tt, int target,
                                           double position[3], double *radial_km_per_s) {
@@ -181,13 +239,12 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     jpl_geometry geo;
     jpl_state state, sun_to_target;
     jpl_state aberrated;
-    double ecliptic[3], unit[3], angular_distance;
-    double state_arr[6], target_arr[6], aberrated_arr[6];
-    double distance, sun_distance, q_distance, longitude, latitude, norm;
+    jpl_direction to_sun, bent;
+    double pos[3];
+    double distance, sun_distance, q_distance, longitude, latitude;
     double projected_radial = 0.0;
     double result[3];
     jpl_status s;
-    size_t k;
     if (!e || !jd_tt || !position) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     if (target < JPL_MERCURY || target > JPL_SUN || target == JPL_EARTH)
@@ -197,8 +254,8 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     s = jpl_compute_geometry(e, &tdb, target, JPL_EARTH, &geo);
     if (s != JPL_OK) return s;
     state = geo.rel_state;
-    jpl_state_to_array(&state, state_arr);
-    distance = jpl_vec_norm3(state_arr);
+    pos[0] = state.x; pos[1] = state.y; pos[2] = state.z;
+    distance = jpl_vec_norm3(pos);
     sun_distance = jpl_vec_norm3(geo.sun_vec);
     if (!isfinite(distance) || !(distance > 0.0) ||
         !isfinite(sun_distance) || !(sun_distance > 0.0)) return JPL_ERROR_NUMERIC;
@@ -209,46 +266,35 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
         if (!isfinite(projected_radial)) return JPL_ERROR_NUMERIC;
     }
     if (target != JPL_SUN) {
-        double p[3], se[3], se_neg[3], bent[3], bent_norm;
-        double limb, dlim;
+        jpl_direction p;
+        double tpos[3], limb, dlim;
         s = jpl_get_state(e, &geo.emission, target, JPL_SUN, &sun_to_target);
         if (s != JPL_OK) return s;
-        jpl_state_to_array(&sun_to_target, target_arr);
-        q_distance = jpl_vec_norm3(target_arr);
+        tpos[0] = sun_to_target.x; tpos[1] = sun_to_target.y; tpos[2] = sun_to_target.z;
+        q_distance = jpl_vec_norm3(tpos);
         if (!isfinite(q_distance) || !(q_distance > 0.0)) return JPL_ERROR_NUMERIC;
-        for (k = 0; k < 3; ++k) {
-            p[k] = state_arr[k] / distance;
-            se[k] = geo.sun_vec[k] / sun_distance;
-            se_neg[k] = -se[k];
-        }
+        /* Geometric state -> Direction (constructor normalizes once, so the
+         * manual /distance division below is gone for good). */
+        s = jpl_direction_from_raw(pos, &p);
+        if (s != JPL_OK) return s;
+        s = jpl_direction_from_raw(geo.sun_vec, &to_sun);
+        if (s != JPL_OK) return s;
         limb = atan2(JPL_SOLAR_RADIUS_KM / JPL_AU_KM, sun_distance);
         dlim = 0.5 * limb * limb;
         if (!isfinite(dlim) || !(dlim > 0.0)) return JPL_ERROR_NUMERIC;
-        /* eraLd(bm, p, q, e, em, dlim, p1):
-         *   p = direction from observer to source (target)
-         *   q = direction from observer to deflecting body (Sun)
-         *   e = direction from deflecting body (Sun) to observer = -se
-         *   em = distance from deflecting body to observer (AU)
-         *   dlim = limb distance parameter
-         */
-        eraLd(1.0, p, se, se_neg, sun_distance, dlim, bent);
-        bent_norm = jpl_vec_norm3(bent);
-        if (!isfinite(bent_norm) || !(bent_norm > 0.0)) return JPL_ERROR_NUMERIC;
-        for (k = 0; k < 3; ++k) state_arr[k] = (bent[k] / bent_norm) * distance;
-        jpl_array_to_state(state_arr, &state);
+        s = apparent_apply_deflection(&p, &to_sun, sun_distance, dlim, &bent);
+        if (s != JPL_OK) return s;
+        /* Deflection preserves range: restore it from the geometric solve. */
+        state.x = bent.v[0] * distance;
+        state.y = bent.v[1] * distance;
+        state.z = bent.v[2] * distance;
     }
     s = jpl_apply_aberration(&state, geo.observer_vel, sun_distance, &aberrated);
     if (s != JPL_OK) return s;
-    jpl_state_to_array(&aberrated, aberrated_arr);
-    s = jpl_icrs_to_true_ecliptic_position(aberrated_arr, &tt, ecliptic);
+    s = apparent_project_ecliptic(&aberrated, &tt, &longitude, &latitude);
     if (s != JPL_OK) return s;
-    norm = jpl_vec_norm3(ecliptic);
-    if (!isfinite(norm) || !(norm > 0.0)) return JPL_ERROR_NUMERIC;
-    for (k = 0; k < 3; ++k) unit[k] = ecliptic[k] / norm;
-    eraP2s(unit, &longitude, &latitude, &angular_distance);
-    result[0] = eraAnp(longitude) * (180.0 / acos(-1.0));
-    if (result[0] >= 360.0) result[0] = 0.0;
-    result[1] = latitude * (180.0 / acos(-1.0));
+    result[0] = longitude;
+    result[1] = latitude;
     result[2] = distance;
     if (!isfinite(result[0]) || !isfinite(result[1]) ||
         !isfinite(result[2])) return JPL_ERROR_NUMERIC;
@@ -270,24 +316,36 @@ static jpl_status apparent_position_offset(const jpl_ephemeris *e,
     return apparent_position_at_tt(e, &sample_tt, target, position, NULL);
 }
 
+/* Production sampler adapter: the estimator's abstract (ctx, tt, days) ->
+ * position call is one ephemeris plus one target plus the existing offset
+ * helper. */
+struct apparent_sample_ctx {
+    const jpl_ephemeris *e;
+    int target;
+};
+static jpl_status apparent_sample_position(void *ctx, const jpl_date *tt,
+                                           double days, double position[3]) {
+    const struct apparent_sample_ctx *c = (const struct apparent_sample_ctx *)ctx;
+    if (!c) return JPL_ERROR_ARGUMENT;
+    return apparent_position_offset(c->e, tt, c->target, days, position);
+}
 static double longitude_delta(double a_deg, double b_deg) {
     return remainder(a_deg - b_deg, 360.0);
 }
 
-jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *e,
-                                           const jpl_date *jd_tt, int target,
-                                           jpl_apparent_ecliptic_result *out) {
-    double center[3], earlier[3], later[3], farther[3];
-    double h = 0.01, longitude_rate, projected_radial;
-    jpl_apparent_ecliptic_result local;
+jpl_status jpl_estimate_longitude_rate(jpl_ecliptic_sampler sample, void *ctx,
+                                       const jpl_date *tt,
+                                       double center_longitude_deg,
+                                       double *rate_out) {
+    double earlier[3], later[3], farther[3];
+    double h = 0.01;
     jpl_status s, before, after;
     int attempt;
-    if (!out) return JPL_ERROR_ARGUMENT;
-    s = apparent_position_at_tt(e, jd_tt, target, center, &projected_radial);
-    if (s != JPL_OK) return s;
+    if (!sample || !tt || !rate_out) return JPL_ERROR_ARGUMENT;
+    if (!isfinite(center_longitude_deg)) return JPL_ERROR_ARGUMENT;
     for (attempt = 0; attempt <= 12; ++attempt) {
-        before = apparent_position_offset(e, jd_tt, target, -h, earlier);
-        after = apparent_position_offset(e, jd_tt, target, h, later);
+        before = sample(ctx, tt, -h, earlier);
+        after = sample(ctx, tt, h, later);
         if (before != JPL_OK && before != JPL_ERROR_RANGE) return before;
         if (after != JPL_OK && after != JPL_ERROR_RANGE) return after;
         if (before != JPL_ERROR_RANGE || after != JPL_ERROR_RANGE) break;
@@ -295,28 +353,46 @@ jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *e,
     }
     if (before == JPL_ERROR_RANGE && after == JPL_ERROR_RANGE) return JPL_ERROR_RANGE;
     if (before == JPL_OK && after == JPL_OK) {
-        longitude_rate = longitude_delta(later[0], earlier[0]) / (2.0 * h);
+        *rate_out = longitude_delta(later[0], earlier[0]) / (2.0 * h);
     } else if (after == JPL_OK) {
-        s = apparent_position_offset(e, jd_tt, target, 2.0 * h, farther);
+        s = sample(ctx, tt, 2.0 * h, farther);
         if (s == JPL_OK) {
-            longitude_rate = (4.0 * longitude_delta(later[0], center[0]) -
-                              longitude_delta(farther[0], center[0])) / (2.0 * h);
+            *rate_out = (4.0 * longitude_delta(later[0], center_longitude_deg) -
+                         longitude_delta(farther[0], center_longitude_deg)) / (2.0 * h);
         } else if (s == JPL_ERROR_RANGE) {
-            longitude_rate = longitude_delta(later[0], center[0]) / h;
+            *rate_out = longitude_delta(later[0], center_longitude_deg) / h;
         } else {
             return s;
         }
     } else {
-        s = apparent_position_offset(e, jd_tt, target, -2.0 * h, farther);
+        s = sample(ctx, tt, -2.0 * h, farther);
         if (s == JPL_OK) {
-            longitude_rate = (-4.0 * longitude_delta(earlier[0], center[0]) +
-                              longitude_delta(farther[0], center[0])) / (2.0 * h);
+            *rate_out = (-4.0 * longitude_delta(earlier[0], center_longitude_deg) +
+                         longitude_delta(farther[0], center_longitude_deg)) / (2.0 * h);
         } else if (s == JPL_ERROR_RANGE) {
-            longitude_rate = longitude_delta(center[0], earlier[0]) / h;
+            *rate_out = longitude_delta(center_longitude_deg, earlier[0]) / h;
         } else {
             return s;
         }
     }
+    return JPL_OK;
+}
+
+jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *e,
+                                           const jpl_date *jd_tt, int target,
+                                           jpl_apparent_ecliptic_result *out) {
+    double center[3], longitude_rate, projected_radial;
+    jpl_apparent_ecliptic_result local;
+    struct apparent_sample_ctx sctx;
+    jpl_status s;
+    if (!out) return JPL_ERROR_ARGUMENT;
+    s = apparent_position_at_tt(e, jd_tt, target, center, &projected_radial);
+    if (s != JPL_OK) return s;
+    sctx.e = e;
+    sctx.target = target;
+    s = jpl_estimate_longitude_rate(apparent_sample_position, &sctx, jd_tt,
+                                    center[0], &longitude_rate);
+    if (s != JPL_OK) return s;
     local.longitude_deg = center[0];
     local.latitude_deg = center[1];
     local.range_au = center[2];

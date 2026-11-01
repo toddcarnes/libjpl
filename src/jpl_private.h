@@ -121,6 +121,55 @@ typedef struct jpl_geometry {
     jpl_date emission;
 } jpl_geometry;
 
+/* Apparent-place pipeline stage types (src/jpl_convenience.c). Values flow
+ * geometric state -> Direction -> deflected -> aberrated -> true ecliptic;
+ * past construction no bare double[3] crosses a stage seam. */
+/* A finite unit vector. The only supported way to obtain one is
+ * jpl_direction_from_raw, which normalizes finite nonzero input exactly
+ * once; NULL/nonfinite/zero input fails instead of flowing silently into
+ * eraLd (regression guard for the 2026-10-31 Sun-to-observer e-vector
+ * fix). Outputs are transactional: out is untouched unless JPL_OK. */
+typedef struct jpl_direction { double v[3]; } jpl_direction;
+static inline jpl_status jpl_direction_from_raw(const double in[3], jpl_direction *out) {
+    double norm;
+    size_t i;
+    if (!in || !out) return JPL_ERROR_ARGUMENT;
+    for (i = 0; i < 3; ++i) {
+        if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
+    }
+    norm = jpl_vec_norm3(in);
+    if (!isfinite(norm) || !(norm > 0.0)) return JPL_ERROR_NUMERIC;
+    out->v[0] = in[0] / norm;
+    out->v[1] = in[1] / norm;
+    out->v[2] = in[2] / norm;
+    return JPL_OK;
+}
+/* Exact negation of a constructed direction (Sun->observer from
+ * observer->Sun for the eraLd e argument). Both sides are already
+ * directions, so there is nothing to validate: in and out must be
+ * non-NULL and may alias. */
+static inline void jpl_direction_negate(const jpl_direction *in, jpl_direction *out) {
+    out->v[0] = -in->v[0];
+    out->v[1] = -in->v[1];
+    out->v[2] = -in->v[2];
+}
+/* Longitude-rate estimator policy: central, one-sided, and adaptive-h
+ * finite differences over a caller-supplied sampler. Extracted from
+ * jpl_apparent_ecliptic_position so the one-sided/adaptive-h branches are
+ * unit-testable without ephemeris data.
+ * sample(ctx, tt, days, position) reports the apparent ecliptic
+ * position[3] (longitude deg, latitude deg, range AU) at tt+days, or
+ * JPL_ERROR_RANGE past coverage (any other error aborts the estimate).
+ * center_longitude_deg is the already-sampled rate-epoch longitude.
+ * Returns the longitude rate in deg/day, or RANGE when every shrinking-h
+ * sample stays out of coverage. rate_out is untouched on failure. */
+typedef jpl_status (*jpl_ecliptic_sampler)(void *ctx, const jpl_date *tt,
+                                           double days, double position[3]);
+jpl_status jpl_estimate_longitude_rate(jpl_ecliptic_sampler sample, void *ctx,
+                                       const jpl_date *tt,
+                                       double center_longitude_deg,
+                                       double *rate_out);
+
 /* Conversion helpers between public struct types and internal double[2]/double[6] */
 static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
     out[0] = d->hi; out[1] = d->lo;

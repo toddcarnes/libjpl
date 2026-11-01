@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize once via `jpl_date_normalize`, internals consume normalized pairs, and `add_core()` asserts it in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test pinning the funnel.
 - Layout offsets now have a single source of truth: `JPL_HDR_IPT_OFFSET`/`JPL_HDR_IPT_ENTRY_BYTES` name the IPT table, and `jpl_tail_offset()` centralizes the overflow-name tail computation shared by the layout validator, the overflow-name reader, and the test mock builders (which now use the same constants). `parse_header` asserts its cursor against the named offsets.
 
 ### Fixed

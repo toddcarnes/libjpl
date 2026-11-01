@@ -49,6 +49,8 @@ jpl_status jpl_date_normalize(const double in[2], double out[2]) {
 /* All input pairs here are already normalized finite locals. */
 static jpl_status add_core(const double a[2], const double b[2], double result[2]) {
     double s, e, t, f, u, v, h, l, inner, tail, r0, r1;
+    JPL_ASSERT_NORMALIZED(a);
+    JPL_ASSERT_NORMALIZED(b);
     two_sum(a[0], b[0], &s, &e);
     two_sum(a[1], b[1], &t, &f);
     if (!isfinite(s) || !isfinite(e) || !isfinite(t) || !isfinite(f)) {

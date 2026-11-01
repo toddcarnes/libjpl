@@ -97,6 +97,31 @@ int main(void) {
         JPL_TEST_CHECK(jpl_date_compare(n, canon) == 0);
     }
 
+    /* Idempotence: normalizing a normalized pair is a fixed point.
+     * Nested entry points (e.g. convenience_epoch into jpl_tt_to_tdb)
+     * normalize the same epoch twice in one path; this guarantees the
+     * second pass is a no-op, bit for bit, including in-place calls. */
+    {
+        static const double cases[][2] = {
+            {8000016.5, DATE_TICK},
+            {2451545.0, -0.5},
+            {0.0, 2451545.0},
+            {1e16, 1.0},
+            {DBL_MAX, 1e-10},
+            {-123.25, 0.0625},
+        };
+        size_t c;
+        for (c = 0; c < sizeof cases / sizeof cases[0]; ++c) {
+            double once[2], twice[2], inout[2];
+            JPL_TEST_CHECK(jpl_date_normalize(cases[c], once) == JPL_OK);
+            JPL_TEST_CHECK(jpl_date_normalize(once, twice) == JPL_OK);
+            JPL_TEST_CHECK(memcmp(once, twice, sizeof once) == 0);
+            memcpy(inout, cases[c], sizeof inout);
+            JPL_TEST_CHECK(jpl_date_normalize(inout, inout) == JPL_OK);
+            JPL_TEST_CHECK(memcmp(inout, once, sizeof once) == 0);
+        }
+    }
+
     /* Signed zero canonicalizes to +0 in both parts. */
     {
         double z[2] = {0.0, -0.0}, zn[2] = {DATE_SENTINEL, DATE_SENTINEL};

@@ -7,6 +7,7 @@
 #ifndef LIBJPL_PRIVATE_H
 #define LIBJPL_PRIVATE_H
 
+#include <assert.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -123,8 +124,21 @@ static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
 /* Compensated two-part Julian-date arithmetic (src/jpl_date.c).
  * The represented epoch is the mathematical sum of two finite binary64
  * values. Status-returning helpers validate finiteness, leave outputs
- * untouched on failure, and support exact input/output aliasing;
- * jpl_date_compare consumes normalized finite pairs only. */
+ * untouched on failure, and support exact input/output aliasing.
+ *
+ * Normalization discipline (single source of truth for the date protocol):
+ * every public entry point normalizes user-supplied dates exactly once via
+ * jpl_date_normalize (the trust-boundary funnel: it accepts any finite
+ * pair and publishes a canonical one). Past that funnel, internal producers
+ * emit canonical pairs and internal pure arithmetic (add_core) asserts it
+ * in debug builds via JPL_ASSERT_NORMALIZED. jpl_date_compare is
+ * lexicographic over all finite pairs (pinned by tests/test_dates.c) --
+ * callers pass it normalized pairs, where lexicographic order coincides
+ * with chronological order. Re-normalizing an already-normal pair is
+ * idempotent but pointless; do not add defensive re-normalizations inside
+ * the library (each one must name the trust boundary it guards, or be
+ * removed). Raw on-disk scalar epochs stay scalar; convert at the
+ * serialization boundary only. */
 jpl_status jpl_date_normalize(const double in[2], double out[2]);
 jpl_status jpl_date_add(const double a[2], const double b[2], double out[2]);
 jpl_status jpl_date_subtract(const double a[2], const double b[2], double out[2]);
@@ -134,6 +148,21 @@ jpl_status jpl_date_add_scaled(const double date[2], double step,
 jpl_status jpl_date_partition(const double begin[2], const double end[2],
                               size_t count, size_t index, double out[2]);
 int jpl_date_compare(const double a[2], const double b[2]);
+
+/* Normalized-pair predicate for debug assertions (see the discipline note
+ * above). A finite pair is normalized when it is a fixed point of
+ * jpl_date_normalize -- exactly what two_sum plus zero-canonicalization
+ * produces, so every internal producer's output qualifies by construction.
+ * Fixed-point comparison (rather than an epsilon/ULP bound) cannot
+ * false-fire on legitimate pairs, including huge or tiny magnitudes.
+ * Debug-only: JPL_ASSERT_NORMALIZED vanishes under NDEBUG like assert(). */
+static inline int jpl_date_is_normalized(const double p[2]) {
+    double n[2];
+    if (!isfinite(p[0]) || !isfinite(p[1])) return 0;
+    if (jpl_date_normalize(p, n) != JPL_OK) return 0;
+    return n[0] == p[0] && n[1] == p[1];
+}
+#define JPL_ASSERT_NORMALIZED(p) assert(jpl_date_is_normalized(p))
 
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */

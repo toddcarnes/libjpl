@@ -96,8 +96,8 @@ Risks/rollback: per-language commits if possible; any binding that cannot be ver
 - Consumes: candidate-3 needs (review §"Full sequence")
 - Produces (sketches only):
   - `jpl_status jpl_geometry_compute(const jpl_ephemeris *e, const jpl_date *tdb, int target, int center, jpl_geometry *out);` where `jpl_geometry` is `{ jpl_state rel_state; double light_time_days; double observer_vel[3]; double sun_vec[3]; }` with emission/reception kept in distinct fields so mixing them is visible at the type level
-  - Normalized-date discipline: entry points normalize; internal code assumes normalized pairs (debug-asserted, as `jpl_date_compare` already does)
-  - `EpochFrame` rotation entry shape as candidate 3's final stage wants it: `rotate(state, which_epoch /*mean|true*/)`
+  - Normalized-date discipline: entry points normalize; internal code assumes normalized pairs (debug-asserted; `jpl_date_compare` stays lexicographic over all finite pairs)
+  - Frame rotation: the existing context API (`create`/`rotate_state`/`destroy`) is the single transform; one static matrix computer underneath; `jpl_ecliptic_to_icrs` deleted as its pure duplicate
 
 - [x] **Step 0.1: Consumer-facing seams sketched below (single implementation branch consumes them directly)**
 - [x] **Step 0.2: Confirmed: sketches require no NEW public API (C6 deletions only); 0.7.0 stands**
@@ -200,32 +200,30 @@ Risks/rollback: wrapper-first (4.1) keeps the old path one revert away until 4.2
 
 ---
 
-### Step 5: EpochFrame — collapse the frame API to the context surface
+### Step 5: EpochFrame — one matrix computer, one redundant entry deleted
 
-**Rationale (recorded decision):** breaking changes are free pre-release (zero consumers, nothing published), so instead of carrying redundant public entries as compatibility adapters, delete them. The context API created in 0.7.0 becomes the single public frame surface.
+**Rationale (recorded decision):** breaking changes are free pre-release (zero consumers, nothing published), so the pure duplicate goes: `jpl_ecliptic_to_icrs` *is* create-context-plus-rotate-state, and keeping it means two implementations of one transform forever. The other two candidates are *not* redundant and stay: `jpl_icrs_to_ecliptic` is the only inverse direction (no forward-only context expresses it) and `jpl_frame_rotation_matrix` is the only matrix accessor (tests, bindings, and consumers need R itself; the context deliberately hides it). Deleting those two would strand bindings with no migration path short of duplicating library math in tests or adding new public API — both worse. The existing `jpl_frame_context` *is* the EpochFrame of the review: no new struct is introduced.
 
 **Files:**
-- Modify: `include/jpl_frames.h` (delete `jpl_ecliptic_to_icrs`, `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`), `src/jpl_frames.c` (delete impls; build `jpl_epoch_frame` underneath the context API), `src/jpl_private.h` (frame struct decl)
-- Migrate in-repo callers to the context API: core/convenience internal uses, `tests/test_frames.c`, `tests/test_numeric.c`, `tests/test_api_errors.c` and any other test users, all four bindings' frame wrappers (reimplemented on context calls; binding surfaces and tests unchanged)
-- Test: existing `tests/test_frames.c`, `tests/test_numeric.c` (updated to context API; pinned values unchanged); no new goldens needed
+- Modify: `src/jpl_frames.c` (new static `jpl_epoch_matrix()` — the single normalize+eraEcm06+transpose+check computer; delete `jpl_ecliptic_to_icrs`; thin `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and `jpl_frame_context_create` onto it)
+- Modify: `include/jpl_frames.h` (remove the one declaration + its doc block; reword the `icrs_to_ecliptic` "Inverse of ..." note, which named the deleted function)
+- Migrate in-repo `jpl_ecliptic_to_icrs` callers to the context API: `tests/test_frames.c`, `tests/test_numeric.c`, `tests/test_api_errors.c`, all four bindings' `EclipticToIcrs` wrappers (reimplemented as create/rotate/destroy; binding surfaces and tests unchanged), `bindings/c/examples/README.md` frames example
+- Test: existing `tests/test_frames.c`, `tests/test_numeric.c`, `tests/test_api_errors.c` (inverted/unchanged expectations documented per call below; pinned goldens unchanged); no new goldens needed. `tests/public_symbols.txt` loses one line; `docs/api.dox` loses one bullet
 
 **Interfaces:**
 - Consumes: Step-2 normalized dates; candidate-3's final stage is the designing consumer (real seam, not hypothetical)
-- Produces (internal):
-  - `typedef struct jpl_epoch_frame { jpl_date tt; double mean[3][3]; double true_[3][3]; } jpl_epoch_frame;`
-  - `jpl_status jpl_epoch_frame_create(const jpl_date *tt, jpl_epoch_frame *out);` (caches both matrices once)
-  - `jpl_status jpl_epoch_frame_rotate(const jpl_epoch_frame *f, int true_equinox, const jpl_state *in, jpl_state *out);`
-  - Public surface after the step: `jpl_frame_context_create/destroy/rotate_position/rotate_velocity/rotate_state` + `jpl_tt_to_tdb`/`jpl_tdb_to_tt` only
-- **Version note:** stays 0.7.0 (a shrinkage, not an addition); the `v0.7.0` tag moves to the sequence tip on completion, since nothing is published yet
+- Produces (internal): `static jpl_status jpl_epoch_matrix(const jpl_date *jd_tt, double R[3][3])` — the single rotation computer every path funnels through
+- Public surface after the step: everything except the deleted `jpl_ecliptic_to_icrs`
+- **Version note:** stays 0.7.0 (a shrinkage of one entry, not an addition); the `v0.7.0` tag moves to the sequence tip on completion, since nothing is published yet
 
-- [ ] **Step 5.1: Migrate all in-repo callers (core, tests, bindings) to the context API; keep the old entries working**
-- [ ] **Step 5.2: Delete `jpl_ecliptic_to_icrs`, `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix` (header + impl); grep the tree (code, tests, bindings, live docs) for stragglers**
-- [ ] **Step 5.3: Move the shared prologue (validate/pair/normalize/finiteness) inside `jpl_epoch_frame` once**
-- [ ] **Step 5.4: Document the `dR/dt` velocity omission at the new seam (it is currently silent); no behaviour change**
+- [ ] **Step 5.1: Single computer: add static `jpl_epoch_matrix`; reimplement `jpl_frame_rotation_matrix`, `jpl_icrs_to_ecliptic` (via transpose), and `jpl_frame_context_create` on top of it; delete `jpl_ecliptic_to_icrs` (header + impl)**
+- [ ] **Step 5.2: Migrate all in-repo `jpl_ecliptic_to_icrs` callers (tests, bindings, c-examples README) to create/rotate/destroy; keep every test assertion byte-identical in expectation (only the call path changes)**
+- [ ] **Step 5.3: Prune references: `tests/public_symbols.txt`, `docs/api.dox`, the `icrs_to_ecliptic` cross-reference note; grep the tree (code, tests, bindings, live docs) for stragglers**
+- [ ] **Step 5.4: Document the `dR/dt` velocity omission at the seam (it is currently silent); no behaviour change**
 - [ ] **Step 5.5: Run the verification matrix (50/50 bindings-enabled); CHANGELOG `Unreleased` bullet; merge**
 
-Acceptance: no references to the deleted symbols anywhere in code, tests, bindings, or live docs (`grep` clean outside historical `docs/{specs,plans,reviews,superpowers}`); one prologue in the tree; goldens byte-identical; 50/50 bindings-enabled, 46/46 default.
-Risks/rollback: larger blast radius than the adapter version — the 5.1 caller migration is the bisect point; revert to it on any golden drift. Ranked here (not earlier) so its interface is shaped by candidate 3's real needs.
+Acceptance: no references to `jpl_ecliptic_to_icrs` anywhere in code, tests, bindings, or live docs (`grep` clean outside historical `docs/{specs,plans,reviews,superpowers}`); one matrix computer in the tree (no duplicated eraEcm06+transpose+check); goldens byte-identical; 50/50 bindings-enabled, 46/46 default.
+Risks/rollback: the 5.1 migration is the bisect point (mechanical, assertion-preserving); the computer refactor is transcription-only. Revert to it on any golden drift. Ranked here (not earlier) so its interface is shaped by candidate 3's real needs.
 
 ---
 

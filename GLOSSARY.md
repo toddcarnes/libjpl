@@ -23,10 +23,10 @@ Domain language for libjpl. Names here are the approved terms for code comments,
 
 ## Deepened modules (architecture review 2026-11-01)
 
-- **RecordEvaluator**: the module that owns record selection, bounds verification, subinterval search, Chebyshev evaluation, and cache discipline behind a single evaluate interface.
-- **EphemerisGeometry**: the module returning one atomic light-time solution (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) behind a single seam.
+- **RecordEvaluator**: the module that owns record selection, bounds verification, subinterval search, Chebyshev evaluation, and cache discipline behind a single evaluate interface (implemented as `interp_work` + `jpl_evaluate()` in `src/jpl.c`).
+- **EphemerisGeometry**: the module returning one atomic light-time solution (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) behind a single seam (implemented as `jpl_geometry` + `jpl_compute_geometry()` in `src/jpl_convenience.c`).
 - **ApparentPlace**: the pipeline threading `Position → Direction → Deflected → Aberrated → Ecliptic` stage types, each constructor-enforced.
 - **Direction**: a finite unit vector; the pipeline stage type that makes a non-unit deflection input a construction-time failure.
-- **LayoutDescriptor**: the single record-layout description parsed from header bytes by production code and consumed by test mocks to emit bytes.
-- **EpochFrame**: the module owning a normalized epoch plus cached mean and true rotation matrices, exposing one parameterized rotation.
+- **LayoutDescriptor**: the single record-layout description parsed from header bytes by production code and consumed by test mocks to emit bytes (implemented as shared offset constants + `jpl_tail_offset()`, not a separate struct; see C5).
+- **EpochFrame**: the cached frame transform. Implemented without a new type: the existing `jpl_frame_context` (single mean-of-date matrix plus `create`/`rotate_*`/`destroy`) already plays this role, backed by one static matrix computer; see C6 for why no separate struct was introduced.
 - **Seam sketch**: the Step-0 design notes fixing what a consumer-facing interface will look like before it is implemented.

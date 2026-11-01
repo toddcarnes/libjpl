@@ -29,7 +29,6 @@ set(JPL_LICENSE_FIRST_PARTY
   "LICENSES.md"
   "CHANGELOG.md"
   "AGENTS.md"
-  "GLOSSARY.md"
   "docs/validation.md"
   "docs/migration-two-part-dates.md"
   "include/jpl.h"

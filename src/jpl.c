@@ -388,7 +388,7 @@ static jpl_status scheduled_endpoint(const double start[2], double step, size_t 
  * fixed modern-epoch bound. Take the maximum finite adjacent spacing around
  * both values via nextafter() in both directions, multiplied by four. The
  * allowance excuses encoding arithmetic only and never widens public
- * coverage: interpolate()/jpl_get_state() use exact comparisons. */
+ * coverage: jpl_evaluate()/jpl_get_state() use exact comparisons. */
 static double endpoint_ulp_tolerance(const double scheduled[2], double encoded) {
     double hi = scheduled[0], lo, hi_up, hi_dn, enc_up, enc_dn, spacing = 0.0, candidate;
     if (!isfinite(hi) || !isfinite(encoded)) return -1.0;
@@ -1423,23 +1423,11 @@ static int valid_lighttime_body(int target, int center) {
     return 1;
 }
 
-/* Select the data record holding a normalized query date.
- * Wraps select_record() with the header-normalization checks that precede
- * it. On success fills record_index, record_start, record_end and returns
- * JPL_OK; errors propagate from select_record() or report JPL_ERROR_FORMAT
- * for malformed header bounds. */
-static jpl_status interp_select_record(const jpl_ephemeris *e, const double jd[2],
-                                       size_t *record_index,
-                                       double record_start[2], double record_end[2]) {
-    if (!e || !jd || !record_index || !record_start || !record_end) return JPL_ERROR_ARGUMENT;
-    return select_record(e, jd, record_index, record_start, record_end);
-}
-
 /* Read a data record with the single-record cache (FILE path only).
  * Allocates *out_record (caller frees); sets *cached to indicate whether
  * the caller hit the cache (so the cache should be refreshed on success).
  * The cache is consulted and refreshed here, matching the original
- * interpolate() cache semantics. */
+ * jpl_evaluate() cache semantics. */
 static jpl_status interp_read_record_cached(const jpl_ephemeris *e, size_t record_index,
                                             double **out_record, int *cached) {
     int use_cache, was_cached;
@@ -1625,7 +1613,7 @@ static void interp_publish_state(const jpl_ephemeris *e, size_t record_index,
     ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
-static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
+static jpl_status jpl_evaluate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
                                size_t components, double state[6]) {
     double *record;
     double norm[2], file_start[2], file_end[2], sub_origin[2];
@@ -1651,7 +1639,7 @@ static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const 
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
     if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
-    status = interp_select_record(e, norm, &record_index, file_start, file_end);
+    status = select_record(e, norm, &record_index, file_start, file_end);
     if (status != JPL_OK) return status;
     status = interp_read_record_cached(e, record_index, &record, &cached);
     if (status != JPL_OK) return status;
@@ -1693,12 +1681,12 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     /* Direct file slots cover Mercury..Sun except Earth (3, derived below)
      * and the Moon (10, needs the EMB leg too). */
     if (target >= JPL_MERCURY && target <= JPL_SUN && target != JPL_MOON && target != JPL_EARTH)
-        return interpolate(e, jd, &e->header.pointers[target - 1], 3, state);
+        return jpl_evaluate(e, jd, &e->header.pointers[target - 1], 3, state);
     if (target != JPL_EARTH && target != JPL_MOON && target != JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
-    status = interpolate(e, jd, &e->header.pointers[JPL_FILE_SLOT_EMB], 3, state);
+    status = jpl_evaluate(e, jd, &e->header.pointers[JPL_FILE_SLOT_EMB], 3, state);
     if (status != JPL_OK) return status;
     if (target == JPL_EARTH_MOON_BARYCENTER) return JPL_OK;
-    status = interpolate(e, jd, &e->header.pointers[JPL_MOON - 1], 3, moon);
+    status = jpl_evaluate(e, jd, &e->header.pointers[JPL_MOON - 1], 3, moon);
     if (status != JPL_OK) return status;
     /* Earth/Moon reconstruction in local storage: every accumulated and
      * final state must be finite. The header EMRAT is validated at open,
@@ -1737,7 +1725,7 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target,
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
-        return interpolate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
+        return jpl_evaluate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
                            target == JPL_NUTATIONS ? 2 : 3, (double*)state);
     }
     if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
@@ -2042,7 +2030,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, 
      * state[3] its rate in seconds/day (span is in days, so the engine
      * derivative needs no unit conversion). Slots [1],[2],[4],[5] unused.
      * Validate before either optional/required output is written. */
-    status = interpolate(e, jd_arr, tt, 1, state);
+    status = jpl_evaluate(e, jd_arr, tt, 1, state);
     if (status != JPL_OK) return status;
     value = state[0];
     rate = state[3];

@@ -24,6 +24,8 @@
 
 ## Verification matrix (every step)
 
+Default build (46 tests) plus a bindings-enabled build (50 tests: 46 + the 4 language bindings). Ratchet: 46/46 default, 50/50 bindings-enabled, every step, every config.
+
 ```powershell
 cmake -S . -B build
 cmake --build build --config Debug
@@ -43,11 +45,47 @@ JPLEPH=/mnt/d/ephem/jpl/bin ctest --test-dir build_clang --output-on-failure
 # Release: reconfigure a second tree with -DCMAKE_BUILD_TYPE=Release and repeat
 ```
 
+Bindings-enabled build (50 tests: configure with all bindings + warnings-as-errors, CI-like):
+
+```powershell
+cmake -S . -B build_bind -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CPP_BINDING=ON -DLIBJPL_BUILD_PYTHON_BINDING=ON -DLIBJPL_BUILD_CSHARP_BINDING=ON -DLIBJPL_BUILD_VBNET_BINDING=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+cmake --build build_bind --config Debug   # zero warnings required (MSVC /WX)
+$env:JPLEPH='D:\ephem\jpl\bin'; ctest --test-dir build_bind -C Debug --output-on-failure
+# Release: same, with --config Release
+```
+
 ## Glossary
 
 New module/role names are recorded in `GLOSSARY.md` (created alongside this plan). Use those terms in code comments and commit messages.
 
 ---
+
+### Step B: Bindings migration to the struct API — **DONE**
+
+**Status:** implemented on `refactor/bindings-struct-api` and merged to `main` as `311995e`. Binding public surfaces kept byte-identical (conversions happen at the FFI boundary); the removed `..._apply_aberration_full` entry points forward to unified `jpl_apply_aberration` with an explicit Sun distance. Existing binding tests ran unmodified as regression oracles. CI bindings legs unblocked. Kept here as the record.
+
+**Rationale:** The 0.7.0 struct migration left all four language bindings calling the old array API — and calling `jpl_apply_aberration_full`, which no longer exists. The C++ binding fails to compile under CI's warnings-as-errors; the Python cffi `cdef` references a missing export (import-time failure); C#/VB.NET P/Invoke a missing entry point (call-time failure). `ci.yml` requires all four binding tests registered and passing, so the bindings legs fail on the next push. This step is independent of C1–C6 (public C API is stable) and unblocks CI, so it goes first.
+
+**Strategy (applies to all four bindings): keep each binding's public surface byte-for-byte identical; convert to `jpl_date`/`jpl_state` only at the FFI boundary.** Binding tests and examples then run unmodified and become regression oracles proving behavior preservation. The removed `..._full` variants forward to unified `jpl_apply_aberration` (with the Sun distance, or `0.0` to omit the term).
+
+**Files:**
+- Modify: `bindings/cpp/include/jpl/ephemeris.hpp` (internal `jpl_date`/`jpl_state` locals; `_full` forwards with `sun_distance_au`; 3-arg `apply_aberration` passes `0.0`)
+- Modify: `bindings/python/src/libjpl/_libjpl.py` (cdef gains `jpl_date`/`jpl_state` structs; all signatures updated; `_full` decl removed), `bindings/python/src/libjpl/ephemeris.py` (list↔struct conversion at boundaries; `_full` method forwards)
+- Modify: `bindings/csharp/src/LibJpl/Native.cs` (blittable `JplDate`/`JplState` structs; all P/Invokes updated; `_full` import removed), `bindings/csharp/src/LibJpl/JplEphemeris.cs` (internal conversions; `ApplyAberration` passes `0.0`)
+- Modify: `bindings/vbnet/src/LibJpl/Native.vb` (`Structure JplDate/JplState`; imports updated; `_full` import removed), `bindings/vbnet/src/LibJpl/JplEphemeris.vb` (internal conversions)
+- Modify (docs consistency, same root cause): `include/jpl.h` `@note` (~line 398), `include/jpl_convenience.h` `@note` (~line 52) — both still name the deleted `jpl_apply_aberration_full`; `bindings/c/examples/README.md` C snippets (raw C API); `docs/migration-two-part-dates.md` (add a 0.7.0 "arrays → structs" section; README links it as the usage contract)
+- Unchanged (verify by running, not editing): all binding tests, all binding examples, public binding surfaces
+
+- [x] **Step B.1: C++ — convert `ephemeris.hpp` internals; keep every public signature; build the binding test with `-Werror` (MSVC `/WX`, GCC/Clang `-Werror`) and run `jpl_cpp_binding`**
+- [x] **Step B.2: Python — update cdef + `ephemeris.py` conversions; run `jpl_python_binding` (needs shared lib + cffi)**
+- [x] **Step B.3: C# — update `Native.cs` + `JplEphemeris.cs`; run `jpl_csharp_binding` (needs dotnet SDK + NuGet restore)**
+- [x] **Step B.4: VB.NET — update `Native.vb` + `JplEphemeris.vb`; run `jpl_vbnet_binding`**
+- [x] **Step B.5: Docs consistency — the two header `@note` fixes, the `bindings/c` README snippets, the migration-doc 0.7.0 section**
+- [x] **Step B.6: Configure with all four bindings + warnings-as-errors (CI-like) and run the full matrix; if a language toolchain is unavailable locally, document the gap and let CI cover it**
+- [x] **Step B.7: CHANGELOG `Unreleased` bullet (bindings work on 0.7.0 API); merge**
+
+Acceptance: `ci.yml` bindings jobs would go green (registration proof finds all four tests; all pass); binding tests/examples byte-identical to before; 50/50 bindings-enabled, 46/46 default.
+Risks/rollback: per-language commits if possible; any binding that cannot be verified locally (missing SDK) gets extra review scrutiny, not a weakened test.
 
 ### Step 0: Sketch the consumer-facing seams (no code)
 
@@ -162,11 +200,14 @@ Risks/rollback: wrapper-first (4.1) keeps the old path one revert away until 4.2
 
 ---
 
-### Step 5: EpochFrame — collapse the frame-wrapper prologues
+### Step 5: EpochFrame — collapse the frame API to the context surface
+
+**Rationale (recorded decision):** breaking changes are free pre-release (zero consumers, nothing published), so instead of carrying redundant public entries as compatibility adapters, delete them. The context API created in 0.7.0 becomes the single public frame surface.
 
 **Files:**
-- Modify: `src/jpl_frames.c` (6 entries → one parameterized transform + thin public adapters), `src/jpl_private.h` (frame struct decl)
-- Test: existing `tests/test_frames.c`, `tests/test_numeric.c` (pinned references); no new goldens needed
+- Modify: `include/jpl_frames.h` (delete `jpl_ecliptic_to_icrs`, `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`), `src/jpl_frames.c` (delete impls; build `jpl_epoch_frame` underneath the context API), `src/jpl_private.h` (frame struct decl)
+- Migrate in-repo callers to the context API: core/convenience internal uses, `tests/test_frames.c`, `tests/test_numeric.c`, `tests/test_api_errors.c` and any other test users, all four bindings' frame wrappers (reimplemented on context calls; binding surfaces and tests unchanged)
+- Test: existing `tests/test_frames.c`, `tests/test_numeric.c` (updated to context API; pinned values unchanged); no new goldens needed
 
 **Interfaces:**
 - Consumes: Step-2 normalized dates; candidate-3's final stage is the designing consumer (real seam, not hypothetical)
@@ -174,15 +215,17 @@ Risks/rollback: wrapper-first (4.1) keeps the old path one revert away until 4.2
   - `typedef struct jpl_epoch_frame { jpl_date tt; double mean[3][3]; double true_[3][3]; } jpl_epoch_frame;`
   - `jpl_status jpl_epoch_frame_create(const jpl_date *tt, jpl_epoch_frame *out);` (caches both matrices once)
   - `jpl_status jpl_epoch_frame_rotate(const jpl_epoch_frame *f, int true_equinox, const jpl_state *in, jpl_state *out);`
-  - Public `jpl_ecliptic_to_icrs` / `jpl_icrs_to_ecliptic` / `jpl_frame_rotation_matrix` / `jpl_frame_context_*` stay as **compatibility adapters** (explicitly marked) — no public API change in 0.7.x
+  - Public surface after the step: `jpl_frame_context_create/destroy/rotate_position/rotate_velocity/rotate_state` + `jpl_tt_to_tdb`/`jpl_tdb_to_tt` only
+- **Version note:** stays 0.7.0 (a shrinkage, not an addition); the `v0.7.0` tag moves to the sequence tip on completion, since nothing is published yet
 
-- [ ] **Step 5.1: Build `jpl_epoch_frame` behind the existing entries (adapters delegate; no behaviour change)**
-- [ ] **Step 5.2: Move the shared prologue (validate/pair/normalize/finiteness) inside once; adapters pass through**
-- [ ] **Step 5.3: Document the `dR/dt` velocity omission at the new seam (it is currently silent); no behaviour change**
-- [ ] **Step 5.4: Run the verification matrix; CHANGELOG `Unreleased` bullet; merge**
+- [ ] **Step 5.1: Migrate all in-repo callers (core, tests, bindings) to the context API; keep the old entries working**
+- [ ] **Step 5.2: Delete `jpl_ecliptic_to_icrs`, `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix` (header + impl); grep the tree (code, tests, bindings, live docs) for stragglers**
+- [ ] **Step 5.3: Move the shared prologue (validate/pair/normalize/finiteness) inside `jpl_epoch_frame` once**
+- [ ] **Step 5.4: Document the `dR/dt` velocity omission at the new seam (it is currently silent); no behaviour change**
+- [ ] **Step 5.5: Run the verification matrix (50/50 bindings-enabled); CHANGELOG `Unreleased` bullet; merge**
 
-Acceptance: one prologue in the tree; public signatures and goldens byte-identical; 46/46 everywhere.
-Risks/rollback: lowest-risk step; adapters make revert trivial. Ranked here (not earlier) so its interface is shaped by candidate 3's real needs.
+Acceptance: no references to the deleted symbols anywhere in code, tests, bindings, or live docs (`grep` clean outside historical `docs/{specs,plans,reviews,superpowers}`); one prologue in the tree; goldens byte-identical; 50/50 bindings-enabled, 46/46 default.
+Risks/rollback: larger blast radius than the adapter version — the 5.1 caller migration is the bisect point; revert to it on any golden drift. Ranked here (not earlier) so its interface is shaped by candidate 3's real needs.
 
 ---
 
@@ -217,28 +260,4 @@ Risks/rollback: behaviour must be bit-identical — the Horizons tests are the t
 - If any test fails, STOP and debug before continuing — the ratchet is the point.
 - Do not touch `src/erfa/`, do not change public headers, do not weaken assertions to make a step pass.
 - Newly coined module names go in `GLOSSARY.md` as they land (created with this plan).
-
-### Step B: Bindings migration to the struct API (do first)
-
-**Rationale:** The 0.7.0 struct migration left all four language bindings calling the old array API — and calling `jpl_apply_aberration_full`, which no longer exists. The C++ binding fails to compile under CI's warnings-as-errors; the Python cffi `cdef` references a missing export (import-time failure); C#/VB.NET P/Invoke a missing entry point (call-time failure). `ci.yml` requires all four binding tests registered and passing, so the bindings legs fail on the next push. This step is independent of C1–C6 (public C API is stable) and unblocks CI, so it goes first.
-
-**Strategy (applies to all four bindings): keep each binding's public surface byte-for-byte identical; convert to `jpl_date`/`jpl_state` only at the FFI boundary.** Binding tests and examples then run unmodified and become regression oracles proving behavior preservation. The removed `..._full` variants forward to unified `jpl_apply_aberration` (with the Sun distance, or `0.0` to omit the term).
-
-**Files:**
-- Modify: `bindings/cpp/include/jpl/ephemeris.hpp` (internal `jpl_date`/`jpl_state` locals; `_full` forwards with `sun_distance_au`; 3-arg `apply_aberration` passes `0.0`)
-- Modify: `bindings/python/src/libjpl/_libjpl.py` (cdef gains `jpl_date`/`jpl_state` structs; all signatures updated; `_full` decl removed), `bindings/python/src/libjpl/ephemeris.py` (list↔struct conversion at boundaries; `_full` method forwards)
-- Modify: `bindings/csharp/src/LibJpl/Native.cs` (blittable `JplDate`/`JplState` structs; all P/Invokes updated; `_full` import removed), `bindings/csharp/src/LibJpl/JplEphemeris.cs` (internal conversions; `ApplyAberration` passes `0.0`)
-- Modify: `bindings/vbnet/src/LibJpl/Native.vb` (`Structure JplDate/JplState`; imports updated; `_full` import removed), `bindings/vbnet/src/LibJpl/JplEphemeris.vb` (internal conversions)
-- Modify (docs consistency, same root cause): `include/jpl.h` `@note` (~line 398), `include/jpl_convenience.h` `@note` (~line 52) — both still name the deleted `jpl_apply_aberration_full`; `bindings/c/examples/README.md` C snippets (raw C API); `docs/migration-two-part-dates.md` (add a 0.7.0 "arrays → structs" section; README links it as the usage contract)
-- Unchanged (verify by running, not editing): all binding tests, all binding examples, public binding surfaces
-
-- [ ] **Step B.1: C++ — convert `ephemeris.hpp` internals; keep every public signature; build the binding test with `-Werror` (MSVC `/WX`, GCC/Clang `-Werror`) and run `jpl_cpp_binding`**
-- [ ] **Step B.2: Python — update cdef + `ephemeris.py` conversions; run `jpl_python_binding` (needs shared lib + cffi)**
-- [ ] **Step B.3: C# — update `Native.cs` + `JplEphemeris.cs`; run `jpl_csharp_binding` (needs dotnet SDK + NuGet restore)**
-- [ ] **Step B.4: VB.NET — update `Native.vb` + `JplEphemeris.vb`; run `jpl_vbnet_binding`**
-- [ ] **Step B.5: Docs consistency — the two header `@note` fixes, the `bindings/c` README snippets, the migration-doc 0.7.0 section**
-- [ ] **Step B.6: Configure with all four bindings + warnings-as-errors (CI-like) and run the full matrix; if a language toolchain is unavailable locally, document the gap and let CI cover it**
-- [ ] **Step B.7: CHANGELOG `Unreleased` bullet (bindings work on 0.7.0 API); merge**
-
-Acceptance: `ci.yml` bindings jobs would go green (registration proof finds all four tests; all pass); binding tests/examples byte-identical to before; 46/46 on the default matrix.
-Risks/rollback: per-language commits if possible; any binding that cannot be verified locally (missing SDK) gets extra review scrutiny, not a weakened test.
+- Version stays 0.7.0 through the sequence: breaking changes are free pre-release (zero consumers, nothing published), and no step adds public API. Move the `v0.7.0` tag to the sequence tip on completion.

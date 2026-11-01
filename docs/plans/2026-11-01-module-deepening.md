@@ -240,11 +240,11 @@ Risks/rollback: the 5.1 migration is the bisect point (mechanical, assertion-pre
   - Stage functions: `geometric → jpl_direction → jpl_apply_deflection → renormalize → jpl_apply_aberration → jpl_to_true_ecliptic → jpl_apparent_ecliptic_result`
   - Rate estimator extracted as a separate strategy object (one-sided/adaptive-`h` policy testable without ephemeris data)
 
-- [ ] **Step 6.1: Introduce `jpl_direction` at the deflection input only (constructor + the one call site; suite must stay green)**
-- [ ] **Step 6.2: Thread stage types through the pipeline; delete manual `/distance` renormalizations in favour of constructor guarantees**
-- [ ] **Step 6.3: Extract the rate estimator; add edge-of-coverage unit tests (one-sided/adaptive-`h` branches currently golden-only)**
-- [ ] **Step 6.4: Add a regression test shaped exactly like the fixed bug (non-unit or single-component direction input must fail construction, never reach `eraLd`)**
-- [ ] **Step 6.5: Run the verification matrix; CHANGELOG `Unreleased` bullet; merge**
+- [x] **Step 6.1: Introduce `jpl_direction` at the deflection input only (constructor + the one call site; suite must stay green)** — done (`from_raw` + `negate` in `jpl_private.h`, deflection stage in `jpl_convenience.c`)
+- [x] **Step 6.2: Thread stage types through the pipeline; delete manual `/distance` renormalizations in favour of constructor guarantees** — done (deflection + true-ecliptic projection stages; post-`eraLd` range restore stays explicit scalar math, bit-identical)
+- [x] **Step 6.3: Extract the rate estimator; add edge-of-coverage unit tests (one-sided/adaptive-`h` branches currently golden-only)** — done (`jpl_estimate_longitude_rate` over a sampler callback + synthetic-sampler tests: central/wrap, one-sided both sides and both orders, adaptive shrink, RANGE exhaustion, error propagation)
+- [x] **Step 6.4: Add a regression test shaped like the fixed bug (degenerate direction input must fail construction, never reach `eraLd`)** — done (NULL/nonfinite/zero fail; non-unit normalizes — the constructor normalizes rather than validates exact unit, which is what lets 6.2 delete the manual renormalizations; noted deviation, seam shape identical either way)
+- [x] **Step 6.5: Run the verification matrix; CHANGELOG `Unreleased` bullet; merge** — matrix green (Win 46/46 D+R, bindings 50/50 D+R warnings-as-error, Linux GCC+Clang 46/46 D+R zero warnings; Horizons goldens byte-identical); CHANGELOG bullet added; merge pending maintainer approval
 
 Acceptance: no bare `double[3]` crosses a stage seam; Horizons goldens unchanged (refactor, not model change); 46/46 everywhere.
 Risks/rollback: behaviour must be bit-identical — the Horizons tests are the tripwire; any residual drift fails the step.

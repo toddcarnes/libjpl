@@ -15,6 +15,7 @@
 #include <math.h>
 
 #include "jpl_private.h"
+#include "jpl_frames.h"
 
 #define JPL_TEST_RECORD_BYTES 2856
 #define JPL_TEST_HEADER_BYTES 2880
@@ -141,6 +142,21 @@ static inline double test_state_component(const jpl_state *s, int index) {
     case 5: return s->vz;
     default: return NAN;
     }
+}
+
+/* Context-based ecliptic-to-ICRS for migrated tests (the direct public
+ * helper was removed as a pure duplicate of create+rotate_state; this
+ * preserves its exact contract for callers: NULL-safe ARGUMENT up front,
+ * unchanged outputs on failure, in-place aliasing supported). */
+static inline jpl_status test_ecliptic_to_icrs(const jpl_state *s, const jpl_date *jd, jpl_state *out) {
+    jpl_frame_context *ctx = NULL;
+    jpl_status status;
+    if (!s || !jd || !out) return JPL_ERROR_ARGUMENT;
+    status = jpl_frame_context_create(jd, &ctx);
+    if (status != JPL_OK) return status;
+    status = jpl_frame_context_rotate_state(ctx, s, out);
+    jpl_frame_context_destroy(ctx);
+    return status;
 }
 
 /* Minimum physical record width in bytes (classic 2856-byte header). Used

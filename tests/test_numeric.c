@@ -322,8 +322,8 @@ int main(void) {
             static const jpl_date jd = {2451545.0, 0.0};
             double vv[3] = {0.0, 0.01, 0.0};
             aliased = st;
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&st, &jd, &ref) == JPL_OK);
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&aliased, &jd, &aliased) == JPL_OK);
+            JPL_TEST_CHECK(test_ecliptic_to_icrs(&st, &jd, &ref) == JPL_OK);
+            JPL_TEST_CHECK(test_ecliptic_to_icrs(&aliased, &jd, &aliased) == JPL_OK);
             JPL_TEST_CHECK(memcmp(&aliased, &ref, sizeof ref) == 0);
             aliased = st;
             JPL_TEST_CHECK(jpl_apply_aberration(&aliased, vv, 0.0, &aliased) == JPL_OK);
@@ -409,7 +409,7 @@ int main(void) {
             double vv[3] = {0.0, 0.01, 0.0};
             int a, b;
             out = keep;
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&bad, &jd, &out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(test_ecliptic_to_icrs(&bad, &jd, &out) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
             out = keep;
             JPL_TEST_CHECK(jpl_apply_aberration(&bad, vv, 0.0, &out) == JPL_ERROR_ARGUMENT);

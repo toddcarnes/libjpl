@@ -114,7 +114,7 @@ Notes:
   emission epoch as a pair. Velocity is the mixed-epoch difference
   `v_target(emission) - v_center(reception)`, not an apparent tracking
   rate.
-- Frames: `jpl_frame_rotation_matrix()` and the ecliptic helpers rotate
+- Frames: `jpl_frame_rotation_matrix()` and the ecliptic helper rotate
   position and velocity at a fixed epoch (`R*v`); no `dR/dt` term.
 - In `jpl_planet_position()` and `jpl_moon_position()`, apparent place
   means light-time plus stellar aberration only

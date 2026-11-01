@@ -129,8 +129,13 @@ static int frames(const char *path) {
         jpl_close(de); return 1;
     }
 
-    // Ecliptic -> ICRS
-    if (jpl_ecliptic_to_icrs(&state, &jd_tt, &icrs) != JPL_OK) { jpl_close(de); return 1; }
+    // Ecliptic -> ICRS (via a cached frame context)
+    {
+        jpl_frame_context *ctx = NULL;
+        if (jpl_frame_context_create(&jd_tt, &ctx) != JPL_OK) { jpl_close(de); return 1; }
+        if (jpl_frame_context_rotate_state(ctx, &state, &icrs) != JPL_OK) { jpl_frame_context_destroy(ctx); jpl_close(de); return 1; }
+        jpl_frame_context_destroy(ctx);
+    }
 
     // ICRS -> Ecliptic
     if (jpl_icrs_to_ecliptic(&state, &jd_tt, &ecliptic) != JPL_OK) { jpl_close(de); return 1; }

@@ -281,11 +281,16 @@ class Ephemeris:
     # Frame conversions
     @staticmethod
     def ecliptic_to_icrs(state, jd_tt):
-        """Rotate ecliptic-of-date state to ICRS."""
+        """Rotate ecliptic-of-date state to ICRS (via a cached frame context)."""
         in_state = _jpl_state(state)
         jd = _jpl_date(jd_tt)
         out = _ffi.new("jpl_state *")
-        _check(_lib.jpl_ecliptic_to_icrs(in_state, jd, out))
+        ctx = _ffi.new("jpl_frame_context **")
+        _check(_lib.jpl_frame_context_create(jd, ctx))
+        try:
+            _check(_lib.jpl_frame_context_rotate_state(ctx[0], in_state, out))
+        finally:
+            _lib.jpl_frame_context_destroy(ctx[0])
         return _state_list(out)
 
     @staticmethod

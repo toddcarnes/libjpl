@@ -15,7 +15,11 @@ scalar-date call sites directly.
 Version 0.7.0 replaces the `double[2]` dates and `double[6]` states with
 `jpl_date {hi, lo}` and `jpl_state {x, y, z, vx, vy, vz}` structs; every
 public entry point takes pointers to them. No array compatibility wrapper
-is offered: replace array call sites directly.
+is offered: replace array call sites directly. Version 0.7.0 also deletes
+`jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path):
+rotate ecliptic-of-date states via `jpl_frame_context_create` +
+`jpl_frame_context_rotate_state` + `jpl_frame_context_destroy` instead.
+`jpl_icrs_to_ecliptic` and `jpl_frame_rotation_matrix` are unchanged.
 
 | Before (arrays) | After (structs) |
 | --- | --- |

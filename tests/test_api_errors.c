@@ -139,7 +139,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_tt_to_tdb(&nan_hi, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_tdb_to_tt(NULL, &date_sink) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(NULL, rmat_sink) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(NULL, &cov_start, &s) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(NULL, &cov_start, &s) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&s, NULL, &s) == JPL_ERROR_ARGUMENT);
         /* Standalone aberration/frame validation and transactional
          * outputs. Invalid velocities and nonfinite Sun distance are
@@ -230,7 +230,7 @@ int main(void) {
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(&overflow, R) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(memcmp(R, Rbefore, sizeof R) == 0);
         s = before;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&s, &overflow, &s) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&s, &overflow, &s) == JPL_ERROR_NUMERIC);
         JPL_TEST_CHECK(check_unchanged(&s, &before));
         s = before;
         { double zero_vel[3] = {0.0, 0.0, 0.0};

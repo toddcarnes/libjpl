@@ -165,14 +165,9 @@ Friend Module Native
         ByRef out_clone As IntPtr) As JplStatus
     End Function
 
-    ' jpl_frames.h - frame conversions and time conversions
-    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
-    Public Function jpl_ecliptic_to_icrs(
-        ByRef state As JplStateNative,
-        jd_tt As JplDateNative,
-        <Out()> ByRef out_state As JplStateNative) As JplStatus
-    End Function
-
+    ' jpl_frames.h - frame conversions and time conversions.
+    ' (No ecliptic_to_icrs import: callers use the cached frame-context
+    ' API below for the same transform.)
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_icrs_to_ecliptic(
         ByRef state As JplStateNative,
@@ -184,6 +179,23 @@ Friend Module Native
     Public Function jpl_frame_rotation_matrix(
         jd_tt As JplDateNative,
         <Out(), MarshalAs(UnmanagedType.LPArray)> R As Double(,)) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_frame_context_create(
+        jd_tt As JplDateNative,
+        ByRef out_context As IntPtr) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Sub jpl_frame_context_destroy(context As IntPtr)
+    End Sub
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_frame_context_rotate_state(
+        context As IntPtr,
+        ByRef state As JplStateNative,
+        ByRef out_state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>

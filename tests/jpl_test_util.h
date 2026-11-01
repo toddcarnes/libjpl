@@ -74,7 +74,8 @@ static inline void test_put_f64be(unsigned char *at, double v) {
     for (i = 0; i < 8; ++i) at[i] = (unsigned char)(u >> (8 * (7 - i)));
 }
 
-/* IPT coefficient-pointer entry: idx 0-11 addresses file offset 2696+idx*12;
+/* IPT coefficient-pointer entry: idx 0-11 addresses file offset
+ * JPL_HDR_IPT_OFFSET + idx*JPL_HDR_IPT_ENTRY_BYTES;
  * pseudo-slot 12 addresses the DENUM+libration words at JPL_HDR_DENUM_OFFSET (DENUM first),
  * and pseudo-slots 13/14 address IPT entries 14/15 at JPL_HDR_IPT14_OFFSET/JPL_HDR_IPT14_OFFSET+JPL_TT_TDB_TRIPLET_OFFSET. */
 static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
@@ -83,8 +84,8 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
      * cannot signal failure from a void helper, and assert() vanishes in
      * Release (NDEBUG), so fail loudly on every build flavor. */
     JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
-    size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
-                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * 12u;
+    size_t off = idx <= 11 ? (size_t)JPL_HDR_IPT_OFFSET + (size_t)idx * (size_t)JPL_HDR_IPT_ENTRY_BYTES :
+                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * (size_t)JPL_TT_TDB_TRIPLET_OFFSET;
     test_put_u32(rec + off, start);
     test_put_u32(rec + off + 4, coeff);
     test_put_u32(rec + off + 8, sub);
@@ -107,8 +108,8 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
     /* Same programming-error trap as test_put_ptr (see comment there). */
     JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
-    size_t off = idx <= 11 ? (size_t)2696 + (size_t)idx * 12u :
-                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * 12u;
+    size_t off = idx <= 11 ? (size_t)JPL_HDR_IPT_OFFSET + (size_t)idx * (size_t)JPL_HDR_IPT_ENTRY_BYTES :
+                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * (size_t)JPL_TT_TDB_TRIPLET_OFFSET;
     test_put_u32be(rec + off, start);
     test_put_u32be(rec + off + 4, coeff);
     test_put_u32be(rec + off + 8, sub);

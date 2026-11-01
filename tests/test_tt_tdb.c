@@ -338,17 +338,19 @@ int main(void) {
      * the overflow names; a valid appended TT-TDB triple there must
      * read as present with exact record geometry. */
     {
-        enum { NCONST = 401, EXTRA = NCONST - 400, TAIL = 2856 + 6 * EXTRA };
+        enum { NCONST = 401, EXTRA = NCONST - 400 };
         enum { RDBL = 984, RBYTES = RDBL * 8 };
         static unsigned char hdr[RBYTES];
         static unsigned char dat[RBYTES];
         static double cons[RDBL];
         unsigned char cons_raw[RBYTES];
+        size_t tail = 0;
         FILE *f;
         jpl_ephemeris *e = NULL, *m = NULL;
         const jpl_header *h;
         double sec = 0.0, rate = 0.0;
         size_t i;
+        JPL_TEST_CHECK(jpl_tail_offset(EXTRA, &tail) == JPL_OK);
         memset(hdr, 0, sizeof hdr);
         memset(dat, 0, sizeof dat);
         memcpy(hdr, "TT-TDB overflow", 15);
@@ -359,12 +361,12 @@ int main(void) {
         /* T15 tail sits after the overflow names at TAIL; T14 carries
          * an irrelevant out-of-record triple that must not invalidate
          * the separately valid T15 dataset. */
-        test_put_u32(hdr + TAIL + 0, 1u);
-        test_put_u32(hdr + TAIL + 4, 1000000u);
-        test_put_u32(hdr + TAIL + 8, 1000000u);
-        test_put_u32(hdr + TAIL + 12, 939u);
-        test_put_u32(hdr + TAIL + 16, 11u);
-        test_put_u32(hdr + TAIL + 20, 4u);
+        test_put_u32(hdr + tail + 0, 1u);
+        test_put_u32(hdr + tail + 4, 1000000u);
+        test_put_u32(hdr + tail + 8, 1000000u);
+        test_put_u32(hdr + tail + 12, 939u);
+        test_put_u32(hdr + tail + 16, 11u);
+        test_put_u32(hdr + tail + 20, 4u);
         for (i = 0; i < RDBL; ++i) cons[i] = 0.0;
         cons[0] = 1.0;
         cons[1] = 2.0;
@@ -434,7 +436,6 @@ int main(void) {
         jpl_close(m);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
-        (void)TAIL;
     }
     puts("tt-tdb tests passed");
     return 0;

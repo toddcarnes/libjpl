@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Layout offsets now have a single source of truth: `JPL_HDR_IPT_OFFSET`/`JPL_HDR_IPT_ENTRY_BYTES` name the IPT table, and `jpl_tail_offset()` centralizes the overflow-name tail computation shared by the layout validator, the overflow-name reader, and the test mock builders (which now use the same constants). `parse_header` asserts its cursor against the named offsets.
+
+### Fixed
+
+- Removed accidentally committed `tests/test_convenience.c.bak` scratch copy.
+
 ## [0.7.0] - 2026-11-01
 
 ### Changed

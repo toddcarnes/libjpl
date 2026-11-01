@@ -8,6 +8,7 @@
 #define LIBJPL_PRIVATE_H
 
 #include <math.h>
+#include <stdint.h>
 
 #include "jpl.h"
 
@@ -53,8 +54,15 @@
 /* Header/record layout field offsets (bytes) in the 2880-byte base header.
  * The IPT 14/15 tail lives past it at JPL_TT_TDB_TAIL_BASE plus 6 bytes per
  * overflow constant name (constant_count - 400 when positive).
- * Kept next to the parser for documentation; parse_header still advances
- * a cursor (p += 8/4) so the two must agree when the layout changes. */
+ * The IPT coefficient-pointer table starts at JPL_HDR_IPT_OFFSET: twelve
+ * 12-byte (3x u32) entries, then the DENUM word and the libration triple.
+ * parse_header walks these fields with a cursor (p += 8/4); the cursor
+ * position is asserted against these constants (see parse_header), so the
+ * two representations must agree when the layout changes. */
+#define JPL_HDR_TITLES_LEN 252
+#define JPL_HDR_TEXT_LEN 2400
+#define JPL_HDR_IPT_OFFSET 2696
+#define JPL_HDR_IPT_ENTRY_BYTES 12
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
 #define JPL_HDR_START_JD_OFFSET 2652
@@ -73,6 +81,22 @@
  * start at JPL_TT_TDB_TAIL_BASE + 6 * (constant_count - 400). */
 #define JPL_TT_TDB_TAIL_BASE 2856
 #define JPL_TT_TDB_TRIPLET_OFFSET 12
+
+/* Overflow-name tail base for `extra` constant names past the classic 400:
+ * JPL_TT_TDB_TAIL_BASE + 6 * extra, computed with overflow checked.
+ * Shared by the layout validator, the overflow-name reader, and the test
+ * mock builders (single source; was re-derived in three places). Callers
+ * bounds-check the result against their own record width (plus any trailing
+ * bytes they consume) and keep their own error codes. */
+static inline jpl_status jpl_tail_offset(size_t extra_names, size_t *out) {
+    if (!out) return JPL_ERROR_ARGUMENT;
+    if (extra_names > (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE) /
+            (size_t)JPL_CONSTANT_NAME_LENGTH)
+        return JPL_ERROR_FORMAT;
+    *out = (size_t)JPL_TT_TDB_TAIL_BASE +
+        extra_names * (size_t)JPL_CONSTANT_NAME_LENGTH;
+    return JPL_OK;
+}
 
 static inline double jpl_vec_norm3(const double v[3]) {
     /* Scale-safe Euclidean norm: nested hypot preserves tiny (1e-200)

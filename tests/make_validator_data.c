@@ -64,13 +64,9 @@ static int write_full_mock(const char *path, int denum, int with_jupiter) {    s
     }
     test_put_ptr(hdr, 11, 6, 1, 1); /* nutations */
     test_put_ptr(hdr, 12, (uint32_t)denum, 900, 1); /* DENUM + libration start/coeff */
-    test_put_u32(hdr + 2852, 1); /* libration subintervals */
-    test_put_u32(hdr + 2856, 1); /* T14 triple (ignored) */
-    test_put_u32(hdr + 2860, 1000000u);
-    test_put_u32(hdr + 2864, 1000000u);
-    test_put_u32(hdr + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, 939); /* T15 = TT-TDB triple */
-    test_put_u32(hdr + 2872, 11);
-    test_put_u32(hdr + 2876, 4);
+    test_put_u32(hdr + JPL_HDR_LIBRATION_OFFSET + 8, 1); /* libration subintervals */
+    test_put_ptr(hdr, 13, 1u, 1000000u, 1000000u); /* T14 triple (ignored) */
+    test_put_ptr(hdr, 14, 939u, 11u, 4u); /* T15 = TT-TDB triple */
     for (i = 0; i < GOOD_DOUBLES; ++i) {
         constants[i] = 0.0;
     }

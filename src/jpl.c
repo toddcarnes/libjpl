@@ -602,7 +602,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
              * without enlarging the width or rejecting the classic file. */
             {
                 jpl_header reparsed = candidate;
-                size_t end = 0, tail = 0, tail_extra = 0;
+                size_t end = 0, tail = 0;
                 int tail_inside = 0;
                 jpl_pointer tentative;
                 unsigned char raw_tail[24];
@@ -611,17 +611,15 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                 reparsed.record_double_count = width / 8;
                 reparsed.has_tt_tdb = 0;
                 /* Tail location inside the candidate header record. The byte
-                 * tail is 2856 + 6*extra (extra = max(nconst-400,0)); the
-                 * guard below rejects 6*extra overflow before multiplying,
-                 * then rejects tail+24 overflow before adding. */
-                tail_extra = reparsed.constant_count > JPL_MAX_CONSTANT_NAMES ?
-                    (size_t)(reparsed.constant_count - JPL_MAX_CONSTANT_NAMES) : 0;
-                if (tail_extra <= (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE - 24) /
-                        (size_t)JPL_CONSTANT_NAME_LENGTH) {
-                    tail = (size_t)JPL_TT_TDB_TAIL_BASE +
-                        tail_extra * (size_t)JPL_CONSTANT_NAME_LENGTH;
-                    tail_inside = tail + 24 <= width ? 1 : 0;
-                }
+                 * tail is 2856+6*extra (extra = max(nconst-400,0)); the shared
+                 * helper computes it with overflow checked, then the +24
+                 * read is guarded here before comparing against the width. */
+                tail_inside = 0;
+                if (jpl_tail_offset(reparsed.constant_count > JPL_MAX_CONSTANT_NAMES ?
+                        (size_t)reparsed.constant_count - (size_t)JPL_MAX_CONSTANT_NAMES : (size_t)0,
+                        &tail) == JPL_OK &&
+                    tail <= SIZE_MAX - sizeof raw_tail &&
+                    tail + sizeof raw_tail <= width) tail_inside = 1;
                 if (tail_inside) {
                     rstatus = parser_read_bytes(source, tail, raw_tail, sizeof raw_tail);
                     if (rstatus != JPL_OK) {
@@ -884,6 +882,9 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
             if (end > maximum) maximum = end;
         }
     }
+    /* The cursor walk above must agree with the named offsets: titles +
+     * names + scalars + 12 IPT triples land exactly on the DENUM word. */
+    if ((size_t)(p - bytes) != (size_t)JPL_HDR_DENUM_OFFSET) return JPL_ERROR_FORMAT;
     { uint32_t u_denum = read_u32(p, order); p += 4; if (u_denum > INT_MAX) return JPL_ERROR_FORMAT; header->ephemeris_number = (int)u_denum; header->reference_frame = classify_frame(header->ephemeris_number); }
     { uint32_t u_lstart = read_u32(p, order); p += 4; if (u_lstart > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.start_index = (int)u_lstart; }
     { uint32_t u_lcoeff = read_u32(p, order); p += 4; if (u_lcoeff > INT_MAX) return JPL_ERROR_FORMAT; header->libration_pointer.coefficients_per_component = (int)u_lcoeff; }
@@ -897,6 +898,9 @@ static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, s
         end = ((size_t)header->libration_pointer.start_index - 1) + lproduct;
         if (end > maximum) maximum = end;
     }
+    /* Cursor must stand exactly at the IPT14 slot: the walk above covers
+     * titles + names + scalars + 12 IPT triples + DENUM + libration. */
+    if ((size_t)(p - bytes) != (size_t)JPL_HDR_IPT14_OFFSET) return JPL_ERROR_FORMAT;
     /* IPT entries 14/15 follow the overflow constant-name block: files
      * with more than 400 numeric constants store the extra 6-character
      * names immediately past the legacy 2856-byte cursor, and the two
@@ -1222,9 +1226,8 @@ jpl_status jpl_get_constant_name(const jpl_ephemeris *e, size_t index,
         return JPL_OK;
     }
     extra = index - JPL_MAX_CONSTANT_NAMES;
-    if (extra > (SIZE_MAX - JPL_TT_TDB_TAIL_BASE) / JPL_CONSTANT_NAME_LENGTH ||
+    if (jpl_tail_offset(extra, &offset) != JPL_OK ||
         e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_IO;
-    offset = JPL_TT_TDB_TAIL_BASE + extra * JPL_CONSTANT_NAME_LENGTH;
     record_bytes = e->header.record_double_count * 8;
     if (offset > record_bytes || JPL_CONSTANT_NAME_LENGTH > record_bytes - offset) return JPL_ERROR_IO;
     if (e->is_mmap) {

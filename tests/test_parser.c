@@ -82,6 +82,75 @@ static int open_both_must_fail(const char *path) {
     return 0;
 }
 
+/* Builder-to-parser round trip: distinctive pointer slots, DENUM, AU/EMRAT
+ * and coverage written through the shared layout helpers must read back
+ * identically through both open paths. This pins the test builders to the
+ * production offsets (single source of truth in jpl_private.h). */
+static int check_layout_roundtrip(const char *path) {
+    enum { RDBL = 360, RBYTES = RDBL * 8 };
+    static unsigned char rhdr[RBYTES];
+    static double rcons[RDBL], rrec[RDBL];
+    jpl_test_mock rm;
+    jpl_ephemeris *e = NULL, *m = NULL;
+    const jpl_ephemeris *handles[2];
+    size_t k;
+    memset(rhdr, 0, sizeof rhdr);
+    memset(rcons, 0, sizeof rcons);
+    memset(rrec, 0, sizeof rrec);
+    test_mock_header(rhdr, 2451545.0, 2451546.0, 1.0, 5);
+    test_put_ptr(rhdr, 0, 3, 2, 1);   /* Mercury slots */
+    test_put_ptr(rhdr, 5, 11, 3, 2);  /* Jupiter slots */
+    test_put_ptr(rhdr, 11, 21, 1, 1); /* nutations */
+    test_put_ptr(rhdr, 12, 440, 31, 2); /* DENUM + libration start/coeff */
+    test_put_u32(rhdr + JPL_HDR_LIBRATION_OFFSET + 8, 1); /* libration subintervals */
+    rrec[0] = 2451545.0;
+    rrec[1] = 2451546.0;
+    memset(&rm, 0, sizeof rm);
+    rm.record_doubles = RDBL;
+    rm.advertised_records = 1;
+    rm.denum = 440;
+    rm.constant_count = 5;
+    rm.start[0] = 2451545.0;
+    rm.end[0] = 2451546.0;
+    rm.step_days = 1.0;
+    rm.au_km = JPL_TEST_NONMODERN_AU_KM;
+    rm.emrat = 81.0;
+    rm.header = rhdr;
+    rm.constants = rcons;
+    rm.records = rrec;
+    JPL_TEST_CHECK(test_write_mock(path, &rm) == 0);
+    JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
+    JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
+    handles[0] = e;
+    handles[1] = m;
+    for (k = 0; k < 2; ++k) {
+        const jpl_header *h = jpl_get_header(handles[k]);
+        JPL_TEST_CHECK(h != NULL);
+        JPL_TEST_CHECK(h->pointers[0].start_index == 3 &&
+                       h->pointers[0].coefficients_per_component == 2 &&
+                       h->pointers[0].subintervals == 1);
+        JPL_TEST_CHECK(h->pointers[5].start_index == 11 &&
+                       h->pointers[5].coefficients_per_component == 3 &&
+                       h->pointers[5].subintervals == 2);
+        JPL_TEST_CHECK(h->pointers[11].start_index == 21 &&
+                       h->pointers[11].coefficients_per_component == 1 &&
+                       h->pointers[11].subintervals == 1);
+        JPL_TEST_CHECK(h->libration_pointer.start_index == 31 &&
+                       h->libration_pointer.coefficients_per_component == 2 &&
+                       h->libration_pointer.subintervals == 1);
+        JPL_TEST_CHECK(h->ephemeris_number == 440);
+        JPL_TEST_CHECK(h->reference_frame == JPL_FRAME_ICRF);
+        JPL_TEST_CHECK(h->astronomical_unit_km == JPL_TEST_NONMODERN_AU_KM);
+        JPL_TEST_CHECK(h->earth_moon_mass_ratio == 81.0);
+        JPL_TEST_CHECK(h->constant_count == 5);
+        JPL_TEST_CHECK(h->record_double_count == RDBL);
+        JPL_TEST_CHECK(h->start_jd[0] == 2451545.0 && h->end_jd[0] == 2451546.0);
+    }
+    jpl_close(m);
+    jpl_close(e);
+    return 0;
+}
+
 static int check_constant_names(const char *path, int big_endian) {
     enum { NCONST = 645, RDBL = 1018, RBYTES = RDBL * 8 };
     static unsigned char hdr[RBYTES];
@@ -95,11 +164,11 @@ static int check_constant_names(const char *path, int big_endian) {
     memset(hdr, 0, sizeof hdr);
     memset(constants, 0, sizeof constants);
     memset(records, 0, sizeof records);
-    memcpy(hdr + 252, "FIRST ", 6);
-    memcpy(hdr + 252 + 399 * 6, "EDGE39", 6);
-    memcpy(hdr + 2856, "OVER00", 6);
-    memcpy(hdr + 2856 + 6, "OVER01", 6);
-    memcpy(hdr + 2856 + (NCONST - 401) * 6, "FINAL ", 6);
+    memcpy(hdr + JPL_HDR_TITLES_LEN, "FIRST ", 6);
+    memcpy(hdr + JPL_HDR_TITLES_LEN + 399 * JPL_CONSTANT_NAME_LENGTH, "EDGE39", 6);
+    memcpy(hdr + JPL_HDR_IPT14_OFFSET, "OVER00", 6);
+    memcpy(hdr + JPL_HDR_IPT14_OFFSET + JPL_CONSTANT_NAME_LENGTH, "OVER01", 6);
+    memcpy(hdr + JPL_HDR_IPT14_OFFSET + (NCONST - 1 - JPL_MAX_CONSTANT_NAMES) * JPL_CONSTANT_NAME_LENGTH, "FINAL ", 6);
     constants[NCONST - 1] = 42.0;
     records[0] = 2451545.0;
     records[1] = 2451546.0;
@@ -258,6 +327,11 @@ int main(void) {
         jpl_close(m);
         jpl_close(e);
     }
+
+    /* Layout round trip: builder-written slots decode to identical header
+     * fields on both backends (single offset source of truth). */
+    JPL_TEST_CHECK(check_layout_roundtrip(path) == 0);
+    JPL_TEST_CHECK(remove(path) == 0);
 
     /* Table-driven header/param mutations: step, AU/EMRAT, dimensions,
      * and huge count ratios must all fail on both opens with NULL

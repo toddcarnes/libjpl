@@ -217,3 +217,28 @@ Risks/rollback: behaviour must be bit-identical — the Horizons tests are the t
 - If any test fails, STOP and debug before continuing — the ratchet is the point.
 - Do not touch `src/erfa/`, do not change public headers, do not weaken assertions to make a step pass.
 - Newly coined module names go in `GLOSSARY.md` as they land (created with this plan).
+
+### Step B: Bindings migration to the struct API (do first)
+
+**Rationale:** The 0.7.0 struct migration left all four language bindings calling the old array API — and calling `jpl_apply_aberration_full`, which no longer exists. The C++ binding fails to compile under CI's warnings-as-errors; the Python cffi `cdef` references a missing export (import-time failure); C#/VB.NET P/Invoke a missing entry point (call-time failure). `ci.yml` requires all four binding tests registered and passing, so the bindings legs fail on the next push. This step is independent of C1–C6 (public C API is stable) and unblocks CI, so it goes first.
+
+**Strategy (applies to all four bindings): keep each binding's public surface byte-for-byte identical; convert to `jpl_date`/`jpl_state` only at the FFI boundary.** Binding tests and examples then run unmodified and become regression oracles proving behavior preservation. The removed `..._full` variants forward to unified `jpl_apply_aberration` (with the Sun distance, or `0.0` to omit the term).
+
+**Files:**
+- Modify: `bindings/cpp/include/jpl/ephemeris.hpp` (internal `jpl_date`/`jpl_state` locals; `_full` forwards with `sun_distance_au`; 3-arg `apply_aberration` passes `0.0`)
+- Modify: `bindings/python/src/libjpl/_libjpl.py` (cdef gains `jpl_date`/`jpl_state` structs; all signatures updated; `_full` decl removed), `bindings/python/src/libjpl/ephemeris.py` (list↔struct conversion at boundaries; `_full` method forwards)
+- Modify: `bindings/csharp/src/LibJpl/Native.cs` (blittable `JplDate`/`JplState` structs; all P/Invokes updated; `_full` import removed), `bindings/csharp/src/LibJpl/JplEphemeris.cs` (internal conversions; `ApplyAberration` passes `0.0`)
+- Modify: `bindings/vbnet/src/LibJpl/Native.vb` (`Structure JplDate/JplState`; imports updated; `_full` import removed), `bindings/vbnet/src/LibJpl/JplEphemeris.vb` (internal conversions)
+- Modify (docs consistency, same root cause): `include/jpl.h` `@note` (~line 398), `include/jpl_convenience.h` `@note` (~line 52) — both still name the deleted `jpl_apply_aberration_full`; `bindings/c/examples/README.md` C snippets (raw C API); `docs/migration-two-part-dates.md` (add a 0.7.0 "arrays → structs" section; README links it as the usage contract)
+- Unchanged (verify by running, not editing): all binding tests, all binding examples, public binding surfaces
+
+- [ ] **Step B.1: C++ — convert `ephemeris.hpp` internals; keep every public signature; build the binding test with `-Werror` (MSVC `/WX`, GCC/Clang `-Werror`) and run `jpl_cpp_binding`**
+- [ ] **Step B.2: Python — update cdef + `ephemeris.py` conversions; run `jpl_python_binding` (needs shared lib + cffi)**
+- [ ] **Step B.3: C# — update `Native.cs` + `JplEphemeris.cs`; run `jpl_csharp_binding` (needs dotnet SDK + NuGet restore)**
+- [ ] **Step B.4: VB.NET — update `Native.vb` + `JplEphemeris.vb`; run `jpl_vbnet_binding`**
+- [ ] **Step B.5: Docs consistency — the two header `@note` fixes, the `bindings/c` README snippets, the migration-doc 0.7.0 section**
+- [ ] **Step B.6: Configure with all four bindings + warnings-as-errors (CI-like) and run the full matrix; if a language toolchain is unavailable locally, document the gap and let CI cover it**
+- [ ] **Step B.7: CHANGELOG `Unreleased` bullet (bindings work on 0.7.0 API); merge**
+
+Acceptance: `ci.yml` bindings jobs would go green (registration proof finds all four tests; all pass); binding tests/examples byte-identical to before; 46/46 on the default matrix.
+Risks/rollback: per-language commits if possible; any binding that cannot be verified locally (missing SDK) gets extra review scrutiny, not a weakened test.

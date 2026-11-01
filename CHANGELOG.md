@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Gravitational light-deflection direction in `jpl_apparent_ecliptic_position()`: the source unit vector was built from the x-component alone, collapsing every apparent direction onto the (1,1,1) diagonal (up to ~138 deg error vs Horizons); the full state vector is now normalized.
+- Added missing trailing newlines flagged by Clang `-Wnewline-eof` (whitespace only, no behavior change).
 
 ## [0.6.0] - 2026-10-31
 

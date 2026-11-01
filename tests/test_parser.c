@@ -30,8 +30,8 @@ enum { PARSER_DOUBLES = 360, PARSER_BYTES = PARSER_DOUBLES * 8 };
  * one-coefficient nutation pointer (slots 2..7, Chebyshev c0 only in
  * each of the two components... plus recognizable slots after the two
  * date doubles: coefficient slots carry (double)i with dates at 0/1).
- * Nutation interpolation at mid-coverage returns state[0] = 2.0,
- * state[1] = 3.0 with zero rates. */
+ * Nutation interpolation at mid-coverage returns state.x = 2.0,
+ * state.y = 3.0 with zero rates. */
 static void baseline_header(unsigned char *hdr) {
     memset(hdr, 0, PARSER_BYTES);
     memcpy(hdr, "parser baseline", 15);
@@ -166,16 +166,17 @@ static int check_360_t15_absent(const char *path, uint32_t s, uint32_t c, uint32
     static double rec360[PARSER_DOUBLES];
     jpl_test_mock m360;
     jpl_ephemeris *e = NULL, *m = NULL;
-    double got[2], state[6];
+    double got[2];
+    jpl_state state;
     size_t i;
     memset(h360, 0, sizeof h360);
     memcpy(h360, "t06 opt tail", 12);
     test_mock_header(h360, 2451545.0, 2451546.0, 1.0, 2);
     test_put_ptr(h360, 3, 3, 1, 1); /* Mars: 1-based slot 3 */
     test_put_ptr(h360, 12, 441, 0, 0); /* DENUM + absent libration */
-    test_put_u32(h360 + 2868, s);
-    test_put_u32(h360 + 2872, c);
-    test_put_u32(h360 + 2876, l);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, s);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 4, c);
+    test_put_u32(h360 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 8, l);
     for (i = 0; i < PARSER_DOUBLES; ++i) const360[i] = 0.0;
     const360[0] = 11.0;
     const360[1] = 22.0;
@@ -212,10 +213,10 @@ static int check_360_t15_absent(const char *path, uint32_t s, uint32_t c, uint32
     JPL_TEST_CHECK(jpl_has_tt_tdb(e) == 0);
     JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
     JPL_TEST_CHECK(got[0] == 11.0 && got[1] == 22.0);
-    JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-    JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
-    JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-    JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+    JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+    JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
+    JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+    JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
     jpl_close(m);
     jpl_close(e);
     return 0;
@@ -234,7 +235,8 @@ int main(void) {
     {
         jpl_ephemeris *e = NULL, *m = NULL;
         const jpl_header *h;
-        double got[2], state[6], rec[PARSER_DOUBLES];
+        double got[2], rec[PARSER_DOUBLES];
+        jpl_state state;
         JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
@@ -249,10 +251,10 @@ int main(void) {
         JPL_TEST_CHECK(got[0] == 11.0 && got[1] == 22.0);
         JPL_TEST_CHECK(jpl_read_record(e, 0, rec, PARSER_DOUBLES) == JPL_OK);
         JPL_TEST_CHECK(rec[0] == 2451545.0 && rec[1] == 2451546.0 && rec[2] == 2.0);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0 && state[3] == 0.0);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0 && state.vx == 0.0);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);
         jpl_close(m);
         jpl_close(e);
     }
@@ -329,21 +331,21 @@ int main(void) {
     /* Finite-query and NaN-query checks against a valid file. */
     {
         jpl_ephemeris *e = NULL;
-        double state[6] = {9.0, 9.0, 9.0, 9.0, 9.0, 9.0};
-        static const double q_ok[2] = {2451545.5, 0.0};
-        static const double q_nan[2] = {NAN, 0.0};
-        static const double q_inf[2] = {INFINITY, 0.0};
-        static const double q_lo[2] = {2451545.5 - 10.0, 0.0};
-        static const double q_nonfinite_lo[2] = {2451545.5, NAN};
+        jpl_state state = {9.0, 9.0, 9.0, 9.0, 9.0, 9.0};
+        static const jpl_date q_ok = {2451545.5, 0.0};
+        static const jpl_date q_nan = {NAN, 0.0};
+        static const jpl_date q_inf = {INFINITY, 0.0};
+        static const jpl_date q_lo = {2451545.5 - 10.0, 0.0};
+        static const jpl_date q_nonfinite_lo = {2451545.5, NAN};
         JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e, q_ok, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 2.0);
-        JPL_TEST_CHECK(jpl_get_state(e, q_nan, JPL_NUTATIONS, 0, state) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, q_inf, JPL_NUTATIONS, 0, state) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q_ok, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 2.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &q_nan, JPL_NUTATIONS, 0, &state) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q_inf, JPL_NUTATIONS, 0, &state) == JPL_ERROR_ARGUMENT);
         /* Nonfinite low part is ARGUMENT too, not RANGE. */
-        JPL_TEST_CHECK(jpl_get_state(e, q_nonfinite_lo, JPL_NUTATIONS, 0, state) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_get_state(e, q_lo, JPL_NUTATIONS, 0, state) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_get_state(e, &q_nonfinite_lo, JPL_NUTATIONS, 0, &state) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_get_state(e, &q_lo, JPL_NUTATIONS, 0, &state) == JPL_ERROR_RANGE);
         /* Normalized pair comparisons retain a sub-ULP low part when
          * deciding whether a query lies inside coverage. */
         { static const double cov_start[2] = {2451545.0, 0.0};
@@ -371,7 +373,8 @@ int main(void) {
     {
         static double three[3 * PARSER_DOUBLES];
         jpl_ephemeris *e = NULL, *m = NULL;
-        double state[6], rec[PARSER_DOUBLES];
+        jpl_state state;
+        double rec[PARSER_DOUBLES];
         size_t k;
         JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
         mock.start[0] = 2451545.0;
@@ -391,16 +394,16 @@ int main(void) {
         JPL_TEST_CHECK(jpl_record_count(e) == 3);
         JPL_TEST_CHECK(jpl_read_record(e, 0, rec, PARSER_DOUBLES) == JPL_OK);
         JPL_TEST_CHECK(rec[0] == 2451545.0);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451546.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451546.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_ERROR_FORMAT);
         jpl_close(e);
         /* Same file via mmap: interior corruption also surfaces lazily. */
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
         JPL_TEST_CHECK(jpl_record_count(m) == 3);
         JPL_TEST_CHECK(jpl_read_record(m, 0, rec, PARSER_DOUBLES) == JPL_OK);
         JPL_TEST_CHECK(rec[0] == 2451545.0);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451546.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_ERROR_FORMAT);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451546.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_ERROR_FORMAT);
         jpl_close(m);
     }
 
@@ -413,7 +416,8 @@ int main(void) {
         static double rec360[2 * PARSER_DOUBLES];
         jpl_test_mock m360;
         jpl_ephemeris *e = NULL, *m = NULL;
-        double got[2], state[6];
+        double got[2];
+        jpl_state state;
         size_t r, i;
         memset(hdr360, 0, sizeof hdr360);
         memcpy(hdr360, "trailing 360", 12);
@@ -460,17 +464,17 @@ int main(void) {
         JPL_TEST_CHECK(got[0] == 11.0 && got[1] == 22.0);
         /* Mars {3,1,1}: one coefficient per component, so the state
          * is the c0 value scaled by 1/AU. */
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[3] == 0.0);
-        JPL_TEST_CHECK(state[1] == 6.0 / JPL_TEST_AU_KM && state[2] == 7.0 / JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[3] == 0.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM && state.vx == 0.0);
+        JPL_TEST_CHECK(state.y == 6.0 / JPL_TEST_AU_KM && state.z == 7.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM && state.vx == 0.0);
         /* The exact coverage end selects the covered interval, never
          * the physical trailing record. */
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451546.0, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451546.0, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451546.0, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
     }
@@ -504,7 +508,8 @@ int main(void) {
         FILE *f;
         size_t i;
         uint64_t b1;
-        double got[2], state[6];
+        double got[2];
+        jpl_state state;
         memset(h357, 0, sizeof h357);
         memcpy(h357, "classic 2856", 12);
         test_put_ptr(h357, 11, 3, 1, 1); /* nutations */
@@ -552,10 +557,10 @@ int main(void) {
         JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
         memcpy(&b1, got + 1, sizeof b1);
         JPL_TEST_CHECK(got[0] == 0.0 && b1 == ((uint64_t)1000u << 32));
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);
         jpl_close(m);
         jpl_close(e);
     }
@@ -570,7 +575,8 @@ int main(void) {
         static double ccol[PARSER_DOUBLES], rcol[PARSER_DOUBLES];
         jpl_test_mock mcol;
         jpl_ephemeris *e = NULL, *m = NULL;
-        double got[2], state[6];
+        double got[2];
+        jpl_state state;
         size_t i;
         memset(hcol, 0, sizeof hcol);
         memcpy(hcol, "constants collision", 19);
@@ -604,10 +610,10 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
         JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
         JPL_TEST_CHECK(got[0] == 2451545.0 && got[1] == 22.0);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
     }
@@ -749,7 +755,8 @@ int main(void) {
         jpl_test_mock mbe;
         jpl_ephemeris *e = NULL, *m = NULL;
         const jpl_header *h;
-        double got[2], state[6];
+        double got[2];
+        jpl_state state;
         size_t i;
         memset(hbe, 0, sizeof hbe);
         memcpy(hbe, "be ambiguous", 12);
@@ -788,12 +795,12 @@ int main(void) {
         JPL_TEST_CHECK(jpl_record_count(e) == 1);
         JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
         JPL_TEST_CHECK(got[0] == 11.0 && got[1] == 22.0);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){0.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[1] == 6.0 / JPL_TEST_AU_KM &&
-                       state[2] == 7.0 / JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){0.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM && state[1] == 6.0 / JPL_TEST_AU_KM &&
-                       state[2] == 7.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){0.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM && state.y == 6.0 / JPL_TEST_AU_KM &&
+                       state.z == 7.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){0.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM && state.y == 6.0 / JPL_TEST_AU_KM &&
+                       state.z == 7.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
     }
@@ -878,7 +885,7 @@ int main(void) {
         static double *wconst = NULL, *wrec = NULL;
         jpl_test_mock wm;
         jpl_ephemeris *e = NULL, *m = NULL;
-        double state[6];
+        jpl_state state;
         whdr = (unsigned char *)calloc(1, WBYTES);
         wconst = (double *)calloc(WDOUBLES, sizeof *wconst);
         wrec = (double *)calloc(WDOUBLES, sizeof *wrec);
@@ -919,10 +926,10 @@ int main(void) {
             JPL_TEST_CHECK(sm == JPL_OK);
         }
         JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == WDOUBLES);
-        JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_MARS, 0, state) == JPL_OK);
-        JPL_TEST_CHECK(state[0] == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
+        JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
+        JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
         jpl_close(m);
         jpl_close(e);
         free(wrec);
@@ -942,7 +949,7 @@ int main(void) {
         size_t c;
         for (c = 0; c < sizeof cases / sizeof cases[0]; ++c) {
             jpl_ephemeris *e = NULL, *m = NULL;
-            double state[6];
+            jpl_state state;
             JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
             mock.denum = cases[c].denum;
             JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
@@ -952,10 +959,10 @@ int main(void) {
             JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == cases[c].frame);
             JPL_TEST_CHECK(jpl_get_header(m)->reference_frame == cases[c].frame);
             /* Unknown/legacy DENUM stays readable in its native frame. */
-            JPL_TEST_CHECK(jpl_get_state(e, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-            JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0);
-            JPL_TEST_CHECK(jpl_get_state(m, (const double[2]){2451545.5, 0.0}, JPL_NUTATIONS, 0, state) == JPL_OK);
-            JPL_TEST_CHECK(state[0] == 2.0 && state[1] == 3.0);
+            JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+            JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);
+            JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
+            JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);
             jpl_close(m);
             jpl_close(e);
         }

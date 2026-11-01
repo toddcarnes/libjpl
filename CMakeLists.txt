@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.5.0 LANGUAGES C)
+project(libjpl VERSION 0.7.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -294,6 +294,7 @@ if(LIBJPL_BUILD_TESTS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/erfa>
     )
     target_compile_definitions(jpl_testing PRIVATE
@@ -316,6 +317,7 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_tests tests/test_jpl.c)
     target_link_libraries(jpl_tests PRIVATE jpl_static)
     target_compile_features(jpl_tests PRIVATE c_std_17)
+    target_include_directories(jpl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME jpl_tests COMMAND jpl_tests)
     add_executable(jpl_lighttime_tests tests/test_lighttime.c)
     target_link_libraries(jpl_lighttime_tests PRIVATE jpl_testing)
@@ -326,7 +328,7 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_aberration_tests tests/test_aberration.c)
     target_link_libraries(jpl_aberration_tests PRIVATE jpl_testing)
     target_compile_features(jpl_aberration_tests PRIVATE c_std_17)
-    target_include_directories(jpl_aberration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_include_directories(jpl_aberration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
     target_compile_definitions(jpl_aberration_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_aberration COMMAND jpl_aberration_tests)
     add_executable(jpl_frames_tests tests/test_frames.c)
@@ -344,16 +346,19 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_mmap_tests tests/test_mmap.c)
     target_link_libraries(jpl_mmap_tests PRIVATE jpl_static)
     target_compile_features(jpl_mmap_tests PRIVATE c_std_17)
+    target_include_directories(jpl_mmap_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME jpl_mmap COMMAND jpl_mmap_tests)
     find_package(Threads REQUIRED)
     add_executable(jpl_threads_tests tests/test_threads.c)
     target_link_libraries(jpl_threads_tests PRIVATE jpl_static Threads::Threads)
     target_compile_features(jpl_threads_tests PRIVATE c_std_17)
+    target_include_directories(jpl_threads_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME jpl_threads COMMAND jpl_threads_tests)
     set_tests_properties(jpl_threads PROPERTIES TIMEOUT 120)
     add_executable(jpl_tt_tdb_tests tests/test_tt_tdb.c)
     target_link_libraries(jpl_tt_tdb_tests PRIVATE jpl_static)
     target_compile_features(jpl_tt_tdb_tests PRIVATE c_std_17)
+    target_include_directories(jpl_tt_tdb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME jpl_tt_tdb COMMAND jpl_tt_tdb_tests)
     add_executable(jpl_parser_tests tests/test_parser.c)
     target_link_libraries(jpl_parser_tests PRIVATE jpl_testing)
@@ -497,22 +502,23 @@ if(LIBJPL_BUILD_TESTS)
     target_include_directories(jpl_horizons_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
     target_compile_definitions(jpl_horizons_tests PRIVATE LIBJPL_TESTING)
-    add_test(NAME jpl_horizons_offline
-        COMMAND jpl_horizons_tests
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
-    add_test(NAME jpl_horizons_reference_mutation
-        COMMAND ${CMAKE_COMMAND}
-            "-DRUNNER=$<TARGET_FILE:jpl_horizons_tests>"
-            "-DEPH=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
-            "-DREF=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt"
-            "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/horizons_comparison"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_horizons_compare.cmake")
     if(DEFINED ENV{JPLEPH} AND NOT "$ENV{JPLEPH}" STREQUAL "" AND
        EXISTS "$ENV{JPLEPH}/DE441.eph")
+        add_test(NAME jpl_horizons_offline
+            COMMAND jpl_horizons_tests "$ENV{JPLEPH}/DE441.eph"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
+        add_test(NAME jpl_horizons_reference_mutation
+            COMMAND ${CMAKE_COMMAND}
+                "-DRUNNER=$<TARGET_FILE:jpl_horizons_tests>"
+                "-DEPH=$ENV{JPLEPH}/DE441.eph"
+                "-DREF=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt"
+                "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/horizons_comparison"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_horizons_compare.cmake")
         add_test(NAME jpl_horizons_de441_local
             COMMAND jpl_horizons_tests "$ENV{JPLEPH}/DE441.eph"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
+    else()
+        message(STATUS "Full DE441 not available (JPLEPH not set or file missing); skipping jpl_horizons_offline, jpl_horizons_reference_mutation, jpl_horizons_de441_local")
     endif()
     # jpl_testpo_tests builds whenever tests are enabled: only its
     # large-data registrations stay opt-in; small synthetic validator

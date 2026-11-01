@@ -23,8 +23,7 @@
  * ## State calculations
  * - @ref jpl_get_state "jpl_get_state()" - Interpolate a relative state.
  * - @ref jpl_get_state_lighttime "jpl_get_state_lighttime()" - Apply light-time correction.
- * - @ref jpl_apply_aberration "jpl_apply_aberration()" - Apply stellar aberration.
- * - @ref jpl_apply_aberration_full "jpl_apply_aberration_full()" - Include the solar-potential term.
+ * - @ref jpl_apply_aberration "jpl_apply_aberration()" - Apply stellar aberration (solar term included when Sun distance > 0).
  *
  * ## Time and frames
  * - @ref jpl_has_tt_tdb "jpl_has_tt_tdb()" - Check for file-provided time corrections.

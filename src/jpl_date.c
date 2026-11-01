@@ -4,6 +4,7 @@
  */
 #include "jpl_private.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -252,6 +253,7 @@ jpl_status jpl_date_partition(const double begin[2], const double end[2],
 }
 
 int jpl_date_compare(const double a[2], const double b[2]) {
+    assert(isfinite(a[0]) && isfinite(a[1]) && isfinite(b[0]) && isfinite(b[1]));
     if (a[0] < b[0]) {
         return -1;
     }

@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
     const jpl_header *header;
     double *constants;
     double *record;
-    double state[6];
+    jpl_state state;
 
     jpl_status status;
     if (argc != 2) return 2;
@@ -69,11 +69,13 @@ int main(int argc, char **argv) {
      * no scalar full-JD adapter is introduced for the migration. */
     {
         double query[2];
+        jpl_date query_date;
         status = jpl_date_add_days(header->start_jd, 100.0, query);
+        if (status == JPL_OK) jpl_pair_to_date(query, &query_date);
         if (status != JPL_OK ||
-            jpl_get_state(ephemeris, query, JPL_EARTH, JPL_SUN, state) != JPL_OK ||
-            !isfinite(state[0]) || !isfinite(state[1]) || !isfinite(state[2]) ||
-            !isfinite(state[3]) || !isfinite(state[4]) || !isfinite(state[5])) {
+            jpl_get_state(ephemeris, &query_date, JPL_EARTH, JPL_SUN, &state) != JPL_OK ||
+            !isfinite(state.x) || !isfinite(state.y) || !isfinite(state.z) ||
+            !isfinite(state.vx) || !isfinite(state.vy) || !isfinite(state.vz)) {
             fputs("Could not interpolate an ephemeris state vector.\n", stderr);
             free(record);
             free(constants);

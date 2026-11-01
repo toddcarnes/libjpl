@@ -11,6 +11,12 @@
 
 #include "jpl.h"
 
+/* libjpl requires 64-bit size_t to address multi-GiB ephemerides (DE431/DE441).
+ * 32-bit builds are explicitly unsupported. */
+#if UINTPTR_MAX != UINT64_MAX
+#error "libjpl requires 64-bit size_t (multi-GiB ephemerides)"
+#endif
+
 /* IAU / JPL physical constants (exact values used across the library).
  * The modern AU and SI light speed are the exact inputs; light speed in
  * AU/day is derived from them, never a rounded literal. */
@@ -51,17 +57,43 @@
  * a cursor (p += 8/4) so the two must agree when the layout changes. */
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
+#define JPL_HDR_START_JD_OFFSET 2652
+#define JPL_HDR_END_JD_OFFSET 2660
+#define JPL_HDR_STEP_DAYS_OFFSET 2668
+#define JPL_HDR_NCONST_OFFSET 2676
+#define JPL_HDR_AU_KM_OFFSET 2680
+#define JPL_HDR_EMRAT_OFFSET 2688
+#define JPL_HDR_DENUM_OFFSET 2840
+#define JPL_HDR_LIBRATION_OFFSET 2844
+#define JPL_HDR_IPT14_OFFSET 2856
 
 /* Base file offset of the IPT 14/15 extension triplets when the file
  * carries no overflow constant names (constant_count <= 400). Files with
  * more constants store the extra 6-character names first, so the triplets
  * start at JPL_TT_TDB_TAIL_BASE + 6 * (constant_count - 400). */
 #define JPL_TT_TDB_TAIL_BASE 2856
+#define JPL_TT_TDB_TRIPLET_OFFSET 12
 
 static inline double jpl_vec_norm3(const double v[3]) {
     /* Scale-safe Euclidean norm: nested hypot preserves tiny (1e-200)
      * directions and avoids overflow when the norm stays representable. */
     return hypot(hypot(v[0], v[1]), v[2]);
+}
+
+/* Conversion helpers between public struct types and internal double[2]/double[6] */
+static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
+    out[0] = d->hi; out[1] = d->lo;
+}
+static inline void jpl_pair_to_date(const double in[2], jpl_date *d) {
+    d->hi = in[0]; d->lo = in[1];
+}
+static inline void jpl_state_to_array(const jpl_state *s, double out[6]) {
+    out[0] = s->x; out[1] = s->y; out[2] = s->z;
+    out[3] = s->vx; out[4] = s->vy; out[5] = s->vz;
+}
+static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
+    s->x = in[0]; s->y = in[1]; s->z = in[2];
+    s->vx = in[3]; s->vy = in[4]; s->vz = in[5];
 }
 
 /* Compensated two-part Julian-date arithmetic (src/jpl_date.c).
@@ -82,6 +114,6 @@ int jpl_date_compare(const double a[2], const double b[2]);
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */
 jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
-                                               const double jd_tt[2], double out[3]);
+                                               const jpl_date *jd_tt, double out[3]);
 
 #endif

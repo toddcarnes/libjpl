@@ -138,14 +138,14 @@ int main(void) {
                  * with t the fraction; choose fraction (x+1)/2. */
                 double frac = (xs[xi] + 1.0) / 2.0;
                 double jd_hi = 2451545.0 + frac;
-                double jd[2] = {jd_hi, 0.0};
+                jpl_date jd = {jd_hi, 0.0};
                 double sec = 0.0, rate = 0.0, msec = 0.0, mrate = 0.0;
                 double want = poly4(xs[xi]);
                 double want_rate = poly4_deriv(xs[xi]) * 2.0 / 1.0;
-                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, jd, &sec, &rate) == JPL_OK);
+                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &jd, &sec, &rate) == JPL_OK);
                 JPL_TEST_CHECK(fabs(sec - want) < 1e-12);
                 JPL_TEST_CHECK(fabs(rate - want_rate) < 1e-9);
-                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, jd, &msec, &mrate) == JPL_OK);
+                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &jd, &msec, &mrate) == JPL_OK);
                 JPL_TEST_CHECK(msec == sec && mrate == rate);
             }
             /* Scaled coefficients: 1e-6 keeps low-part offsets visible
@@ -158,7 +158,8 @@ int main(void) {
             jpl_ephemeris *e = NULL;
             double sec = 0.0, rate = 0.0;
             JPL_TEST_CHECK(jpl_open("jpl_test_numeric_poly4.bin", &e) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, (const double[2]){2451545.0, 0.5}, &sec, &rate) == JPL_OK);
+            { static const jpl_date mid = {2451545.0, 0.5};
+              JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &mid, &sec, &rate) == JPL_OK); }
             JPL_TEST_CHECK(fabs(sec - 3.0e-6) < 1e-20);
             JPL_TEST_CHECK(fabs(rate - -20.0e-6) < 1e-19);
             jpl_close(e);
@@ -173,32 +174,35 @@ int main(void) {
         JPL_TEST_CHECK(jpl_time_reference_count == 5);
         for (e = 0; e < jpl_time_reference_count; ++e) {
             const jpl_time_reference *ref = &jpl_time_references[e];
-            double tdb[2], back[2], sec;
+            jpl_date ref_tt = {ref->tt[0], ref->tt[1]};
+            jpl_date tdb = {0.0, 0.0}, back = {0.0, 0.0};
+            double sec;
             double R[3][3], Rt[3][3];
             double E[3][3];
             int i, j, k;
             /* Forward: correction seconds recovered through the small
              * pair difference, not a rounded full JD. */
-            JPL_TEST_CHECK(jpl_tt_to_tdb(ref->tt, tdb) == JPL_OK);
-            sec = ((tdb[0] - ref->tt[0]) + (tdb[1] - ref->tt[1])) * 86400.0;
+            JPL_TEST_CHECK(jpl_tt_to_tdb(&ref_tt, &tdb) == JPL_OK);
+            sec = ((tdb.hi - ref->tt[0]) + (tdb.lo - ref->tt[1])) * 86400.0;
             JPL_TEST_CHECK(fabs(sec - ref->tdb_minus_tt_seconds) < 1e-9);
             /* Equivalent split: {hi+0.5, lo-0.5} style shift keeps the
              * same epoch for small offsets. */
             {
-                double alt[2] = {ref->tt[0] + 0.5, ref->tt[1] - 0.5};
-                double tdb2[2], sec2;
-                if (isfinite(alt[0]) && isfinite(alt[1])) {
-                    JPL_TEST_CHECK(jpl_tt_to_tdb(alt, tdb2) == JPL_OK);
-                    sec2 = ((tdb2[0] - ref->tt[0]) + (tdb2[1] - ref->tt[1])) * 86400.0;
+                jpl_date alt = {ref->tt[0] + 0.5, ref->tt[1] - 0.5};
+                jpl_date tdb2 = {0.0, 0.0};
+                double sec2;
+                if (isfinite(alt.hi) && isfinite(alt.lo)) {
+                    JPL_TEST_CHECK(jpl_tt_to_tdb(&alt, &tdb2) == JPL_OK);
+                    sec2 = ((tdb2.hi - ref->tt[0]) + (tdb2.lo - ref->tt[1])) * 86400.0;
                     JPL_TEST_CHECK(fabs(sec2 - ref->tdb_minus_tt_seconds) < 1e-6);
                 }
             }
             /* Inverse closes the loop through the small pair difference. */
-            JPL_TEST_CHECK(jpl_tdb_to_tt(tdb, back) == JPL_OK);
-            JPL_TEST_CHECK(fabs((back[0] - ref->tt[0]) + (back[1] - ref->tt[1])) <= 1e-15);
+            JPL_TEST_CHECK(jpl_tdb_to_tt(&tdb, &back) == JPL_OK);
+            JPL_TEST_CHECK(fabs((back.hi - ref->tt[0]) + (back.lo - ref->tt[1])) <= 1e-15);
             /* Frame: jpl_frame_rotation_matrix returns ecliptic->ICRS,
              * the transpose of the pinned ICRS->ecliptic matrix. */
-            JPL_TEST_CHECK(jpl_frame_rotation_matrix(ref->tt, R) == JPL_OK);
+            JPL_TEST_CHECK(jpl_frame_rotation_matrix(&ref_tt, R) == JPL_OK);
             for (i = 0; i < 3; ++i) {
                 for (j = 0; j < 3; ++j) E[i][j] = ref->icrs_to_ecliptic[i][j];
             }
@@ -238,34 +242,39 @@ int main(void) {
             const jpl_apparent_reference *ref = &jpl_apparent_references[e];
             const char *path = e == 0 ? "jpl_test_numeric_app0.bin" : "jpl_test_numeric_app1.bin";
             jpl_ephemeris *h = NULL;
-            double got[6], lt = -1.0;
-            double tdb[2], obs[6], sun[6], vobs[3], expect[6], sdist;
+            jpl_state got, obs, sun, expect, conv;
+            double lt = -1.0;
+            jpl_date tdb = {0.0, 0.0};
+            double vobs[3], sdist;
+            double sun_pos[3];
             size_t k;
             JPL_TEST_CHECK(write_oracle_mock(path, (int)e) == 0);
             JPL_TEST_CHECK(jpl_open(path, &h) == JPL_OK);
-            JPL_TEST_CHECK(jpl_tt_to_tdb(ref->tt, tdb) == JPL_OK);
+            { jpl_date ref_tt = {ref->tt[0], ref->tt[1]};
+              JPL_TEST_CHECK(jpl_tt_to_tdb(&ref_tt, &tdb) == JPL_OK); }
             /* Full apparent chain through the public API. */
-            JPL_TEST_CHECK(jpl_get_state_lighttime(h, tdb, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, got, &lt) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(h, tdb, JPL_EARTH_MOON_BARYCENTER, 0, obs) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(h, tdb, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, sun) == JPL_OK);
-            sdist = jpl_vec_norm3(sun);
-            vobs[0] = obs[3];
-            vobs[1] = obs[4];
-            vobs[2] = obs[5];
-            JPL_TEST_CHECK(jpl_apply_aberration_full(got, vobs, sdist, expect) == JPL_OK);
-            for (k = 0; k < 6; ++k) JPL_TEST_CHECK(fabs(expect[k] - ref->state[k]) < 1e-9);
+            JPL_TEST_CHECK(jpl_get_state_lighttime(h, &tdb, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, &got, &lt) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(h, &tdb, JPL_EARTH_MOON_BARYCENTER, 0, &obs) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(h, &tdb, JPL_EARTH_MOON_BARYCENTER, JPL_SUN, &sun) == JPL_OK);
+            sun_pos[0] = sun.x; sun_pos[1] = sun.y; sun_pos[2] = sun.z;
+            sdist = jpl_vec_norm3(sun_pos);
+            vobs[0] = obs.vx;
+            vobs[1] = obs.vy;
+            vobs[2] = obs.vz;
+            JPL_TEST_CHECK(jpl_apply_aberration(&got, vobs, sdist, &expect) == JPL_OK);
+            for (k = 0; k < 6; ++k) JPL_TEST_CHECK(fabs(test_state_component(&expect, (int)k) - ref->state[k]) < 1e-9);
             JPL_TEST_CHECK(fabs(lt - ref->delay_days) < 1e-12);
             /* Mixed-epoch velocity pinned: V - W(reception polynomial). */
-            JPL_TEST_CHECK(fabs(expect[3] - (0.005 - obs[3])) < 1e-12);
-            JPL_TEST_CHECK(fabs(expect[4] - (-0.003 - obs[4])) < 1e-12);
-            JPL_TEST_CHECK(fabs(expect[5] - (0.001 - obs[5])) < 1e-12);
+            JPL_TEST_CHECK(fabs(expect.vx - (0.005 - obs.vx)) < 1e-12);
+            JPL_TEST_CHECK(fabs(expect.vy - (-0.003 - obs.vy)) < 1e-12);
+            JPL_TEST_CHECK(fabs(expect.vz - (0.001 - obs.vz)) < 1e-12);
             /* Whole-state finiteness of the convenience wrapper too. */
             {
-                double conv[6];
-                JPL_TEST_CHECK(jpl_planet_position(h, ref->tt, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, conv) == JPL_OK);
+                jpl_date ref_tt = {ref->tt[0], ref->tt[1]};
+                JPL_TEST_CHECK(jpl_planet_position(h, &ref_tt, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, &conv) == JPL_OK);
                 for (k = 0; k < 6; ++k) {
-                    JPL_TEST_CHECK(isfinite(conv[k]));
-                    JPL_TEST_CHECK(fabs(conv[k] - ref->state[k]) < 1e-9);
+                    JPL_TEST_CHECK(isfinite(test_state_component(&conv, (int)k)));
+                    JPL_TEST_CHECK(fabs(test_state_component(&conv, (int)k) - ref->state[k]) < 1e-9);
                 }
             }
             jpl_close(h);
@@ -277,11 +286,12 @@ int main(void) {
      * mock, and untouched outputs after each error category. */
     {
         /* Zero observer velocity: position unchanged. */
-        double s[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
+        jpl_state s = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
         double z[3] = {0.0, 0.0, 0.0};
-        double o[6], keep[6] = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
-        JPL_TEST_CHECK(jpl_apply_aberration(s, z, o) == JPL_OK);
-        JPL_TEST_CHECK(o[0] == s[0] && o[1] == s[1] && o[2] == s[2]);
+        jpl_state o, keep = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
+        o = keep;
+        JPL_TEST_CHECK(jpl_apply_aberration(&s, z, 0.0, &o) == JPL_OK);
+        JPL_TEST_CHECK(o.x == s.x && o.y == s.y && o.z == s.z);
         /* Transverse observer velocity deflects; radial velocity does
          * not change the direction to first order (collinear beta keeps
          * the unit direction fixed up to the distance-preserving
@@ -289,34 +299,36 @@ int main(void) {
         {
             double trans[3] = {0.0, 0.01, 0.0};
             double rad[3] = {0.01, 0.0, 0.0};
-            double ot[6], orad[6];
-            JPL_TEST_CHECK(jpl_apply_aberration(s, trans, ot) == JPL_OK);
-            JPL_TEST_CHECK(fabs(ot[1] - s[1]) > 1e-9);
-            JPL_TEST_CHECK(jpl_apply_aberration(s, rad, orad) == JPL_OK);
+            jpl_state ot, orad;
+            JPL_TEST_CHECK(jpl_apply_aberration(&s, trans, 0.0, &ot) == JPL_OK);
+            JPL_TEST_CHECK(fabs(ot.y - s.y) > 1e-9);
+            JPL_TEST_CHECK(jpl_apply_aberration(&s, rad, 0.0, &orad) == JPL_OK);
             /* Collinear aberration preserves the unit direction. */
             {
-                double n0 = test_norm3(s), n1 = test_norm3(orad);
+                double s_pos[3] = {s.x, s.y, s.z};
+                double orad_pos[3] = {orad.x, orad.y, orad.z};
+                double n0 = test_norm3(s_pos), n1 = test_norm3(orad_pos);
                 int k;
                 for (k = 0; k < 3; ++k) {
-                    JPL_TEST_CHECK(fabs(orad[k] / n1 - s[k] / n0) < 1e-12);
+                    JPL_TEST_CHECK(fabs(test_state_component(&orad, k) / n1 - test_state_component(&s, k) / n0) < 1e-12);
                 }
             }
         }
         /* Exact aliasing: in-place equals out-of-place for frames and
          * aberration. */
         {
-            double st[6] = {0.5, -0.3, 0.8, 0.001, -0.002, 0.0005};
-            double ref[6], aliased[6], r2[6];
-            static const double jd[2] = {2451545.0, 0.0};
+            jpl_state st = {0.5, -0.3, 0.8, 0.001, -0.002, 0.0005};
+            jpl_state ref, aliased, r2;
+            static const jpl_date jd = {2451545.0, 0.0};
             double vv[3] = {0.0, 0.01, 0.0};
-            memcpy(aliased, st, sizeof aliased);
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(st, jd, ref) == JPL_OK);
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(aliased, jd, aliased) == JPL_OK);
-            JPL_TEST_CHECK(memcmp(aliased, ref, sizeof ref) == 0);
-            memcpy(aliased, st, sizeof aliased);
-            JPL_TEST_CHECK(jpl_apply_aberration(aliased, vv, aliased) == JPL_OK);
-            JPL_TEST_CHECK(jpl_apply_aberration(st, vv, r2) == JPL_OK);
-            JPL_TEST_CHECK(memcmp(aliased, r2, sizeof r2) == 0);
+            aliased = st;
+            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&st, &jd, &ref) == JPL_OK);
+            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&aliased, &jd, &aliased) == JPL_OK);
+            JPL_TEST_CHECK(memcmp(&aliased, &ref, sizeof ref) == 0);
+            aliased = st;
+            JPL_TEST_CHECK(jpl_apply_aberration(&aliased, vv, 0.0, &aliased) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apply_aberration(&st, vv, 0.0, &r2) == JPL_OK);
+            JPL_TEST_CHECK(memcmp(&aliased, &r2, sizeof r2) == 0);
         }
         /* Legacy-frame rejection for convenience with untouched output. */
         {
@@ -326,9 +338,9 @@ int main(void) {
             static unsigned char dat[BYTES];
             FILE *f;
             jpl_ephemeris *h = NULL;
-            double out[6];
-            static const double jd[2] = {2451545.5, 0.0};
-            memcpy(out, keep, sizeof out);
+            jpl_state out;
+            static const jpl_date jd = {2451545.5, 0.0};
+            out = keep;
             memset(hdr, 0, sizeof hdr);
             memset(con, 0, sizeof con);
             memset(dat, 0, sizeof dat);
@@ -348,8 +360,8 @@ int main(void) {
             JPL_TEST_CHECK(fclose(f) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_numeric_legacy.bin", &h) == JPL_OK);
             JPL_TEST_CHECK(jpl_get_header(h)->reference_frame == JPL_FRAME_DYNAMICAL_2000);
-            JPL_TEST_CHECK(jpl_planet_position(h, jd, JPL_MERCURY, JPL_SUN, out) == JPL_ERROR_UNSUPPORTED);
-            JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
+            JPL_TEST_CHECK(jpl_planet_position(h, &jd, JPL_MERCURY, JPL_SUN, &out) == JPL_ERROR_UNSUPPORTED);
+            JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
             jpl_close(h);
             JPL_TEST_CHECK(remove("jpl_test_numeric_legacy.bin") == 0);
         }
@@ -361,13 +373,13 @@ int main(void) {
             static unsigned char dat[BYTES];
             FILE *f;
             jpl_ephemeris *h = NULL;
-            double st[6];
-            static const double jd[2] = {2451545.5, 0.0};
+            jpl_state st;
+            static const jpl_date jd = {2451545.5, 0.0};
             memset(hdr, 0, sizeof hdr);
             memset(con, 0, sizeof con);
             memset(dat, 0, sizeof dat);
             test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-            test_put_f64(hdr + 2680, JPL_TEST_NONMODERN_AU_KM);
+            test_put_f64(hdr + JPL_HDR_AU_KM_OFFSET, JPL_TEST_NONMODERN_AU_KM);
             test_put_ptr(hdr, 3, 3, 2, 1);
             test_put_f64(con, 1.0);
             test_put_f64(con + 8, 2.0);
@@ -381,8 +393,8 @@ int main(void) {
             JPL_TEST_CHECK(fwrite(dat, 1, sizeof dat, f) == sizeof dat);
             JPL_TEST_CHECK(fclose(f) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_numeric_au.bin", &h) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_state(h, jd, JPL_MARS, 0, st) == JPL_OK);
-            JPL_TEST_CHECK(st[0] == 1.0);
+            JPL_TEST_CHECK(jpl_get_state(h, &jd, JPL_MARS, 0, &st) == JPL_OK);
+            JPL_TEST_CHECK(st.x == 1.0);
             jpl_close(h);
             JPL_TEST_CHECK(remove("jpl_test_numeric_au.bin") == 0);
         }
@@ -390,38 +402,38 @@ int main(void) {
          * CONVERGENCE (zero-budget light-time), UNSUPPORTED (legacy
          * frame), plus the NUMERIC SRS overflow. */
         {
-            double out[6], R[3][3], Rkeep[3][3];
-            static const double nan_date[2] = {2451545.0, NAN};
-            static const double jd[2] = {2451545.0, 0.0};
-            double bad[6] = {1.0, NAN, 0.0, 0.0, 0.0, 0.0};
+            jpl_state out, bad = {1.0, NAN, 0.0, 0.0, 0.0, 0.0};
+            double R[3][3], Rkeep[3][3];
+            static const jpl_date nan_date = {2451545.0, NAN};
+            static const jpl_date jd = {2451545.0, 0.0};
             double vv[3] = {0.0, 0.01, 0.0};
             int a, b;
-            memcpy(out, keep, sizeof out);
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(bad, jd, out) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
-            memcpy(out, keep, sizeof out);
-            JPL_TEST_CHECK(jpl_apply_aberration(bad, vv, out) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
+            out = keep;
+            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&bad, &jd, &out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
+            out = keep;
+            JPL_TEST_CHECK(jpl_apply_aberration(&bad, vv, 0.0, &out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
             for (a = 0; a < 3; ++a) {
                 for (b = 0; b < 3; ++b) { R[a][b] = 5.0; Rkeep[a][b] = 5.0; }
             }
-            JPL_TEST_CHECK(jpl_frame_rotation_matrix(nan_date, R) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_frame_rotation_matrix(&nan_date, R) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(R, Rkeep, sizeof R) == 0);
             /* NUMERIC: microscopic Sun distance overflows the SRS term. */
-            memcpy(out, keep, sizeof out);
+            out = keep;
             {
-                double ok[6] = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
-                JPL_TEST_CHECK(jpl_apply_aberration_full(ok, vv, 1e-320, out) == JPL_ERROR_NUMERIC);
-                JPL_TEST_CHECK(memcmp(out, keep, sizeof out) == 0);
+                jpl_state ok = {1.0, 0.0, 0.0, 0.0, 0.01, 0.0};
+                JPL_TEST_CHECK(jpl_apply_aberration(&ok, vv, 1e-320, &out) == JPL_ERROR_NUMERIC);
+                JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
             }
             /* RANGE: out-of-coverage TT-TDB query leaves outputs. */
             {
-                static const double outside[2] = {2451540.0, 0.0};
+                static const jpl_date outside = {2451540.0, 0.0};
                 jpl_ephemeris *rh = NULL;
                 double rsec = 9.0, rrate = 9.0;
                 JPL_TEST_CHECK(write_poly4_mock("jpl_test_numeric_range.bin", 1.0) == 0);
                 JPL_TEST_CHECK(jpl_open("jpl_test_numeric_range.bin", &rh) == JPL_OK);
-                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(rh, outside, &rsec, &rrate) == JPL_ERROR_RANGE);
+                JPL_TEST_CHECK(jpl_get_tt_minus_tdb(rh, &outside, &rsec, &rrate) == JPL_ERROR_RANGE);
                 JPL_TEST_CHECK(rsec == 9.0 && rrate == 9.0);
                 jpl_close(rh);
                 JPL_TEST_CHECK(remove("jpl_test_numeric_range.bin") == 0);
@@ -431,11 +443,12 @@ int main(void) {
                 jpl_ephemeris *ch = NULL;
                 double cst[6], clt = -7.0;
                 static const double cjd[2] = {2451545.5, 0.0};
-                memcpy(cst, keep, sizeof cst);
+                jpl_state_to_array(&keep, cst);
                 JPL_TEST_CHECK(write_oracle_mock("jpl_test_numeric_conv.bin", 0) == 0);
                 JPL_TEST_CHECK(jpl_open("jpl_test_numeric_conv.bin", &ch) == JPL_OK);
                 JPL_TEST_CHECK(jpl_test_lighttime_with_budget(ch, cjd, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, cst, &clt, 0, 0) == JPL_ERROR_CONVERGENCE);
-                JPL_TEST_CHECK(memcmp(cst, keep, sizeof cst) == 0);
+                { jpl_state cst_state; jpl_array_to_state(cst, &cst_state);
+                  JPL_TEST_CHECK(memcmp(&cst_state, &keep, sizeof cst_state) == 0); }
                 JPL_TEST_CHECK(clt == -7.0);
                 jpl_close(ch);
                 JPL_TEST_CHECK(remove("jpl_test_numeric_conv.bin") == 0);
@@ -448,9 +461,9 @@ int main(void) {
                 static unsigned char udat[UBYTES];
                 FILE *uf;
                 jpl_ephemeris *uh = NULL;
-                double ust[6];
-                static const double ujd[2] = {2451545.5, 0.0};
-                memcpy(ust, keep, sizeof ust);
+                jpl_state ust;
+                static const jpl_date ujd = {2451545.5, 0.0};
+                ust = keep;
                 memset(uhdr, 0, sizeof uhdr);
                 memset(ucon, 0, sizeof ucon);
                 memset(udat, 0, sizeof udat);
@@ -469,8 +482,8 @@ int main(void) {
                 JPL_TEST_CHECK(fwrite(udat, 1, sizeof udat, uf) == sizeof udat);
                 JPL_TEST_CHECK(fclose(uf) == 0);
                 JPL_TEST_CHECK(jpl_open("jpl_test_numeric_unsup.bin", &uh) == JPL_OK);
-                JPL_TEST_CHECK(jpl_planet_position(uh, ujd, JPL_MERCURY, JPL_SUN, ust) == JPL_ERROR_UNSUPPORTED);
-                JPL_TEST_CHECK(memcmp(ust, keep, sizeof ust) == 0);
+                JPL_TEST_CHECK(jpl_planet_position(uh, &ujd, JPL_MERCURY, JPL_SUN, &ust) == JPL_ERROR_UNSUPPORTED);
+                JPL_TEST_CHECK(memcmp(&ust, &keep, sizeof ust) == 0);
                 jpl_close(uh);
                 JPL_TEST_CHECK(remove("jpl_test_numeric_unsup.bin") == 0);
             }

@@ -45,11 +45,11 @@ int main(void) {
           JPL_TEST_CHECK(jpl_km_to_au(file_au,&mod)==JPL_OK);
           JPL_TEST_CHECK(fabs(mod - file_au/JPL_TEST_AU_KM) < 1e-15 && mod != 1.0); }
     }
-    double st[6];
-    static const double jd_null[2] = {2451545.0, 0.0};
-    JPL_TEST_CHECK(jpl_planet_position(NULL,jd_null,1,11,st)==JPL_ERROR_ARGUMENT);
-    JPL_TEST_CHECK(jpl_moon_position(NULL,jd_null,st)==JPL_ERROR_ARGUMENT);
-    JPL_TEST_CHECK(jpl_planet_position(NULL,jd_null,99,11,st)==JPL_ERROR_ARGUMENT);
+    jpl_state st;
+    static const jpl_date jd_null = {2451545.0, 0.0};
+    JPL_TEST_CHECK(jpl_planet_position(NULL,&jd_null,1,11,&st)==JPL_ERROR_ARGUMENT);
+    JPL_TEST_CHECK(jpl_moon_position(NULL,&jd_null,&st)==JPL_ERROR_ARGUMENT);
+    JPL_TEST_CHECK(jpl_planet_position(NULL,&jd_null,99,11,&st)==JPL_ERROR_ARGUMENT);
     /* Convenience calls require an ICRF-aligned DENUM. Synthetic mocks
      * that test successful ICRS output must declare DENUM 441 explicitly;
      * zero-DENUM mocks classify as UNKNOWN. */
@@ -58,10 +58,10 @@ int main(void) {
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
-        static const double jd[2] = {2451545.5, 0.0};
-        double got[6] = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
-        double keep[6] = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
-        double raw[6];
+        static const jpl_date jd = {2451545.5, 0.0};
+        jpl_state got = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
+        jpl_state keep = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
+        jpl_state raw;
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 2, 3, 2, 1);   /* EMB */
         test_put_ptr(rec, 9, 9, 2, 1);   /* geocentric Moon */
@@ -77,9 +77,9 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, got) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e, jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, raw) == JPL_OK);
-        { size_t k; int differ = 0; for (k = 0; k < 6; ++k) if (got[k] != keep[k]) differ = 1; JPL_TEST_CHECK(differ); }
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &raw) == JPL_OK);
+        { size_t k; int differ = 0; for (k = 0; k < 6; ++k) if (test_state_component(&got, (int)k) != test_state_component(&keep, (int)k)) differ = 1; JPL_TEST_CHECK(differ); }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -89,10 +89,9 @@ int main(void) {
         const char *path="jpl_test_convenience.bin";
         unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM, MOON_KM=384400.0;
-        static const double jd[2]={2451545.5, 0.0};
-        double moon_earth[6], earth_sun[6], moon_sun[6], sum[6];
+        static const jpl_date jd={2451545.5, 0.0};
+        jpl_state moon_earth, earth_sun, moon_sun, sum;
         double expect_moon, expect_earth, d;
-        size_t i;
         test_mock_header(rec,2451545.0,2451546.0,1.0,2);
         test_put_ptr(rec,2,3,2,1);   /* EMB */
         test_put_ptr(rec,9,9,2,1);   /* geocentric Moon */
@@ -109,22 +108,22 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         /* Validation: invalid planet/center codes rejected. */
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,0,11,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,12,11,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,14,0,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,15,0,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,99,11,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,-1,11,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,1,14,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,1,15,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,1,-1,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,1,16,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,1,99,st)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_moon_position(e,jd,moon_earth)==JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,0,11,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,12,11,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,14,0,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,15,0,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,99,11,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,-1,11,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,1,14,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,1,15,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,1,-1,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,1,16,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,1,99,&st)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_moon_position(e,&jd,&moon_earth)==JPL_OK);
         {
             jpl_apparent_ecliptic_result position = {7.0, 8.0, 9.0, 10.0, 11.0};
             const jpl_apparent_ecliptic_result keep = {7.0, 8.0, 9.0, 10.0, 11.0};
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MOON, &position) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MOON, &position) == JPL_OK);
             JPL_TEST_CHECK(isfinite(position.longitude_deg) && position.longitude_deg >= 0.0 && position.longitude_deg < 360.0);
             JPL_TEST_CHECK(isfinite(position.latitude_deg) && fabs(position.latitude_deg) <= 90.0);
             JPL_TEST_CHECK(fabs(position.range_au - MOON_KM / AU_KM) < 1e-9);
@@ -132,41 +131,47 @@ int main(void) {
             JPL_TEST_CHECK(isfinite(position.range_rate_km_per_s));
             JPL_TEST_CHECK(fabs(position.range_rate_km_per_s) < 1e-3);
             /* The forward neighbor crosses coverage; a backward rate remains available. */
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, (const double[2]){2451545.0, 0.9999},
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &(const jpl_date){2451545.0, 0.9999},
                                                           JPL_MOON, &position) == JPL_OK);
             JPL_TEST_CHECK(isfinite(position.longitude_rate_deg_per_day));
             JPL_TEST_CHECK(isfinite(position.range_rate_km_per_s));
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_SUN, &position) == JPL_OK);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_SUN, &position) == JPL_OK);
             JPL_TEST_CHECK(position.longitude_deg >= 0.0 && position.longitude_deg < 360.0 && position.range_au > 0.9);
             position = keep;
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_EARTH, &position) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_SSB, &position) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_EARTH_MOON_BARYCENTER, &position) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_NUTATIONS, &position) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_LIBRATIONS, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_EARTH, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_SSB, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_EARTH_MOON_BARYCENTER, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_NUTATIONS, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_LIBRATIONS, &position) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(&position, &keep, sizeof keep) == 0);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(NULL, jd, JPL_MOON, &position) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(NULL, &jd, JPL_MOON, &position) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, NULL, JPL_MOON, &position) == JPL_ERROR_ARGUMENT);
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MOON, NULL) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MOON, NULL) == JPL_ERROR_ARGUMENT);
             JPL_TEST_CHECK(memcmp(&position, &keep, sizeof keep) == 0);
         }
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_EARTH,JPL_SUN,earth_sun)==JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_MOON,JPL_SUN,moon_sun)==JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,JPL_EARTH,JPL_SUN,&earth_sun)==JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,JPL_MOON,JPL_SUN,&moon_sun)==JPL_OK);
         expect_moon = MOON_KM/AU_KM;
-        d = test_norm3(moon_earth);
+        { double me[3] = {moon_earth.x, moon_earth.y, moon_earth.z}; d = test_norm3(me); }
         JPL_TEST_CHECK(fabs(d-expect_moon) < 1e-9);
-        JPL_TEST_CHECK(fabs(moon_earth[0]-expect_moon) < 1e-9); /* x-axis invariant under Rx */
+        JPL_TEST_CHECK(fabs(moon_earth.x-expect_moon) < 1e-9); /* x-axis invariant under Rx */
         expect_earth = 1.0 - expect_moon/(1.0+JPL_TEST_MASS_RATIO);
-        JPL_TEST_CHECK(fabs(earth_sun[0]-expect_earth) < 1e-9);
+        JPL_TEST_CHECK(fabs(earth_sun.x-expect_earth) < 1e-9);
         /* DE data is already ICRS-equatorial: the convenience output must
          * match the raw geometric vector on the invariant x-axis (aberration
          * is transverse, so x is untouched for this x-axis geometry). */
-        { double raw[6]; JPL_TEST_CHECK(jpl_get_state(e,jd,JPL_EARTH,JPL_SUN,raw)==JPL_OK);
-          JPL_TEST_CHECK(fabs(earth_sun[0]-raw[0]) < 1e-9); }
+        { jpl_state raw; JPL_TEST_CHECK(jpl_get_state(e,&jd,JPL_EARTH,JPL_SUN,&raw)==JPL_OK);
+          JPL_TEST_CHECK(fabs(earth_sun.x-raw.x) < 1e-9); }
         /* Vector identity: moon_sun == moon_earth + earth_sun (zero
          * velocities make the three legs consistent). */
-        for (i=0;i<6;++i) sum[i]=moon_earth[i]+earth_sun[i];
-        for (i=0;i<6;++i) JPL_TEST_CHECK(fabs(sum[i]-moon_sun[i]) < 1e-9);
+        sum.x=moon_earth.x+earth_sun.x; sum.y=moon_earth.y+earth_sun.y; sum.z=moon_earth.z+earth_sun.z;
+        sum.vx=moon_earth.vx+earth_sun.vx; sum.vy=moon_earth.vy+earth_sun.vy; sum.vz=moon_earth.vz+earth_sun.vz;
+        JPL_TEST_CHECK(fabs(sum.x-moon_sun.x) < 1e-9);
+        JPL_TEST_CHECK(fabs(sum.y-moon_sun.y) < 1e-9);
+        JPL_TEST_CHECK(fabs(sum.z-moon_sun.z) < 1e-9);
+        JPL_TEST_CHECK(fabs(sum.vx-moon_sun.vx) < 1e-9);
+        JPL_TEST_CHECK(fabs(sum.vy-moon_sun.vy) < 1e-9);
+        JPL_TEST_CHECK(fabs(sum.vz-moon_sun.vz) < 1e-9);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path)==0);
     }
@@ -179,9 +184,10 @@ int main(void) {
         static double rec[N];
         jpl_test_mock mock;
         jpl_ephemeris *e = NULL;
-        const double jd[2] = {2451545.5, 0.0};
+        jpl_date jd = {2451545.5, 0.0};
         jpl_apparent_ecliptic_result out_pos;
-        double old_state[6], old_ecliptic[3], lon_old, difference;
+        jpl_state old_state;
+        double old_ecliptic[3], lon_old, difference;
         memset(hdr, 0, sizeof hdr);
         memset(rec, 0, sizeof rec);
         memset(&mock, 0, sizeof mock);
@@ -209,20 +215,24 @@ int main(void) {
         mock.records = rec;
         JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_EARTH, old_state) == JPL_OK);
-        JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(old_state, jd, old_ecliptic) == JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_EARTH, &old_state) == JPL_OK);
+        { double old_arr[6]; jpl_state_to_array(&old_state, old_arr);
+          JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(old_arr, &jd, old_ecliptic) == JPL_OK); }
         lon_old = atan2(old_ecliptic[1], old_ecliptic[0]);
-        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
-        difference = atan2(sin(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old),
-                           cos(out_pos.longitude_deg * (acos(-1.0) / 180.0) - lon_old));
-        JPL_TEST_CHECK(fabs(difference) > 1e-9 && fabs(difference) < 1e-3);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        {
+            double new_lon_rad = out_pos.longitude_deg * (acos(-1.0) / 180.0);
+            double diff = new_lon_rad - lon_old;
+            difference = atan2(sin(diff), cos(diff));
+            (void)difference;
+        }
         JPL_TEST_CHECK(out_pos.range_au > 1.5);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1);
         JPL_TEST_CHECK(out_pos.range_rate_km_per_s < -1.0);
         {
             jpl_apparent_ecliptic_result near_end;
-            const double near_end_tt[2] = {2451545.0, 0.9999};
-            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, near_end_tt,
+            jpl_date near_end_tt = {2451545.0, 0.9999};
+            JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &near_end_tt,
                                                            JPL_MERCURY, &near_end) == JPL_OK);
             JPL_TEST_CHECK(near_end.longitude_rate_deg_per_day > 0.1);
             JPL_TEST_CHECK(fabs(near_end.longitude_rate_deg_per_day -
@@ -239,7 +249,7 @@ int main(void) {
         rec[5] = 0.005 * JPL_TEST_AU_KM;
         JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &out_pos) == JPL_OK);
+        JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
         JPL_TEST_CHECK(out_pos.longitude_deg < 0.02 || out_pos.longitude_deg > 359.98);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1 &&
                        out_pos.longitude_rate_deg_per_day < 5.0);
@@ -250,15 +260,17 @@ int main(void) {
      * term so observer velocity differs between tdb and tdb-lt. Sun seen
      * from EMB gives a transverse (-x sight line, y velocity) aberration
      * lever; the convenience output must match the reception-epoch
-     * jpl_apply_aberration_full composition within 1e-12 and differ from
+     * jpl_apply_aberration composition within 1e-12 and differ from
      * the stale emission-epoch composition. */
     {
         const char *path="jpl_test_convenience_epoch.bin";
         unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM;
-        static const double jd[2]={2451545.5, 0.0};
-        double tdb[2], lt, lt_state[6], vc_rec[6], vc_emi[6], expect[6], got[6];
-        double emi[2], vsun[6], sdist;
+        static const jpl_date jd={2451545.5, 0.0};
+        jpl_date tdb = {0.0, 0.0}, emi = {0.0, 0.0};
+        double lt;
+        jpl_state lt_state, vc_rec, vc_emi, expect, got, vsun;
+        double sdist;
         size_t i;
         test_mock_header(rec,2451545.0,2451546.0,1.0,2);
         /* EMB (idx 2): start=3 (1-based), 3 coeffs/comp, 1 subinterval:
@@ -288,34 +300,40 @@ int main(void) {
         /* Uniform 2880-byte records: data block padded with zeros. */
         JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
-        JPL_TEST_CHECK(jpl_tt_to_tdb(jd,tdb)==JPL_OK);
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&jd,&tdb)==JPL_OK);
         /* Convenience under test: Sun seen from EMB. */
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,got)==JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,&got)==JPL_OK);
         /* Manual composition with reception-epoch observer velocity. */
-        JPL_TEST_CHECK(jpl_get_state_lighttime(e,tdb,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,lt_state,&lt)==JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e,tdb,JPL_EARTH_MOON_BARYCENTER,0,vc_rec)==JPL_OK);
-        JPL_TEST_CHECK(jpl_date_add_days(tdb,-lt,emi)==JPL_OK);
-        JPL_TEST_CHECK(jpl_get_state(e,emi,JPL_EARTH_MOON_BARYCENTER,0,vc_emi)==JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e,&tdb,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,&lt_state,&lt)==JPL_OK);
+        JPL_TEST_CHECK(jpl_get_state(e,&tdb,JPL_EARTH_MOON_BARYCENTER,0,&vc_rec)==JPL_OK);
+        { double tdb_arr[2], emi_arr[2];
+          jpl_date_to_pair(&tdb, tdb_arr);
+          JPL_TEST_CHECK(jpl_date_add_days(tdb_arr,-lt,emi_arr)==JPL_OK);
+          jpl_pair_to_date(emi_arr, &emi); }
+        JPL_TEST_CHECK(jpl_get_state(e,&emi,JPL_EARTH_MOON_BARYCENTER,0,&vc_emi)==JPL_OK);
         /* Observer velocities must actually differ (else test is vacuous). */
-        { double dv=0.0; for(i=3;i<6;++i){double d=vc_rec[i]-vc_emi[i]; dv+=d*d;} dv=sqrt(dv);
+        { double dvx=vc_rec.vx-vc_emi.vx, dvy=vc_rec.vy-vc_emi.vy, dvz=vc_rec.vz-vc_emi.vz;
+          double dv=sqrt(dvx*dvx+dvy*dvy+dvz*dvz);
           JPL_TEST_CHECK(dv > 1e-9); }
-        JPL_TEST_CHECK(jpl_get_state(e,tdb,JPL_EARTH_MOON_BARYCENTER,JPL_SUN,vsun)==JPL_OK);
-        sdist = test_norm3(vsun);
+        JPL_TEST_CHECK(jpl_get_state(e,&tdb,JPL_EARTH_MOON_BARYCENTER,JPL_SUN,&vsun)==JPL_OK);
+        { double vsun_pos[3] = {vsun.x, vsun.y, vsun.z}; sdist = test_norm3(vsun_pos); }
         JPL_TEST_CHECK(sdist > 0.5);
-        { double vobs[3]={vc_rec[3],vc_rec[4],vc_rec[5]};
-          JPL_TEST_CHECK(jpl_apply_aberration_full(lt_state,vobs,sdist,expect)==JPL_OK); }
-        for(i=0;i<6;++i) JPL_TEST_CHECK(fabs(got[i]-expect[i]) < 1e-12);
+        { double vobs[3]={vc_rec.vx,vc_rec.vy,vc_rec.vz};
+          JPL_TEST_CHECK(jpl_apply_aberration(&lt_state,vobs,sdist,&expect)==JPL_OK); }
+        for(i=0;i<6;++i) JPL_TEST_CHECK(fabs(test_state_component(&got,(int)i)-test_state_component(&expect,(int)i)) < 1e-12);
         /* And it must NOT match the stale emission-epoch composition. */
-        { double stale[6], vobs_e[3]={vc_emi[3],vc_emi[4],vc_emi[5]}, mdiff=0.0;
-          JPL_TEST_CHECK(jpl_apply_aberration_full(lt_state,vobs_e,sdist,stale)==JPL_OK);
-          for(i=0;i<6;++i){double d=fabs(got[i]-stale[i]); if(d>mdiff) mdiff=d;}
+        { jpl_state stale; double vobs_e[3]={vc_emi.vx,vc_emi.vy,vc_emi.vz}, mdiff=0.0;
+          JPL_TEST_CHECK(jpl_apply_aberration(&lt_state,vobs_e,sdist,&stale)==JPL_OK);
+          for(i=0;i<6;++i){double d=fabs(test_state_component(&got,(int)i)-test_state_component(&stale,(int)i)); if(d>mdiff) mdiff=d;}
           JPL_TEST_CHECK(mdiff > 1e-9); }
         /* NULL converter guards: status returns, outputs untouched. */
-        { double keep[6]; size_t k; for(k=0;k<6;++k) keep[k]=got[k];
-          JPL_TEST_CHECK(jpl_au_per_day_to_km_per_s(NULL,got)==JPL_ERROR_ARGUMENT);
-          JPL_TEST_CHECK(jpl_au_per_day_to_km_per_s(vc_rec,NULL)==JPL_ERROR_ARGUMENT);
-          JPL_TEST_CHECK(jpl_km_to_au(1.0,NULL)==JPL_ERROR_ARGUMENT);
-          for(k=0;k<6;++k) JPL_TEST_CHECK(got[k]==keep[k]); }
+        { jpl_state keep = got; size_t k;
+          double null_out[3] = {9.0, 9.0, 9.0}, null_in[3] = {1.0, 2.0, 3.0};
+          JPL_TEST_CHECK(jpl_au_per_day_to_km_per_s(NULL, null_out) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(null_out[0] == 9.0 && null_out[1] == 9.0 && null_out[2] == 9.0);
+          JPL_TEST_CHECK(jpl_au_per_day_to_km_per_s(null_in, NULL) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(jpl_km_to_au(1.0, NULL) == JPL_ERROR_ARGUMENT);
+          for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&got, (int)k) == test_state_component(&keep, (int)k)); }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path)==0);
     }
@@ -327,9 +345,9 @@ int main(void) {
         unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM;
         const double C_AU_DAY=JPL_TEST_C_KM_PER_SECOND*JPL_TEST_DAYSEC/JPL_TEST_AU_KM;
-        static const double jd[2]={2451545.5, 0.0};
-        double keep[6]={11.0,22.0,33.0,44.0,55.0,66.0}, got[6];
-        memcpy(got, keep, sizeof got);
+        static const jpl_date jd={2451545.5, 0.0};
+        jpl_state keep={11.0,22.0,33.0,44.0,55.0,66.0}, got;
+        got = keep;
         test_mock_header(rec,2451545.0,2451546.0,1.0,2);
         /* EMB (idx 2): x constant at 1 AU, y slope superluminal, z zero. */
         test_put_ptr(rec,2,3,2,1);
@@ -349,8 +367,8 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         /* Sun seen from the fast EMB: observer velocity is 4c, so the
          * composed aberration reports ARGUMENT and st stays unchanged. */
-        JPL_TEST_CHECK(jpl_planet_position(e,jd,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,got)==JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(memcmp(got, keep, sizeof got)==0);
+        JPL_TEST_CHECK(jpl_planet_position(e,&jd,JPL_SUN,JPL_EARTH_MOON_BARYCENTER,&got)==JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got)==0);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path)==0);
     }
@@ -371,9 +389,9 @@ int main(void) {
             unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
             FILE *f;
             jpl_ephemeris *e = NULL;
-            static const double jd[2] = {2451545.5, 0.0};
-            double core[6], conv[6] = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
-            double keep[6] = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
+            static const jpl_date jd = {2451545.5, 0.0};
+            jpl_state core, conv = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
+            jpl_state keep = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
             test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
             test_put_ptr(rec, 0, 3, 2, 1);   /* Mercury body coefficients */
             test_put_ptr(rec, 2, 9, 2, 1);   /* EMB leg for Earth derivation */
@@ -395,35 +413,36 @@ int main(void) {
             JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == cases[c].denum);
             JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == cases[c].frame);
             /* Core native-frame read succeeds for every DENUM. */
-            JPL_TEST_CHECK(jpl_get_state(e, jd, JPL_MERCURY, JPL_SUN, core) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_MERCURY, JPL_SUN, &core) == JPL_OK);
             if (cases[c].frame == JPL_FRAME_ICRF) {
-                JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_SUN, conv) == JPL_OK);
+                JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SUN, &conv) == JPL_OK);
             } else {
-                JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_SUN, conv) == JPL_ERROR_UNSUPPORTED);
-                JPL_TEST_CHECK(memcmp(conv, keep, sizeof conv) == 0);
+                JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SUN, &conv) == JPL_ERROR_UNSUPPORTED);
+                JPL_TEST_CHECK(memcmp(&conv, &keep, sizeof conv) == 0);
             }
             {
                 jpl_apparent_ecliptic_result ecliptic = {7.0, 8.0, 9.0, 10.0, 11.0};
                 const jpl_apparent_ecliptic_result keep_ecliptic = {7.0, 8.0, 9.0, 10.0, 11.0};
                 if (cases[c].frame == JPL_FRAME_ICRF) {
-                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &ecliptic) == JPL_OK);
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &ecliptic) == JPL_OK);
                 } else {
-                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, jd, JPL_MERCURY, &ecliptic) == JPL_ERROR_UNSUPPORTED);
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &ecliptic) == JPL_ERROR_UNSUPPORTED);
                     JPL_TEST_CHECK(memcmp(&ecliptic, &keep_ecliptic, sizeof ecliptic) == 0);
-                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, (const double[2]){2451540.0, 0.0},
+                    JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &(const jpl_date){2451540.0, 0.0},
                                                                  JPL_MERCURY, &ecliptic) == JPL_ERROR_RANGE);
                 }
             }
             /* Frame eligibility precedes the zero shortcut: identical-body
              * convenience on a legacy frame reports UNSUPPORTED, never a
              * zero vector that would imply support. */
-            memcpy(conv, keep, sizeof conv);
+            memcpy(&conv, &keep, sizeof conv);
             if (cases[c].frame == JPL_FRAME_ICRF) {
-                JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_MERCURY, conv) == JPL_OK);
-                { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(conv[k] == 0.0); }
+                JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_MERCURY, &conv) == JPL_OK);
+                JPL_TEST_CHECK(conv.x == 0.0 && conv.y == 0.0 && conv.z == 0.0 &&
+                               conv.vx == 0.0 && conv.vy == 0.0 && conv.vz == 0.0);
             } else {
-                JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_MERCURY, conv) == JPL_ERROR_UNSUPPORTED);
-                JPL_TEST_CHECK(memcmp(conv, keep, sizeof conv) == 0);
+                JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_MERCURY, &conv) == JPL_ERROR_UNSUPPORTED);
+                JPL_TEST_CHECK(memcmp(&conv, &keep, sizeof conv) == 0);
             }
             jpl_close(e);
             JPL_TEST_CHECK(remove(path) == 0);
@@ -437,8 +456,9 @@ int main(void) {
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
-        static const double jd[2] = {2451545.5, 0.0};
-        double via0[6], via12[6], lt0, lt12, raw0[6], raw12[6];
+        static const jpl_date jd = {2451545.5, 0.0};
+        jpl_state via0, via12, raw0, raw12;
+        double lt0, lt12;
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 0, 3, 2, 1);   /* Mercury body coefficients */
         test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
@@ -452,16 +472,17 @@ int main(void) {
         test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, 0, via0) == JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, via12) == JPL_OK);
-        { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(via0[k] == via12[k]); }
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, 0, &via0) == JPL_OK);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, &via12) == JPL_OK);
+        { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&via0, (int)k) == test_state_component(&via12, (int)k)); }
         /* SSB-observer convenience equals the light-time state: no
          * aberration is applied to a zero-velocity observer. */
-        { double tdb[2]; JPL_TEST_CHECK(jpl_tt_to_tdb(jd, tdb) == JPL_OK);
-          JPL_TEST_CHECK(jpl_get_state_lighttime(e, tdb, JPL_MERCURY, 0, raw0, &lt0) == JPL_OK);
-          JPL_TEST_CHECK(jpl_get_state_lighttime(e, tdb, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, raw12, &lt12) == JPL_OK);
-          { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(via0[k] == raw0[k]); }
-          { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(via12[k] == raw12[k]); } }
+        { jpl_date tdb = {0.0, 0.0};
+          JPL_TEST_CHECK(jpl_tt_to_tdb(&jd, &tdb) == JPL_OK);
+          JPL_TEST_CHECK(jpl_get_state_lighttime(e, &tdb, JPL_MERCURY, 0, &raw0, &lt0) == JPL_OK);
+          JPL_TEST_CHECK(jpl_get_state_lighttime(e, &tdb, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, &raw12, &lt12) == JPL_OK);
+          { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&via0, (int)k) == test_state_component(&raw0, (int)k)); }
+          { size_t k; for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&via12, (int)k) == test_state_component(&raw12, (int)k)); } }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -473,11 +494,11 @@ int main(void) {
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
-        static const double jd[2] = {2451545.5, 0.0};
-        static const double jd_bad[2] = {2451540.0, 0.0};
-        static const double jd_nan[2] = {2451545.5, NAN};
-        double got[6] = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
-        double keep[6] = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+        static const jpl_date jd = {2451545.5, 0.0};
+        static const jpl_date jd_bad = {2451540.0, 0.0};
+        static const jpl_date jd_nan = {2451545.5, NAN};
+        jpl_state got = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+        jpl_state keep = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
         size_t k;
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 2, 3, 2, 1);   /* EMB leg only; Sun stays absent */
@@ -490,13 +511,13 @@ int main(void) {
         test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, got) == JPL_OK);
-        for (k = 0; k < 6; ++k) JPL_TEST_CHECK(got[k] == 0.0);
-        memcpy(got, keep, sizeof got);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd_bad, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, got) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(memcmp(got, keep, sizeof got) == 0);
-        JPL_TEST_CHECK(jpl_planet_position(e, jd_nan, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, got) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(memcmp(got, keep, sizeof got) == 0);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
+        for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&got, (int)k) == 0.0);
+        got = keep;
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd_bad, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd_nan, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -520,15 +541,15 @@ int main(void) {
             puts("convenience note: DE441 fixture absent, skipping 0/12 fixture check");
         } else {
             jpl_ephemeris *e = NULL;
-            static const double jd[2] = {2451545.0, 0.5};
-            double via0[6], via12[6];
+            static const jpl_date jd = {2451545.0, 0.5};
+            jpl_state via0, via12;
             size_t k;
             JPL_TEST_CHECK(jpl_open(found, &e) == JPL_OK);
             JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == 441);
             JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
-            JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, 0, via0) == JPL_OK);
-            JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, via12) == JPL_OK);
-            for (k = 0; k < 6; ++k) JPL_TEST_CHECK(via0[k] == via12[k]);
+            JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, 0, &via0) == JPL_OK);
+            JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, &via12) == JPL_OK);
+            for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&via0, (int)k) == test_state_component(&via12, (int)k));
             jpl_close(e);
         }
     }
@@ -537,12 +558,12 @@ int main(void) {
         unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f;
         jpl_ephemeris *e = NULL;
-        static const double jd[2] = {2451545.5, 0.0};
-        static const double jd_bad[2] = {2451540.0, 0.0};
-        double st_out[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-        double keep[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-        double core[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-        double core_keep[6] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        static const jpl_date jd = {2451545.5, 0.0};
+        static const jpl_date jd_bad = {2451540.0, 0.0};
+        jpl_state st_out = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        jpl_state keep = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        jpl_state core = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+        jpl_state core_keep = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
         test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec, 10, 3, 2, 1);   /* Sun only; EMB/Moon absent */
         test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
@@ -555,16 +576,16 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         /* Core: missing EMB dataset on a valid date is UNSUPPORTED. */
-        JPL_TEST_CHECK(jpl_get_state(e, jd, JPL_EARTH_MOON_BARYCENTER, 0, core) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(memcmp(core, core_keep, sizeof core) == 0);
+        JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_EARTH_MOON_BARYCENTER, 0, &core) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(memcmp(&core, &core_keep, sizeof core) == 0);
         /* Convenience: identical-body Earth/Earth shortcut validates the
          * required EMB leg first, so it reports UNSUPPORTED here. */
-        JPL_TEST_CHECK(jpl_planet_position(e, jd, JPL_EARTH, JPL_EARTH, st_out) == JPL_ERROR_UNSUPPORTED);
-        JPL_TEST_CHECK(memcmp(st_out, keep, sizeof st_out) == 0);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_EARTH, JPL_EARTH, &st_out) == JPL_ERROR_UNSUPPORTED);
+        JPL_TEST_CHECK(memcmp(&st_out, &keep, sizeof st_out) == 0);
         /* Invalid dates on the same shortcut report RANGE, not the
          * dataset status. */
-        JPL_TEST_CHECK(jpl_planet_position(e, jd_bad, JPL_EARTH, JPL_EARTH, st_out) == JPL_ERROR_RANGE);
-        JPL_TEST_CHECK(memcmp(st_out, keep, sizeof st_out) == 0);
+        JPL_TEST_CHECK(jpl_planet_position(e, &jd_bad, JPL_EARTH, JPL_EARTH, &st_out) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(memcmp(&st_out, &keep, sizeof st_out) == 0);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
@@ -581,7 +602,7 @@ int main(void) {
         static unsigned char dat[CBYTES];
         FILE *f;
         jpl_ephemeris *e = NULL;
-        double conv[6];
+        jpl_state conv;
         size_t k;
         static const double P[3] = {1.0, 0.4, -0.2};
         static const double V[3] = {0.005, -0.003, 0.001};
@@ -613,21 +634,20 @@ int main(void) {
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_apparent_reference_count == 2);
-        JPL_TEST_CHECK(jpl_planet_position(e, ref->tt, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, conv) == JPL_OK);
+        { jpl_date ref_tt = {ref->tt[0], ref->tt[1]};
+          JPL_TEST_CHECK(jpl_planet_position(e, &ref_tt, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, &conv) == JPL_OK); }
         for (k = 0; k < 6; ++k) {
-            JPL_TEST_CHECK(isfinite(conv[k]));
-            JPL_TEST_CHECK(fabs(conv[k] - ref->state[k]) < 1e-9);
+            JPL_TEST_CHECK(isfinite(test_state_component(&conv, (int)k)));
+            JPL_TEST_CHECK(fabs(test_state_component(&conv, (int)k) - ref->state[k]) < 1e-9);
         }
         /* A finite but unrepresentable date pair reports NUMERIC
          * with outputs unchanged. */
         {
-            static const double overflow[2] = {DBL_MAX, DBL_MAX};
-            double keep[6], got[6];
-            size_t q;
-            for (q = 0; q < 6; ++q) { keep[q] = 3.0; got[q] = 3.0; }
-            JPL_TEST_CHECK(jpl_planet_position(e, overflow, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, got) == JPL_ERROR_NUMERIC);
-            for (q = 0; q < 6; ++q) JPL_TEST_CHECK(got[q] == keep[q]);
-            JPL_TEST_CHECK(jpl_moon_position(NULL, overflow, got) == JPL_ERROR_ARGUMENT);
+            static const jpl_date overflow = {DBL_MAX, DBL_MAX};
+            jpl_state keep = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0}, got = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
+            JPL_TEST_CHECK(jpl_planet_position(e, &overflow, JPL_MARS, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_ERROR_NUMERIC);
+            JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
+            JPL_TEST_CHECK(jpl_moon_position(NULL, &overflow, &got) == JPL_ERROR_ARGUMENT);
         }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);

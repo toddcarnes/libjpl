@@ -86,6 +86,7 @@ struct jpl_ephemeris {
     size_t file_size;
     size_t record_count;            /* physically readable data records */
     size_t covered_record_count;    /* advertised intervals only */
+
     /* File identity captured from the open stream (not a path lookup),
      * used to verify FILE clones reopened the same object. POSIX stores
      * st_dev/st_ino; Windows stores volume serial + file index from the
@@ -93,14 +94,17 @@ struct jpl_ephemeris {
      * re-checked in the clone comparison. Contents must stay immutable
      * while any reader is active: identity validation is not snapshot
      * isolation against in-place edits. */
+    struct {
 #if !defined(_WIN32)
-    dev_t id_dev;
-    ino_t id_ino;
+        dev_t dev;
+        ino_t ino;
 #else
-    DWORD id_volume;
-    DWORD id_index_hi;
-    DWORD id_index_lo;
+        DWORD volume;
+        DWORD index_hi;
+        DWORD index_lo;
 #endif
+    } identity;
+
     /* Shared ownership counter: mmap clones share one heap counter; plain
      * FILE handles own a private count of 1. Windows uses Interlocked* on
      * an int (MSVC lacks C11 atomics without /experimental:c11atomics);
@@ -112,23 +116,32 @@ struct jpl_ephemeris {
 #else
     atomic_int *refcount;
 #endif
+
     int is_mmap;
-    unsigned char *mmap_base;
-    size_t mmap_size;
+
+    /* Memory-mapped file state (only used when is_mmap != 0). */
+    struct {
+        unsigned char *base;
+        size_t size;
+#if defined(_WIN32)
+        HANDLE hFile;
+        HANDLE hMap;
+#endif
+    } mmap;
+
     /* Single-record cache: last record_index + its decoded doubles. Used by
      * FILE-path reads only (mmap reads bypass it to stay lock-free); valid
      * only when cache_valid != 0. Clones always start cold (calloc) so no
      * cross-handle state is shared. */
-    double *cache_record;
-    size_t cache_index;
-    int cache_valid;
+    struct {
+        double *record;
+        size_t index;
+        int valid;
+    } cache;
+
     /* Copy of path for plain FILE handles so clones can fopen independently.
      * NULL for mmap handles (clones share the mapping instead). */
     char *path;
-#if defined(_WIN32)
-    HANDLE hFile;
-    HANDLE hMap;
-#endif
 };
 
 /* Capture stream identity from an open FILE: POSIX fstat device+inode,
@@ -141,8 +154,8 @@ static int capture_stream_identity(FILE *file, struct jpl_ephemeris *e) {
     struct stat st;
     if (!file || !e) return -1;
     if (fstat(fileno(file), &st) != 0) return -1;
-    e->id_dev = st.st_dev;
-    e->id_ino = st.st_ino;
+    e->identity.dev = st.st_dev;
+    e->identity.ino = st.st_ino;
     return 0;
 #else
     HANDLE h;
@@ -151,9 +164,9 @@ static int capture_stream_identity(FILE *file, struct jpl_ephemeris *e) {
     h = (HANDLE)_get_osfhandle(_fileno(file));
     if (h == INVALID_HANDLE_VALUE) return -1;
     if (!GetFileInformationByHandle(h, &info)) return -1;
-    e->id_volume = info.dwVolumeSerialNumber;
-    e->id_index_hi = info.nFileIndexHigh;
-    e->id_index_lo = info.nFileIndexLow;
+    e->identity.volume = info.dwVolumeSerialNumber;
+    e->identity.index_hi = info.nFileIndexHigh;
+    e->identity.index_lo = info.nFileIndexLow;
     return 0;
 #endif
 }
@@ -202,16 +215,22 @@ static char *copy_string(const char *s) {
 
 /* Resolve a relative reopen path to an absolute path before fopen so a
  * later cwd change cannot redirect the clone to a different file. Uses
- * _fullpath on Windows and realpath(NULL) on POSIX (malloc'd; caller
- * frees). Falls back to a plain copy when resolution fails (clone then
- * re-verifies identity and fails IO rather than reading wrong data). */
+ * GetFullPathName with dynamic allocation on Windows and realpath(NULL)
+ * on POSIX (malloc'd; caller frees). Falls back to a plain copy when
+ * resolution fails (clone then re-verifies identity and fails IO rather
+ * than reading wrong data). */
 static char *resolve_reopen_path(const char *path) {
     if (!path) return NULL;
 #if defined(_WIN32)
     {
-        char *resolved = (char *)malloc(_MAX_PATH);
-        if (!resolved) return NULL;
-        if (!_fullpath(resolved, path, _MAX_PATH)) { free(resolved); return copy_string(path); }
+        DWORD len = GetFullPathNameA(path, 0, NULL, NULL);
+        if (len == 0) return copy_string(path);
+        char *resolved = (char *)malloc(len);
+        if (!resolved) return copy_string(path);
+        if (GetFullPathNameA(path, len, resolved, NULL) == 0) {
+            free(resolved);
+            return copy_string(path);
+        }
         return resolved;
     }
 #else
@@ -418,6 +437,7 @@ static jpl_status header_record_endpoints(const jpl_byte_source *source, size_t 
     second[1] = 0.0;
     return JPL_OK;
 }
+
 
 /* Complete candidate validation: metadata, count, record width,
  * first/last/trailing endpoints, and checked classic spans. Parses into
@@ -923,10 +943,10 @@ static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, do
     if (count == 0) return JPL_OK;
     if (ephemeris->is_mmap) {
         const unsigned char *base;
-        if (!ephemeris->mmap_base) return JPL_ERROR_IO;
+        if (!ephemeris->mmap.base) return JPL_ERROR_IO;
         if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
-        if (offset > ephemeris->mmap_size || count * 8 > ephemeris->mmap_size - offset) return JPL_ERROR_IO;
-        base = ephemeris->mmap_base + offset;
+        if (offset > ephemeris->mmap.size || count * 8 > ephemeris->mmap.size - offset) return JPL_ERROR_IO;
+        base = ephemeris->mmap.base + offset;
         if (ephemeris->header.byte_order == native_order()) { memcpy(values, base, count * 8); return JPL_OK; }
         for (i = 0; i < count; ++i) values[i] = read_f64(base + i * 8, ephemeris->header.byte_order);
         return JPL_OK;
@@ -952,7 +972,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e = calloc(1, sizeof *e); if (!e) return JPL_ERROR_MEMORY;
     e->refcount = malloc(sizeof *e->refcount); if (!e->refcount) { free(e); return JPL_ERROR_MEMORY; }
     refcount_init(e->refcount);
-    e->is_mmap = 0; e->mmap_base = NULL; e->mmap_size = 0;
+    e->is_mmap = 0; e->mmap.base = NULL; e->mmap.size = 0;
     /* Resolve the absolute reopen path before fopen and open that exact
      * resolved path, so a later cwd change cannot redirect clones. */
     resolved = resolve_reopen_path(path);
@@ -982,28 +1002,28 @@ void jpl_close(jpl_ephemeris *e) {
     if (!e->refcount) { /* Partially constructed handle: best-effort release. */
         if (e->file) fclose(e->file);
         free(e->path);
-        free(e->cache_record);
+        free(e->cache.record);
         free(e);
         return;
     }
     /* refcount_dec returns the remaining count; siblings keep the mapping.
      * Each handle frees its own cache_record: the cache is per-handle, so
      * a closing sibling must not orphan its record buffer. */
-    if (refcount_dec(e->refcount) > 0) { free(e->cache_record); free(e); return; }
+    if (refcount_dec(e->refcount) > 0) { free(e->cache.record); free(e); return; }
     if (e->is_mmap) {
 #if defined(_WIN32)
-        if (e->mmap_base) UnmapViewOfFile(e->mmap_base);
-        if (e->hMap) CloseHandle(e->hMap);
-        if (e->hFile && e->hFile != INVALID_HANDLE_VALUE) CloseHandle(e->hFile);
+        if (e->mmap.base) UnmapViewOfFile(e->mmap.base);
+        if (e->mmap.hMap) CloseHandle(e->mmap.hMap);
+        if (e->mmap.hFile && e->mmap.hFile != INVALID_HANDLE_VALUE) CloseHandle(e->mmap.hFile);
 #else
-        if (e->mmap_base && e->mmap_size > 0) munmap(e->mmap_base, e->mmap_size);
+        if (e->mmap.base && e->mmap.size > 0) munmap(e->mmap.base, e->mmap.size);
 #endif
     } else {
         if (e->file) fclose(e->file);
     }
     free(e->refcount);
     free(e->path);
-    free(e->cache_record);
+    free(e->cache.record);
     free(e);
 }
 
@@ -1057,10 +1077,10 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (!e->refcount) { free(e); UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_MEMORY; }
         refcount_init(e->refcount);
         e->is_mmap = 1;
-        e->mmap_base = base;
-        e->mmap_size = file_size;
-        e->hFile = hFile;
-        e->hMap = hMap;
+        e->mmap.base = base;
+        e->mmap.size = file_size;
+        e->mmap.hFile = hFile;
+        e->mmap.hMap = hMap;
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
@@ -1111,8 +1131,8 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
         if (!e->refcount) { free(e); munmap(base, file_size); return JPL_ERROR_MEMORY; }
         refcount_init(e->refcount);
         e->is_mmap = 1;
-        e->mmap_base = base;
-        e->mmap_size = file_size;
+        e->mmap.base = base;
+        e->mmap.size = file_size;
         e->header = header;
         e->file_size = file_size;
         e->record_count = record_count;
@@ -1138,11 +1158,11 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
         c->refcount = ephem->refcount;
-        c->mmap_base = ephem->mmap_base;
-        c->mmap_size = ephem->mmap_size;
+        c->mmap.base = ephem->mmap.base;
+        c->mmap.size = ephem->mmap.size;
 #if defined(_WIN32)
-        c->hFile = ephem->hFile;
-        c->hMap = ephem->hMap;
+        c->mmap.hFile = ephem->mmap.hFile;
+        c->mmap.hMap = ephem->mmap.hMap;
 #endif
         refcount_inc(c->refcount);
     } else {
@@ -1167,12 +1187,12 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         c->record_count = ephem->record_count;
         c->covered_record_count = ephem->covered_record_count;
 #if !defined(_WIN32)
-        c->id_dev = ephem->id_dev;
-        c->id_ino = ephem->id_ino;
+        c->identity.dev = ephem->identity.dev;
+        c->identity.ino = ephem->identity.ino;
 #else
-        c->id_volume = ephem->id_volume;
-        c->id_index_hi = ephem->id_index_hi;
-        c->id_index_lo = ephem->id_index_lo;
+        c->identity.volume = ephem->identity.volume;
+        c->identity.index_hi = ephem->identity.index_hi;
+        c->identity.index_lo = ephem->identity.index_lo;
 #endif
         /* Cold start: calloc zeroed cache_valid, so this clone never reads
          * the source handle's cached record. */
@@ -1208,7 +1228,7 @@ jpl_status jpl_get_constant_name(const jpl_ephemeris *e, size_t index,
     record_bytes = e->header.record_double_count * 8;
     if (offset > record_bytes || JPL_CONSTANT_NAME_LENGTH > record_bytes - offset) return JPL_ERROR_IO;
     if (e->is_mmap) {
-        jpl_mmap_source source = {e->mmap_base, e->mmap_size};
+        jpl_mmap_source source = {e->mmap.base, e->mmap.size};
         status = mmap_read_bytes(&source, offset, raw, sizeof raw);
     } else {
         jpl_file_source source = {e->file, e->file_size};
@@ -1425,9 +1445,9 @@ static jpl_status interp_read_record_cached(const jpl_ephemeris *e, size_t recor
     *out_record = malloc(e->header.record_double_count * sizeof **out_record);
     if (!*out_record) return JPL_ERROR_MEMORY;
     use_cache = !e->is_mmap;
-    was_cached = use_cache && e->cache_valid && e->cache_record && e->cache_index == record_index;
+    was_cached = use_cache && e->cache.valid && e->cache.record && e->cache.index == record_index;
     if (was_cached) {
-        memcpy(*out_record, e->cache_record, e->header.record_double_count * sizeof **out_record);
+        memcpy(*out_record, e->cache.record, e->header.record_double_count * sizeof **out_record);
         *cached = 1;
     } else {
         jpl_status status = jpl_read_record(e, record_index, *out_record, e->header.record_double_count);
@@ -1593,13 +1613,13 @@ static void interp_publish_state(const jpl_ephemeris *e, size_t record_index,
      * returns early, so the prior entry is never invalidated by a miss. */
     use_cache = !e->is_mmap;
     if (!use_cache || cached) return;
-    if (!((jpl_ephemeris *)e)->cache_record) {
-        ((jpl_ephemeris *)e)->cache_record = malloc(e->header.record_double_count * sizeof *record);
-        if (!((jpl_ephemeris *)e)->cache_record) return;
+    if (!((jpl_ephemeris *)e)->cache.record) {
+        ((jpl_ephemeris *)e)->cache.record = malloc(e->header.record_double_count * sizeof *record);
+        if (!((jpl_ephemeris *)e)->cache.record) return;
     }
-    memcpy(((jpl_ephemeris *)e)->cache_record, record, e->header.record_double_count * sizeof *record);
-    ((jpl_ephemeris *)e)->cache_index = record_index;
-    ((jpl_ephemeris *)e)->cache_valid = 1;
+    memcpy(((jpl_ephemeris *)e)->cache.record, record, e->header.record_double_count * sizeof *record);
+    ((jpl_ephemeris *)e)->cache.index = record_index;
+    ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
 static jpl_status interpolate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
@@ -1699,9 +1719,11 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     return JPL_OK;
 }
 
-jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target, int center, double state[6]) {
+jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state) {
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
+    double jd_arr[2];
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd, jd_arr);
     /* Target zero is invalid; center zero is the SSB alias. Validate
      * target/center combinations before date normalization or data access:
      * invalid codes report ARGUMENT regardless of date or file contents.
@@ -1712,17 +1734,17 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
-        return interpolate(e, jd, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
-                           target == JPL_NUTATIONS ? 2 : 3, state);
+        return interpolate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
+                           target == JPL_NUTATIONS ? 2 : 3, (double*)state);
     }
     if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
     /* Body codes 1-13 plus center 0/12 route through barycentric legs
      * below. Validate pointers/dates first so a missing
      * dataset reports UNSUPPORTED only after valid checks pass. */
-    status = barycentric_state(e, jd, target, target_state);
+    status = barycentric_state(e, jd_arr, target, target_state);
     if (status != JPL_OK) return status;
     if (center == 0) memset(center_state, 0, sizeof center_state);
-    else { status = barycentric_state(e, jd, center, center_state); if (status != JPL_OK) return status; }
+    else { status = barycentric_state(e, jd_arr, center, center_state); if (status != JPL_OK) return status; }
     /* Relative state plus modern-AU scaling in local storage: validate
      * every accumulated/scaled component before publishing. */
     for (i = 0; i < 6; ++i) {
@@ -1731,7 +1753,7 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const double jd[2], int target,
         local[i] = diff / JPL_AU_KM;
         if (!isfinite(local[i])) return JPL_ERROR_NUMERIC;
     }
-    memcpy(state, local, sizeof local);
+    jpl_array_to_state(local, state);
     return JPL_OK;
 }
 
@@ -1967,25 +1989,36 @@ jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
 }
 #endif
 
-jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const double jd[2], int target, int center, double state[6], double *out_lt) {
-    return lighttime_solve(e, jd, target, center, state, out_lt,
-                           JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state, double *out_lt) {
+    double jd_arr[2];
+    if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd, jd_arr);
+    double local_state[6];
+    double lt;
+    jpl_status s = lighttime_solve(e, jd_arr, target, center, local_state, &lt,
+                                   JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+    if (s != JPL_OK) return s;
+    jpl_array_to_state(local_state, state);
+    if (out_lt) *out_lt = lt;
+    return JPL_OK;
 }
 
-jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], double *seconds, double *rate_per_day) {
+jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, double *seconds, double *rate_per_day) {
     double state[6];
     double value, rate;
     jpl_status status;
     const jpl_pointer *tt;
     size_t span_end;
+    double jd_arr[2];
     if (!e || !seconds || !jd_tdb) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd_tdb[0]) || !isfinite(jd_tdb[1])) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd_tdb, jd_arr);
+    if (!isfinite(jd_arr[0]) || !isfinite(jd_arr[1])) return JPL_ERROR_ARGUMENT;
     /* Valid checks precede the missing-dataset report: nonfinite/NULL
      * inputs above stay ARGUMENT, out-of-coverage below stays RANGE,
      * and only a valid in-coverage query for absent data is UNSUPPORTED. */
     {
         double norm[2], cov_start[2], cov_end[2];
-        status = jpl_date_normalize(jd_tdb, norm);
+        status = jpl_date_normalize(jd_arr, norm);
         if (status != JPL_OK) return status;
         status = jpl_date_normalize(e->header.start_jd, cov_start);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
@@ -2006,7 +2039,7 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
      * state[3] its rate in seconds/day (span is in days, so the engine
      * derivative needs no unit conversion). Slots [1],[2],[4],[5] unused.
      * Validate before either optional/required output is written. */
-    status = interpolate(e, jd_tdb, tt, 1, state);
+    status = interpolate(e, jd_arr, tt, 1, state);
     if (status != JPL_OK) return status;
     value = state[0];
     rate = state[3];
@@ -2016,14 +2049,10 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const double jd_tdb[2], 
     return JPL_OK;
 }
 
-jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out[6]) {
-    /* Signature-preserving wrapper: Sun distance unknown, so the <=0.4uas
-     * solar term is omitted (see jpl_apply_aberration_full). */
-    return jpl_apply_aberration_full(state, observer_vel, 0.0, out);
-}
 
-jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                               double sun_distance_au, double out[6]) {
+
+jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_vel[3],
+                                double sun_distance_au, jpl_state *out) {
     /* Solar gravitational radius; ERFA ERFA_SRS, kept in jpl_private.h.
      * Published formula (cf. ERFA eraAb, Explanatory Supplement Expr. 7.40
      * + Klioner 2003 solar term): pnat = r/rn direction, beta = v/c,
@@ -2031,18 +2060,15 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
      * w2 = SRS/sun_distance, p = pnat*bm1 + w1*beta + w2*(beta-pdv*pnat),
      * distance-preserving rescale out = p*(r/|p|); velocity unchanged. */
     const double SRS = JPL_SRS_AU;
-    double beta[3], pnat[3], p[3], local[6];
+    double beta[3], pnat[3], p[3], local_pos[3];
     double r, rn, beta2 = 0.0, bm1, pdv = 0.0, w1, w2;
-    double local_state[6];
     int i;
     if (!state || !observer_vel || !out) return JPL_ERROR_ARGUMENT;
-    for (i = 0; i < 6; ++i) {
-        if (!isfinite(state[i])) return JPL_ERROR_ARGUMENT;
-    }
+    if (!isfinite(state->x) || !isfinite(state->y) || !isfinite(state->z) ||
+        !isfinite(state->vx) || !isfinite(state->vy) || !isfinite(state->vz))
+        return JPL_ERROR_ARGUMENT;
     for (i = 0; i < 3; ++i) {
         if (!isfinite(observer_vel[i])) return JPL_ERROR_ARGUMENT;
-        /* Velocity slot copy deferred: copy into local output only after
-         * all validation below succeeds. */
     }
     if (!isfinite(sun_distance_au)) return JPL_ERROR_ARGUMENT;
     /* Observer-speed gate in AU/day before forming beta: a finite but
@@ -2063,13 +2089,13 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     }
     /* Physically invalid standalone velocity: at or above light speed. */
     if (!(beta2 < 1.0)) return JPL_ERROR_ARGUMENT;
-    { const double pos[3] = { state[0], state[1], state[2] }; r = jpl_vec_norm3(pos); }
+    { const double pos[3] = { state->x, state->y, state->z }; r = jpl_vec_norm3(pos); }
     if (!isfinite(r)) return JPL_ERROR_NUMERIC;
     if (r == 0.0) {
         /* Validated finite zero position: pass through with unchanged
          * velocity. Copy via locals so aliased outputs stay exact. */
-        memcpy(local, state, sizeof local);
-        memcpy(out, local, sizeof local);
+        out->x = state->x; out->y = state->y; out->z = state->z;
+        out->vx = state->vx; out->vy = state->vy; out->vz = state->vz;
         return JPL_OK;
     }
     /* Scale-safe direction: normalize with the scaled components so r/rn
@@ -2079,10 +2105,10 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     {
         double m = 0.0, dl, d[3];
         for (i = 0; i < 3; ++i) {
-            double a = fabs(state[i]);
+            double a = fabs((&state->x)[i]);
             if (a > m) m = a;
         }
-        for (i = 0; i < 3; ++i) d[i] = state[i] / m;
+        for (i = 0; i < 3; ++i) d[i] = (&state->x)[i] / m;
         dl = jpl_vec_norm3(d);
         if (!isfinite(dl) || dl == 0.0) return JPL_ERROR_NUMERIC;
         for (i = 0; i < 3; ++i) {
@@ -2091,8 +2117,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
         }
     }
     /* Full eraAb including the Klioner (2003) solar gravitational term;
-     * finite nonpositive Sun distance explicitly omits the potential term
-     * (wrapper behavior). Nonfinite Sun distance was rejected above. */
+     * finite positive Sun distance includes the potential term; nonpositive omits it. Nonfinite Sun distance was rejected above. */
     bm1 = sqrt(1.0 - beta2);
     if (!isfinite(bm1)) return JPL_ERROR_NUMERIC;
     for (i = 0; i < 3; ++i) {
@@ -2102,7 +2127,7 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
     w1 = 1.0 + pdv / (1.0 + bm1);
     if (!isfinite(w1)) return JPL_ERROR_NUMERIC;
     /* SRS/sun_distance overflows only when the term is genuinely
-     * unrepresentable; finite nonpositive distance omits it. */
+     * unrepresentable; finite positive distance includes it; nonpositive omits it. */
     if (sun_distance_au > 0.0) {
         w2 = SRS / sun_distance_au;
         if (!isfinite(w2)) return JPL_ERROR_NUMERIC;
@@ -2128,12 +2153,12 @@ jpl_status jpl_apply_aberration_full(const double state[6], const double observe
      * intentionally unused: dividing each of p by rn first keeps the
      * intermediate direction bounded. */
     for (i = 0; i < 3; ++i) {
-        local_state[i] = (p[i] / rn) * r;
-        if (!isfinite(local_state[i])) return JPL_ERROR_NUMERIC;
+        local_pos[i] = (p[i] / rn) * r;
+        if (!isfinite(local_pos[i])) return JPL_ERROR_NUMERIC;
     }
     /* Velocity passed through unchanged, copied into local output only
      * after every check above succeeded. */
-    local_state[3] = state[3]; local_state[4] = state[4]; local_state[5] = state[5];
-    memcpy(out, local_state, sizeof local_state);
+    out->x = local_pos[0]; out->y = local_pos[1]; out->z = local_pos[2];
+    out->vx = state->vx; out->vy = state->vy; out->vz = state->vz;
     return JPL_OK;
 }

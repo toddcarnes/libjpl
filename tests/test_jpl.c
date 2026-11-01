@@ -4,6 +4,7 @@
  */
 #include "jpl.h"
 #include "jpl_test_util.h"
+#include "jpl_private.h"
 
 #include <stdio.h>
 
@@ -108,9 +109,9 @@ int main(void) {
         test_mock_header(rec2, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec2, 11, 2, 178, 1);
         test_put_ptr(rec2, 12, 441, 0, 0); /* DENUM + absent libration */
-        test_put_u32(rec2 + 2868, 300);
-        test_put_u32(rec2 + 2872, 11);
-        test_put_u32(rec2 + 2876, 4);
+        test_put_u32(rec2 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET, 300);
+        test_put_u32(rec2 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 4, 11);
+        test_put_u32(rec2 + JPL_HDR_IPT14_OFFSET + JPL_TT_TDB_TRIPLET_OFFSET + 8, 4);
         f2 = fopen(path, "wb"); JPL_TEST_CHECK(f2 != NULL);
         JPL_TEST_CHECK(fwrite(rec2, 1, sizeof rec2, f2) == sizeof rec2);
         {

@@ -20,7 +20,6 @@ jpl_has_tt_tdb
 jpl_get_state
 jpl_get_state_lighttime
 jpl_apply_aberration
-jpl_apply_aberration_full
 jpl_open_mmap
 jpl_ephemeris_clone
 jpl_ecliptic_to_icrs

@@ -14,65 +14,71 @@
 
 static int basic_state(const char *path) {
     jpl_ephemeris *ephemeris = NULL;
-    const double tt[2] = {2451545.0, 0.125};
-    double tdb[2], state[6];
+    const jpl_date tt = {2451545.0, 0.125};
+    jpl_date tdb = {0.0, 0.0};
+    jpl_state state;
     if (jpl_open(path, &ephemeris) != JPL_OK) return 1;
-    if (jpl_tt_to_tdb(tt, tdb) != JPL_OK) { jpl_close(ephemeris); return 1; }
-    if (jpl_get_state(ephemeris, tdb, JPL_EARTH, JPL_SUN, state) != JPL_OK) {
+    if (jpl_tt_to_tdb(&tt, &tdb) != JPL_OK) { jpl_close(ephemeris); return 1; }
+    if (jpl_get_state(ephemeris, &tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) {
         jpl_close(ephemeris);
         return 1;
     }
-    printf("basic: x=%f v=%f\n", state[0], state[3]);
+    printf("basic: x=%f v=%f\n", state.x, state.vx);
     jpl_close(ephemeris);
     return 0;
 }
 
 static int moon_sun(const char *path) {
     jpl_ephemeris *ephemeris = NULL;
-    static const double jd_tt[2] = {2451545.0, 0.0};
-    double moon_earth[6], earth_sun[6], moon_sun[6];
-    int i;
+    static const jpl_date jd_tt = {2451545.0, 0.0};
+    jpl_state moon_earth, earth_sun, moon_sun;
     if (jpl_open(path, &ephemeris) != JPL_OK) return 1;
-    if (jpl_moon_position(ephemeris, jd_tt, moon_earth) != JPL_OK) {
+    if (jpl_moon_position(ephemeris, &jd_tt, &moon_earth) != JPL_OK) {
         jpl_close(ephemeris);
         return 1;
     }
-    if (jpl_planet_position(ephemeris, jd_tt, JPL_EARTH, JPL_SUN, earth_sun) != JPL_OK) {
+    if (jpl_planet_position(ephemeris, &jd_tt, JPL_EARTH, JPL_SUN, &earth_sun) != JPL_OK) {
         jpl_close(ephemeris);
         return 1;
     }
-    for (i = 0; i < 6; ++i) moon_sun[i] = moon_earth[i] + earth_sun[i];
-    printf("moon_sun: x=%f\n", moon_sun[0]);
+    moon_sun.x = moon_earth.x + earth_sun.x;
+    moon_sun.y = moon_earth.y + earth_sun.y;
+    moon_sun.z = moon_earth.z + earth_sun.z;
+    moon_sun.vx = moon_earth.vx + earth_sun.vx;
+    moon_sun.vy = moon_earth.vy + earth_sun.vy;
+    moon_sun.vz = moon_earth.vz + earth_sun.vz;
+    printf("moon_sun: x=%f\n", moon_sun.x);
     jpl_close(ephemeris);
     return 0;
 }
 
 static int geometric_vs_apparent(const char *path) {
     jpl_ephemeris *ephemeris = NULL;
-    static const double jd_tt[2] = {2451545.0, 0.0};
-    double jd_tdb[2];
-    double geo[6], app[6], lt;
+    static const jpl_date jd_tt = {2451545.0, 0.0};
+    jpl_date jd_tdb = {0.0, 0.0};
+    jpl_state geo, app;
+    double lt;
     if (jpl_open(path, &ephemeris) != JPL_OK) return 1;
-    if (jpl_tt_to_tdb(jd_tt, jd_tdb) != JPL_OK) { jpl_close(ephemeris); return 1; }
-    if (jpl_get_state_lighttime(ephemeris, jd_tdb, JPL_MARS, JPL_SUN, geo, &lt) != JPL_OK) {
+    if (jpl_tt_to_tdb(&jd_tt, &jd_tdb) != JPL_OK) { jpl_close(ephemeris); return 1; }
+    if (jpl_get_state_lighttime(ephemeris, &jd_tdb, JPL_MARS, JPL_SUN, &geo, &lt) != JPL_OK) {
         jpl_close(ephemeris);
         return 1;
     }
-    if (jpl_planet_position(ephemeris, jd_tt, JPL_MARS, JPL_SUN, app) != JPL_OK) {
+    if (jpl_planet_position(ephemeris, &jd_tt, JPL_MARS, JPL_SUN, &app) != JPL_OK) {
         jpl_close(ephemeris);
         return 1;
     }
-    printf("geo=%f app=%f lt=%f\n", geo[0], app[0], lt);
+    printf("geo=%f app=%f lt=%f\n", geo.x, app.x, lt);
     jpl_close(ephemeris);
     return 0;
 }
 
 static int geocentric_ecliptic(const char *path) {
     jpl_ephemeris *de = NULL;
-    static const double jd_tt[2] = {2451545.0, 0.0};
+    static const jpl_date jd_tt = {2451545.0, 0.0};
     jpl_apparent_ecliptic_result position;
     if (jpl_open(path, &de) != JPL_OK) return 1;
-    if (jpl_apparent_ecliptic_position(de, jd_tt, JPL_MOON, &position) != JPL_OK) {
+    if (jpl_apparent_ecliptic_position(de, &jd_tt, JPL_MOON, &position) != JPL_OK) {
         jpl_close(de);
         return 1;
     }

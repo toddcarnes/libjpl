@@ -95,11 +95,14 @@ static int compare_row(const jpl_ephemeris *e, int body, const double tt[2],
     *reference_lon = eraAnp(lon_ref) * (180.0 / acos(-1.0));
     if (!isfinite(*reference_lon) || !isfinite(lat_ref)) return 1;
 
-    if (jpl_apparent_ecliptic_position(e, tt, body, &got) != JPL_OK ||
-        !isfinite(got.longitude_deg) || !isfinite(got.latitude_deg) ||
-        !isfinite(got.range_au) || !(got.range_au > 0.0) ||
-        !isfinite(got.longitude_rate_deg_per_day) ||
-        !isfinite(got.range_rate_km_per_s)) return 1;
+    {
+        jpl_date tt_date = {tt[0], tt[1]};
+        if (jpl_apparent_ecliptic_position(e, &tt_date, body, &got) != JPL_OK ||
+            !isfinite(got.longitude_deg) || !isfinite(got.latitude_deg) ||
+            !isfinite(got.range_au) || !(got.range_au > 0.0) ||
+            !isfinite(got.longitude_rate_deg_per_day) ||
+            !isfinite(got.range_rate_km_per_s)) return 1;
+    }
     eraS2c(got.longitude_deg * (acos(-1.0) / 180.0),
            got.latitude_deg * (acos(-1.0) / 180.0), got_vector);
     sep = direction_separation(modern, got_vector);
@@ -158,7 +161,9 @@ int main(int argc, char **argv) {
     while (fgets(line, sizeof line, file)) {
         char jd[64], extra;
         int denum, body, horizons_target, count, i;
-        double ra, dec, old_lon, old_lat, range, deldot, tt[2], tdb[2];
+        double ra, dec, old_lon, old_lat, range, deldot, tt[2];
+        double tdb[2];
+        jpl_date tt_date, tdb_date;
         char identity[96];
         if (line[0] == '#' || line[0] == '\n') continue;
         count = sscanf(line, " %d %d %d %63s %lf %lf %lf %lf %lf %lf %c",
@@ -186,7 +191,9 @@ int main(int argc, char **argv) {
         samples[total].tt[1] = tt[1];
         samples[total].tested = 0;
         ++total;
-        if (jpl_tt_to_tdb(tt, tdb) != JPL_OK) { failed = 1; break; }
+        tt_date.hi = tt[0]; tt_date.lo = tt[1];
+        if (jpl_tt_to_tdb(&tt_date, &tdb_date) != JPL_OK) { failed = 1; break; }
+        jpl_date_to_pair(&tdb_date, tdb);
         if (jpl_date_compare(tdb, header->start_jd) < 0 ||
             jpl_date_compare(tdb, header->end_jd) > 0) continue;
         if (compare_row(e, body, tt, ra, dec, old_lon, old_lat, range, deldot,

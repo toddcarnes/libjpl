@@ -17,6 +17,8 @@ extern "C" {
 
 #ifdef LIBJPL_TESTING
 
+#include "jpl_private.h"
+
 /* Private deterministic light-time iteration-budget hook for tests.
  * Defined in the non-installed jpl_testing archive under LIBJPL_TESTING;
  * absent from the installed jpl archive. The public solver

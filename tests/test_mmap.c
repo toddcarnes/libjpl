@@ -306,8 +306,8 @@ int main(void){
         unsigned char rec2[JPL_TEST_HEADER_BYTES] = {0};
         FILE *f2;
         jpl_ephemeris *e2 = NULL, *c2 = NULL;
-        double a[6], b[6];
-        int k, same = 1;
+        jpl_state a, b;
+        int same = 1;
         memcpy(rec2, "mmap share", 10);
         test_mock_header(rec2, 2451545.0, 2451546.0, 1.0, 2);
         test_put_ptr(rec2, 11, 2, 178, 1);
@@ -323,11 +323,12 @@ int main(void){
         JPL_TEST_CHECK(fclose(f2) == 0);
         JPL_TEST_CHECK(jpl_open_mmap(path2, &e2) == JPL_OK);
         JPL_TEST_CHECK(jpl_ephemeris_clone(e2, &c2) == JPL_OK);
-        { static const double jd[2] = {2451545.5, 0.0};
-          JPL_TEST_CHECK(jpl_get_state(e2, jd, JPL_NUTATIONS, 0, a) == JPL_OK);
-          JPL_TEST_CHECK(jpl_get_state(c2, jd, JPL_NUTATIONS, 0, b) == JPL_OK);
-          JPL_TEST_CHECK(jpl_get_state(e2, jd, JPL_NUTATIONS, 0, a) == JPL_OK); }
-        for (k = 0; k < 6; ++k) if (a[k] != b[k]) same = 0;
+        { static const jpl_date jd = {2451545.5, 0.0};
+          JPL_TEST_CHECK(jpl_get_state(e2, &jd, JPL_NUTATIONS, 0, &a) == JPL_OK);
+          JPL_TEST_CHECK(jpl_get_state(c2, &jd, JPL_NUTATIONS, 0, &b) == JPL_OK);
+          JPL_TEST_CHECK(jpl_get_state(e2, &jd, JPL_NUTATIONS, 0, &a) == JPL_OK); }
+        if (a.x != b.x || a.y != b.y || a.z != b.z ||
+            a.vx != b.vx || a.vy != b.vy || a.vz != b.vz) same = 0;
         JPL_TEST_CHECK(same);
         jpl_close(c2); jpl_close(e2);
         JPL_TEST_CHECK(remove(path2) == 0);

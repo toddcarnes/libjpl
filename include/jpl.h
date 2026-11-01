@@ -91,6 +91,41 @@ typedef enum jpl_target {
 } jpl_target;
 
 /**
+ * @brief Two-part Julian date: high and low parts of a binary64 pair.
+ * @note The represented epoch is the mathematical sum (hi + lo). Both parts
+ *       are preserved through all arithmetic and ERFA calls. This type
+ *       replaces the legacy `double[2]` array in all public APIs.
+ * @since 0.7.0
+ */
+typedef struct {
+    double hi;  /**< @brief High part (typically the integral days). */
+    double lo;  /**< @brief Low part (fractional day residual). */
+} jpl_date;
+
+/**
+ * @brief Six-degree-of-freedom state vector: position (AU) + velocity (AU/day).
+ * @note Replaces the legacy `double[6]` array in all public APIs. The
+ *       component order is x, y, z, vx, vy, vz.
+ * @since 0.7.0
+ */
+typedef struct {
+    double x; /**< @brief Position X in AU. */
+    double y; /**< @brief Position Y in AU. */
+    double z; /**< @brief Position Z in AU. */
+    double vx; /**< @brief Velocity X in AU/day. */
+    double vy; /**< @brief Velocity Y in AU/day. */
+    double vz; /**< @brief Velocity Z in AU/day. */
+} jpl_state;
+
+/**
+ * @brief Opaque frame conversion context for repeated transformations at one epoch.
+ * @note Caches the precession-nutation matrix for efficient reuse. Created with
+ *       jpl_frame_context_create() and destroyed with jpl_frame_context_destroy().
+ * @since 0.7.0
+ */
+typedef struct jpl_frame_context jpl_frame_context;
+
+/**
  * @brief Orientation family of the DE coefficient frame.
  * @note Identifies orientation families only, not a transformation engine
  *       and not a claim of identical ICRF realizations. Unknown values
@@ -246,7 +281,7 @@ JPL_API size_t jpl_record_count(const jpl_ephemeris *ephemeris);
 /**
  * @brief Interpolates TT minus TDB at a TDB Julian date (*t files).
  * @param ephemeris Open handle.
- * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
+ * @param jd_tdb Julian date (TDB) as a jpl_date within header coverage.
  * @param seconds Output TT-TDB in seconds. Must be non-NULL.
  * @param rate_per_day Optional output rate of change in seconds/day, may be NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/seconds/jd_tdb
@@ -266,7 +301,7 @@ JPL_API size_t jpl_record_count(const jpl_ephemeris *ephemeris);
  *       1.7 ms amplitude, +/-3 ns model accuracy over 1950-2050 per ERFA)
  *       instead.
  */
-JPL_API jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
+JPL_API jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
                                   double *seconds, double *rate_per_day);
 
 /**
@@ -281,12 +316,12 @@ JPL_API int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
 /**
  * @brief Interpolates a JPL target at a TDB Julian date.
  * @param ephemeris Open handle.
- * @param jd_tdb Julian date (TDB) as a two-part array within header coverage.
+ * @param jd_tdb Julian date (TDB) as a jpl_date within header coverage.
  * @param target Target body as a jpl_target value (1-15; TT-TDB 17 is served
  *        by jpl_get_tt_minus_tdb()).
  * @param center Center 0 (SSB alias) or a body code 1-13 for ordinary
  *        targets; nutations (14) and librations (15) require center 0.
- * @param state Output array of 6 slots receiving the relative state.
+ * @param state Output jpl_state receiving the relative state.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT if ephemeris/state/jd_tdb
  *         is NULL, either date part is nonfinite, or the target/center
  *         combination is invalid (target 0 and center 14/15 are invalid;
@@ -320,16 +355,16 @@ JPL_API int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  *       separate threads if the file stays immutable. Synchronize cloning
  *       against closing the source (see jpl_ephemeris_clone()).
  */
-JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                           int target, int center, double state[6]);
+JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
+                           int target, int center, jpl_state *state);
 
 /**
  * @brief Interpolates a light-time-corrected relative state without aberration.
  * @param ephemeris Open handle from jpl_open(), jpl_open_mmap(), or a clone.
- * @param jd_tdb TDB Julian date of observation as a two-part array.
+ * @param jd_tdb TDB Julian date of observation as a jpl_date.
  * @param target Target jpl_target (1-13).
  * @param center Center jpl_target (1-13), or 0 for SSB.
- * @param state Output array of 6 slots receiving the relative state.
+ * @param state Output jpl_state receiving the relative state.
  * @param out_light_time Optional output light-time in days, may be NULL.
  * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/state/jd_tdb, nonfinite
  *         jd_tdb parts, or target outside 1-13 or center outside 0-13;
@@ -365,52 +400,32 @@ JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const double jd
  * @note Computed state and optional light-time output are unchanged on
  *       failure.
  */
-JPL_API jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const double jd_tdb[2],
-                                     int target, int center, double state[6], double *out_light_time);
+JPL_API jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
+                                     int target, int center, jpl_state *state, double *out_light_time);
 
 /**
  * @brief Applies special-relativistic stellar aberration.
  * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
  * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
- * @param out_state Output aberrated state, may alias state. Must be non-NULL.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
- *         state/velocity slots, or observer speed at/above light speed,
- *         JPL_ERROR_NUMERIC when finite inputs produce an unrepresentable result.
- * @note Special-relativistic direction transform (cf. ERFA eraAb) with
- *       distance preservation; solar gravitational term (<=0.4uas) omitted;
- *       velocity passed through unchanged. In-place safe.
- *       For the <=0.4uas solar term use jpl_apply_aberration_full when
- *       the Sun distance is known.
- * @note Transactional: out_state is unchanged on failure. Exact
- *       state/out_state aliasing is supported.
- */
-JPL_API jpl_status jpl_apply_aberration(const double state[6], const double observer_vel[3], double out_state[6]);
-
-/**
- * @brief Applies full special-relativistic stellar aberration including the
- *        solar gravitational potential term.
- * @param state Input geometric state, pos AU + vel AU/day. Must be non-NULL.
- * @param observer_vel Observer barycentric velocity AU/day. Must be non-NULL.
  * @param sun_distance_au Distance from the Sun to the observer in AU; finite
- *        nonpositive input omits the potential term (wrapper behavior),
- *        nonfinite input is invalid.
- * @param out_state Output aberrated state, may alias state. Must be non-NULL.
+ *        positive input includes the solar gravitational potential term
+ *        (<=0.4 uas), nonpositive input omits it, nonfinite input is invalid.
+ * @param out_state Output aberrated state, may alias input. Must be non-NULL.
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers, nonfinite
  *         state/velocity slots, observer speed at/above light speed, or
  *         nonfinite Sun distance, JPL_ERROR_NUMERIC when finite inputs
  *         produce an unrepresentable result.
  * @note Matches ERFA eraAb (Explanatory Supplement Expr. 7.40 + Klioner
  *       2003 solar term) to ~1e-12 on unit vectors; velocity passed through
- *       unchanged. In-place safe. See also jpl_apply_aberration, the
- *       signature-stable wrapper that omits the solar term.
- * @note Prefer this over jpl_apply_aberration when the Sun distance is
- *       known; the wrapper omits the <=0.4uas solar term (singular for
- *       Sun-centered observers).
+ *       unchanged. In-place safe.
+ * @note When sun_distance_au is known (>0), the <=0.4uas solar term is
+ *       included; pass 0.0 or negative to omit (e.g., for Sun-centered
+ *       observers where the term is singular).
  * @note Transactional: out_state is unchanged on failure. Exact
  *       state/out_state aliasing is supported.
  */
-JPL_API jpl_status jpl_apply_aberration_full(const double state[6], const double observer_vel[3],
-                                double sun_distance_au, double out_state[6]);
+JPL_API jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_vel[3],
+                                        double sun_distance_au, jpl_state *out_state);
 
 /**
  * @brief Opens a DE file via read-only memory mapping.

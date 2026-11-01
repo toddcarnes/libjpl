@@ -8,6 +8,7 @@
 #include "erfa.h"
 #include <math.h>
 #include <string.h>
+
 /* Only ICRF-aligned files pass the frame check below. Their native
  * equatorial states need no ecliptic-to-ICRS rotation here; core
  * jpl_get_state still reads legacy files in their native frames. */
@@ -33,48 +34,57 @@ jpl_status jpl_km_to_au(double km, double *au) {
     *au = km / JPL_AU_KM;
     return JPL_OK;
 }
+
 /* The ordinary body-center path needs these three evaluations in this
  * order. Return the solved delay for callers that also need target geometry
  * at emission; the observer and Sun legs stay at reception. */
-static jpl_status observer_geometry(const jpl_ephemeris *e, const double tdb[2],
-                                    int target, int center, double retarded[6],
-                                    double observer[6], double sun_from_observer[6],
+static jpl_status observer_geometry(const jpl_ephemeris *e, const jpl_date *tdb,
+                                    int target, int center, jpl_state *retarded,
+                                    jpl_state *observer, jpl_state *sun_from_observer,
                                     double *light_time_days) {
     jpl_status s = jpl_get_state_lighttime(e, tdb, target, center,
                                             retarded, light_time_days);
     if (s != JPL_OK) return s;
     s = jpl_get_state(e, tdb, center, JPL_SSB, observer);
     if (s != JPL_OK) return s;
-    return jpl_get_state(e, tdb, center, JPL_SUN, sun_from_observer);
+    return jpl_get_state(e, tdb, JPL_SUN, center, sun_from_observer);
 }
-static jpl_status convenience_epoch(const jpl_ephemeris *e, const double jd_tt[2],
-                                    double tt[2], double tdb[2]) {
+
+static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_tt,
+                                    jpl_date *tt, jpl_date *tdb) {
     const jpl_header *header;
-    double cov_start[2], cov_end[2];
+    double cov_start_arr[2], cov_end_arr[2];
+    double jd_tt_arr[2], tdb_arr[2];
     jpl_status s;
     if (!e || !jd_tt || !tt || !tdb) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd_tt[0]) || !isfinite(jd_tt[1])) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(jd_tt, tt);
+    if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
+    jpl_date_to_pair(jd_tt, jd_tt_arr);
+    s = jpl_date_normalize(jd_tt_arr, jd_tt_arr);
     if (s != JPL_OK) return s;
+    jpl_pair_to_date(jd_tt_arr, tt);
     s = jpl_tt_to_tdb(tt, tdb);
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(header->start_jd, cov_start);
+    s = jpl_date_normalize(header->start_jd, cov_start_arr);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
-    s = jpl_date_normalize(header->end_jd, cov_end);
+    s = jpl_date_normalize(header->end_jd, cov_end_arr);
     if (s != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(tdb, cov_start) < 0 ||
-        jpl_date_compare(tdb, cov_end) > 0) return JPL_ERROR_RANGE;
+    jpl_date_to_pair(tdb, tdb_arr);
+    if (jpl_date_compare(tdb_arr, cov_start_arr) < 0 ||
+        jpl_date_compare(tdb_arr, cov_end_arr) > 0) return JPL_ERROR_RANGE;
     if (header->reference_frame != JPL_FRAME_ICRF) return JPL_ERROR_UNSUPPORTED;
     return JPL_OK;
 }
-jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], int planet, int center, double st[6]) {
-    double tt[2], tdb[2], lt, tmp[6], vobs[3], cst[6];
+
+jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, int planet, int center, jpl_state *st) {
+    jpl_date tt, tdb;
+    double lt;
+    jpl_state tmp, cst;
     int eff_center;
     jpl_status s;
     if(!e||!st||!jd_tt) return JPL_ERROR_ARGUMENT;
-    if(!isfinite(jd_tt[0])||!isfinite(jd_tt[1])) return JPL_ERROR_ARGUMENT;
+    if(!isfinite(jd_tt->hi)||!isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     /* Targets 1-11 (Mercury..Sun, incl. Earth 3) or EMB 13. Target zero
      * is invalid; SSB 12 and the nutation (14) /
      * libration (15) sensitivities plus out-of-range codes are rejected. */
@@ -82,7 +92,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
     if(center<0||center>JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     /* Coverage precedes frame gating even for identical-body calls. */
-    s = convenience_epoch(e, jd_tt, tt, tdb);
+    s = convenience_epoch(e, jd_tt, &tt, &tdb);
     if (s != JPL_OK) return s;
     /* Center 0 is the SSB alias; normalize to 12 wherever a
      * target code is required because target 0 is invalid in core getters. */
@@ -90,106 +100,128 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const double jd_tt[2], in
     /* Identical-body shortcut: validate the required body at
      * reception, then return zero without touching unrelated Sun data. */
     if(planet==center) {
-        s = jpl_get_state(e, tdb, planet, center, tmp);
+        s = jpl_get_state(e, &tdb, planet, center, &tmp);
         if(s!=JPL_OK) return s;
-        memset(st, 0, sizeof tmp);
+        st->x = st->y = st->z = st->vx = st->vy = st->vz = 0.0;
         return JPL_OK;
     }
     /* SSB-observer shortcut: the barycentric observer velocity is
      * zero by definition, so no aberration/Sun lookup is needed. */
     if(eff_center==JPL_SOLAR_SYSTEM_BARYCENTER) {
-        s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);
+        s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, &lt);
         if(s!=JPL_OK) return s;
-        memcpy(st, tmp, sizeof tmp);
+        *st = tmp;
         return JPL_OK;
     }
     /* Stellar aberration uses the observer's reception velocity; Sun
      * distance supplies its solar-potential term unless the observer
      * itself is the Sun. */
     if (eff_center != JPL_SUN) {
-        double sun_obs[6];
+        jpl_state sun_obs;
         double sdist;
-        s = observer_geometry(e, tdb, planet, center, tmp, cst, sun_obs, &lt);
+        double vobs[3], sun_arr[6];
+        s = observer_geometry(e, &tdb, planet, center, &tmp, &cst, &sun_obs, &lt);
         if (s != JPL_OK) return s;
-        vobs[0] = cst[3]; vobs[1] = cst[4]; vobs[2] = cst[5];
-        sdist = jpl_vec_norm3(sun_obs);
+        vobs[0] = cst.vx; vobs[1] = cst.vy; vobs[2] = cst.vz;
+        jpl_state_to_array(&sun_obs, sun_arr);
+        sdist = jpl_vec_norm3(sun_arr);
         if (!isfinite(sdist)) return JPL_ERROR_NUMERIC;
         /* Finite nonpositive Sun distance omits the potential term
          * inside the aberration call; nonfinite is ARGUMENT there. */
-        s = jpl_apply_aberration_full(tmp, vobs, sdist, tmp);
+        s = jpl_apply_aberration(&tmp, vobs, sdist, &tmp);
         if (s != JPL_OK) return s;
     } else {
-        s = jpl_get_state_lighttime(e, tdb, planet, center, tmp, &lt);
+        double vobs[3];
+        s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, &lt);
         if (s != JPL_OK) return s;
-        s = jpl_get_state(e, tdb, eff_center, 0, cst);
+        s = jpl_get_state(e, &tdb, eff_center, 0, &cst);
         if (s != JPL_OK) return s;
-        vobs[0] = cst[3]; vobs[1] = cst[4]; vobs[2] = cst[5];
-        s = jpl_apply_aberration(tmp, vobs, tmp);
+        vobs[0] = cst.vx; vobs[1] = cst.vy; vobs[2] = cst.vz;
+        s = jpl_apply_aberration(&tmp, vobs, 0.0, &tmp);
         if (s != JPL_OK) return s;
     }
-    memcpy(st, tmp, sizeof tmp);
+    *st = tmp;
     return JPL_OK;
 }
-jpl_status jpl_moon_position(const jpl_ephemeris *e, const double jd_tt[2], double st[6]) {
+
+jpl_status jpl_moon_position(const jpl_ephemeris *e, const jpl_date *jd_tt, jpl_state *st) {
     return jpl_planet_position(e, jd_tt, JPL_MOON, JPL_EARTH, st);
 }
 
 static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
-                                          const double jd_tt[2], int target,
+                                          const jpl_date *jd_tt, int target,
                                           double position[3], double *radial_km_per_s) {
-    double tt[2], tdb[2], emission[2], light_time;
-    double state[6], observer[6], sun_from_observer[6], sun_to_target[6];
-    double aberrated[6], ecliptic[3], vobs[3], unit[3], angular_distance;
+    jpl_date tt, tdb, emission;
+    double light_time;
+    jpl_state state, observer, sun_from_observer, sun_to_target;
+    jpl_state aberrated;
+    double ecliptic[3], vobs[3], unit[3], angular_distance;
+    double state_arr[6], sun_arr[6], target_arr[6], aberrated_arr[6];
     double distance, sun_distance, q_distance, longitude, latitude, norm;
     double projected_radial = 0.0;
     double result[3];
     jpl_status s;
     size_t k;
     if (!e || !jd_tt || !position) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd_tt[0]) || !isfinite(jd_tt[1])) return JPL_ERROR_ARGUMENT;
+    if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     if (target < JPL_MERCURY || target > JPL_SUN || target == JPL_EARTH)
         return JPL_ERROR_ARGUMENT;
-    s = convenience_epoch(e, jd_tt, tt, tdb);
+    s = convenience_epoch(e, jd_tt, &tt, &tdb);
     if (s != JPL_OK) return s;
-    s = observer_geometry(e, tdb, target, JPL_EARTH, state, observer,
-                          sun_from_observer, &light_time);
+    s = observer_geometry(e, &tdb, target, JPL_EARTH, &state, &observer,
+                          &sun_from_observer, &light_time);
     if (s != JPL_OK) return s;
-    distance = jpl_vec_norm3(state);
-    sun_distance = jpl_vec_norm3(sun_from_observer);
+    jpl_state_to_array(&state, state_arr);
+    jpl_state_to_array(&sun_from_observer, sun_arr);
+    distance = jpl_vec_norm3(state_arr);
+    sun_distance = jpl_vec_norm3(sun_arr);
     if (!isfinite(distance) || !(distance > 0.0) ||
         !isfinite(sun_distance) || !(sun_distance > 0.0)) return JPL_ERROR_NUMERIC;
     if (radial_km_per_s) {
-        double au_per_day = (state[0]*state[3] + state[1]*state[4] +
-                             state[2]*state[5]) / distance;
+        double au_per_day = (state.x*state.vx + state.y*state.vy +
+                              state.z*state.vz) / distance;
         projected_radial = au_per_day * (JPL_AU_KM / JPL_DAYSEC);
         if (!isfinite(projected_radial)) return JPL_ERROR_NUMERIC;
     }
     if (target != JPL_SUN) {
-        double p[3], q[3], se[3], bent[3], bent_norm;
+        double p[3], se[3], se_neg[3], bent[3], bent_norm;
         double limb, dlim;
-        s = jpl_date_add_days(tdb, -light_time, emission);
+        double tdb_arr[2], emission_arr[2];
+        jpl_date_to_pair(&tdb, tdb_arr);
+        s = jpl_date_add_days(tdb_arr, -light_time, emission_arr);
         if (s != JPL_OK) return s;
-        s = jpl_get_state(e, emission, target, JPL_SUN, sun_to_target);
+        jpl_pair_to_date(emission_arr, &emission);
+        s = jpl_get_state(e, &emission, target, JPL_SUN, &sun_to_target);
         if (s != JPL_OK) return s;
-        q_distance = jpl_vec_norm3(sun_to_target);
+        jpl_state_to_array(&sun_to_target, target_arr);
+        q_distance = jpl_vec_norm3(target_arr);
         if (!isfinite(q_distance) || !(q_distance > 0.0)) return JPL_ERROR_NUMERIC;
         for (k = 0; k < 3; ++k) {
-            p[k] = state[k] / distance;
-            q[k] = sun_to_target[k] / q_distance;
-            se[k] = sun_from_observer[k] / sun_distance;
+            p[k] = state_arr[k] / distance;
+            se[k] = sun_arr[k] / sun_distance;
+            se_neg[k] = -se[k];
         }
         limb = atan2(JPL_SOLAR_RADIUS_KM / JPL_AU_KM, sun_distance);
         dlim = 0.5 * limb * limb;
         if (!isfinite(dlim) || !(dlim > 0.0)) return JPL_ERROR_NUMERIC;
-        eraLd(1.0, p, q, se, sun_distance, dlim, bent);
+        /* eraLd(bm, p, q, e, em, dlim, p1):
+         *   p = direction from observer to source (target)
+         *   q = direction from observer to deflecting body (Sun)
+         *   e = direction from deflecting body (Sun) to observer = -se
+         *   em = distance from deflecting body to observer (AU)
+         *   dlim = limb distance parameter
+         */
+        eraLd(1.0, p, se, se_neg, sun_distance, dlim, bent);
         bent_norm = jpl_vec_norm3(bent);
         if (!isfinite(bent_norm) || !(bent_norm > 0.0)) return JPL_ERROR_NUMERIC;
-        for (k = 0; k < 3; ++k) state[k] = (bent[k] / bent_norm) * distance;
+        for (k = 0; k < 3; ++k) state_arr[k] = (bent[k] / bent_norm) * distance;
+        jpl_array_to_state(state_arr, &state);
     }
-    vobs[0] = observer[3]; vobs[1] = observer[4]; vobs[2] = observer[5];
-    s = jpl_apply_aberration_full(state, vobs, sun_distance, aberrated);
+    vobs[0] = observer.vx; vobs[1] = observer.vy; vobs[2] = observer.vz;
+    s = jpl_apply_aberration(&state, vobs, sun_distance, &aberrated);
     if (s != JPL_OK) return s;
-    s = jpl_icrs_to_true_ecliptic_position(aberrated, tt, ecliptic);
+    jpl_state_to_array(&aberrated, aberrated_arr);
+    s = jpl_icrs_to_true_ecliptic_position(aberrated_arr, &tt, ecliptic);
     if (s != JPL_OK) return s;
     norm = jpl_vec_norm3(ecliptic);
     if (!isfinite(norm) || !(norm > 0.0)) return JPL_ERROR_NUMERIC;
@@ -207,12 +239,16 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
 }
 
 static jpl_status apparent_position_offset(const jpl_ephemeris *e,
-                                           const double jd_tt[2], int target,
+                                           const jpl_date *jd_tt, int target,
                                            double days, double position[3]) {
-    double sample_tt[2];
-    jpl_status s = jpl_date_add_days(jd_tt, days, sample_tt);
+    jpl_date sample_tt;
+    double date_arr[2], sample_arr[2];
+    jpl_status s;
+    jpl_date_to_pair(jd_tt, date_arr);
+    s = jpl_date_add_days(date_arr, days, sample_arr);
     if (s != JPL_OK) return s;
-    return apparent_position_at_tt(e, sample_tt, target, position, NULL);
+    jpl_pair_to_date(sample_arr, &sample_tt);
+    return apparent_position_at_tt(e, &sample_tt, target, position, NULL);
 }
 
 static double longitude_delta(double a_deg, double b_deg) {
@@ -220,8 +256,8 @@ static double longitude_delta(double a_deg, double b_deg) {
 }
 
 jpl_status jpl_apparent_ecliptic_position(const jpl_ephemeris *e,
-                                          const double jd_tt[2], int target,
-                                          jpl_apparent_ecliptic_result *out) {
+                                           const jpl_date *jd_tt, int target,
+                                           jpl_apparent_ecliptic_result *out) {
     double center[3], earlier[3], later[3], farther[3];
     double h = 0.01, longitude_rate, projected_radial;
     jpl_apparent_ecliptic_result local;

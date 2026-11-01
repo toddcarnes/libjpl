@@ -1423,117 +1423,129 @@ static int valid_lighttime_body(int target, int center) {
     return 1;
 }
 
+/* Threaded evaluation state for one jpl_evaluate() call. Bundles what the
+ * helpers used to pass as five-to-seven parameters each behind the single
+ * evaluation seam: normalized epoch, verified record bounds, record index,
+ * cached record bytes, subinterval geometry, Chebyshev argument, and the
+ * unpublished result. `record` is malloc'd by the read step and freed by
+ * jpl_evaluate on every path that got past the read; `local_state` is
+ * published to the caller atomically by the publish step. */
+typedef struct interp_work {
+    double norm[2];
+    double file_start[2];
+    double file_end[2];
+    size_t record_index;
+    double *record;
+    int cached;
+    size_t subinterval;
+    double sub_origin[2];
+    double normalized;
+    double substep;
+    double local_state[6];
+} interp_work;
+
 /* Read a data record with the single-record cache (FILE path only).
- * Allocates *out_record (caller frees); sets *cached to indicate whether
- * the caller hit the cache (so the cache should be refreshed on success).
- * The cache is consulted and refreshed here, matching the original
+ * Allocates w->record (jpl_evaluate frees it); sets w->cached to indicate
+ * whether the caller hit the cache (so the cache should be refreshed on
+ * success). The cache is consulted and refreshed here, matching the original
  * jpl_evaluate() cache semantics. */
-static jpl_status interp_read_record_cached(const jpl_ephemeris *e, size_t record_index,
-                                            double **out_record, int *cached) {
+static jpl_status interp_read_record_cached(const jpl_ephemeris *e, interp_work *w) {
     int use_cache, was_cached;
-    if (!e || !out_record || !cached) return JPL_ERROR_ARGUMENT;
+    if (!e || !w) return JPL_ERROR_ARGUMENT;
     if (e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_MEMORY;
-    *out_record = malloc(e->header.record_double_count * sizeof **out_record);
-    if (!*out_record) return JPL_ERROR_MEMORY;
+    w->record = malloc(e->header.record_double_count * sizeof *w->record);
+    if (!w->record) return JPL_ERROR_MEMORY;
     use_cache = !e->is_mmap;
-    was_cached = use_cache && e->cache.valid && e->cache.record && e->cache.index == record_index;
+    was_cached = use_cache && e->cache.valid && e->cache.record && e->cache.index == w->record_index;
     if (was_cached) {
-        memcpy(*out_record, e->cache.record, e->header.record_double_count * sizeof **out_record);
-        *cached = 1;
+        memcpy(w->record, e->cache.record, e->header.record_double_count * sizeof *w->record);
+        w->cached = 1;
     } else {
-        jpl_status status = jpl_read_record(e, record_index, *out_record, e->header.record_double_count);
-        if (status != JPL_OK) { free(*out_record); return status; }
-        *cached = 0;
+        jpl_status status = jpl_read_record(e, w->record_index, w->record, e->header.record_double_count);
+        if (status != JPL_OK) { free(w->record); w->record = NULL; return status; }
+        w->cached = 0;
     }
     return JPL_OK;
 }
 
 /* Promote encoded record bounds to pairs and verify the scheduled query
- * falls within them. Returns JPL_OK with file_start[2]/file_end[2] filled
- * (both normalized), or JPL_ERROR_FORMAT on bad endpoints or
- * out-of-record bounds. */
-static jpl_status interp_verify_record_bounds(const double norm[2],
-                                              const double *record,
-                                              double file_start[2], double file_end[2]) {
+ * falls within them. Fills w->file_start/w->file_end (both normalized) and
+ * reads w->norm/w->record; returns JPL_OK, or JPL_ERROR_FORMAT on bad
+ * endpoints or out-of-record bounds. */
+static jpl_status interp_verify_record_bounds(interp_work *w) {
     jpl_status status;
-    if (!norm || !record || !file_start || !file_end) return JPL_ERROR_ARGUMENT;
-    file_start[0] = record[0]; file_start[1] = 0.0;
-    file_end[0] = record[1]; file_end[1] = 0.0;
-    status = jpl_date_normalize(file_start, file_start);
+    if (!w || !w->record) return JPL_ERROR_ARGUMENT;
+    w->file_start[0] = w->record[0]; w->file_start[1] = 0.0;
+    w->file_end[0] = w->record[1]; w->file_end[1] = 0.0;
+    status = jpl_date_normalize(w->file_start, w->file_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(file_end, file_end);
+    status = jpl_date_normalize(w->file_end, w->file_end);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(file_end, file_start) <= 0) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(norm, file_start) < 0 || jpl_date_compare(norm, file_end) > 0)
+    if (jpl_date_compare(w->file_end, w->file_start) <= 0) return JPL_ERROR_FORMAT;
+    if (jpl_date_compare(w->norm, w->file_start) < 0 || jpl_date_compare(w->norm, w->file_end) > 0)
         return JPL_ERROR_FORMAT;
     return JPL_OK;
 }
 
-/* Locate the subinterval containing norm within [file_start, file_end].
- * Computes substep, quotient, and the normalized Chebyshev argument.
- * Returns JPL_OK with *subinterval, *sub_origin, *normalized, *substep
- * set, or JPL_ERROR_FORMAT / JPL_ERROR_UNSUPPORTED on invalid spans. */
-static jpl_status interp_find_subinterval(const double norm[2], const double file_start[2],
-                                          const double file_end[2], size_t nsub,
-                                          size_t *subinterval, double sub_origin[2],
-                                          double *normalized, double *substep) {
+/* Locate the subinterval containing the normalized epoch within the
+ * verified record bounds. Computes substep, quotient, and the normalized
+ * Chebyshev argument into the work struct. Returns JPL_OK, or
+ * JPL_ERROR_FORMAT / JPL_ERROR_UNSUPPORTED on invalid spans. */
+static jpl_status interp_find_subinterval(interp_work *w, size_t nsub) {
     double span, rec_span[2], from_start[2], local[2];
     double qd, lo[2], hi[2];
     int below, above;
     jpl_status status;
-    if (!norm || !file_start || !file_end || !subinterval || !sub_origin || !normalized || !substep)
-        return JPL_ERROR_ARGUMENT;
+    if (!w) return JPL_ERROR_ARGUMENT;
     if (nsub == 0) return JPL_ERROR_UNSUPPORTED;
-    status = jpl_date_subtract(file_end, file_start, rec_span);
+    status = jpl_date_subtract(w->file_end, w->file_start, rec_span);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     span = rec_span[0] + rec_span[1];
     if (!isfinite(span) || span <= 0.0) return JPL_ERROR_FORMAT;
-    *substep = span / (double)nsub;
-    if (!isfinite(*substep) || *substep <= 0.0) return JPL_ERROR_FORMAT;
-    status = jpl_date_subtract(norm, file_start, from_start);
+    w->substep = span / (double)nsub;
+    if (!isfinite(w->substep) || w->substep <= 0.0) return JPL_ERROR_FORMAT;
+    status = jpl_date_subtract(w->norm, w->file_start, from_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    qd = (from_start[0] + from_start[1]) / *substep;
+    qd = (from_start[0] + from_start[1]) / w->substep;
     if (!isfinite(qd) || qd < 0.0) return JPL_ERROR_FORMAT;
     /* The last boundary can round to nsub: clamp before integer conversion. */
-    *subinterval = qd >= (double)nsub ? nsub - 1 : (size_t)qd;
+    w->subinterval = qd >= (double)nsub ? nsub - 1 : (size_t)qd;
     for (;;) {
         below = 0; above = 0;
-        status = jpl_date_partition(file_start, file_end, nsub, *subinterval, lo);
+        status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval, lo);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        status = jpl_date_partition(file_start, file_end, nsub, *subinterval + 1, hi);
+        status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval + 1, hi);
         if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        below = jpl_date_compare(norm, lo) < 0;
-        above = *subinterval + 1 < nsub ? jpl_date_compare(norm, hi) >= 0 : 0;
+        below = jpl_date_compare(w->norm, lo) < 0;
+        above = w->subinterval + 1 < nsub ? jpl_date_compare(w->norm, hi) >= 0 : 0;
         if (!below && !above) break;
-        if (below && *subinterval > 0) { --(*subinterval); continue; }
-        if (above && *subinterval + 1 < nsub) { ++(*subinterval); continue; }
+        if (below && w->subinterval > 0) { --(w->subinterval); continue; }
+        if (above && w->subinterval + 1 < nsub) { ++(w->subinterval); continue; }
         return JPL_ERROR_FORMAT;
     }
-    status = jpl_date_partition(file_start, file_end, nsub, *subinterval, sub_origin);
+    status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval, w->sub_origin);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_subtract(norm, sub_origin, local);
+    status = jpl_date_subtract(w->norm, w->sub_origin, local);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
     /* Local Chebyshev argument only after compensated subtraction of the
      * selected nearby boundary. */
-    *normalized = 2.0 * ((local[0] + local[1]) / *substep) - 1.0;
-    if (!isfinite(*normalized)) return JPL_ERROR_FORMAT;
+    w->normalized = 2.0 * ((local[0] + local[1]) / w->substep) - 1.0;
+    if (!isfinite(w->normalized)) return JPL_ERROR_FORMAT;
     return JPL_OK;
 }
 
 /* Evaluate all components via the Chebyshev recurrence.
- * Fills local_state[component] and local_state[component+3] for each
- * component. local_state[6] must be caller-allocated. On error returns
- * JPL_ERROR_FORMAT (nonfinite coefficient) or JPL_ERROR_NUMERIC (finite
- * inputs producing overflow). Caller handles nutation padding to 3. */
+ * Fills w->local_state[component] and w->local_state[component+3] for each
+ * component. On error returns JPL_ERROR_FORMAT (nonfinite coefficient) or
+ * JPL_ERROR_NUMERIC (finite inputs producing overflow). Caller handles
+ * nutation padding to 3. */
 static jpl_status interp_chebyshev_evaluate(const jpl_ephemeris *e, const jpl_pointer *pointer,
-                                            const double *record, size_t subinterval,
-                                            double normalized, size_t components,
-                                             double substep, double local_state[6]) {
+                                            interp_work *w, size_t components) {
     size_t component, coefficient;
-    if (!e || !pointer || !record || !local_state) return JPL_ERROR_ARGUMENT;
+    if (!e || !pointer || !w || !w->record) return JPL_ERROR_ARGUMENT;
     for (component = 0; component < components; ++component) {
         size_t start = (size_t)pointer->start_index - 1 +
-            (subinterval * components + component) * (size_t)pointer->coefficients_per_component;
+            (w->subinterval * components + component) * (size_t)pointer->coefficients_per_component;
         double sum, derivative = 0.0;
         if (start + (size_t)pointer->coefficients_per_component > e->header.record_double_count)
             return JPL_ERROR_FORMAT;
@@ -1542,14 +1554,14 @@ static jpl_status interp_chebyshev_evaluate(const jpl_ephemeris *e, const jpl_po
          * term and derivative, so it is checked only when
          * coefficients_per_component > 1 (no second slot exists when
          * ncoeff == 1). */
-        if (!isfinite(record[start])) return JPL_ERROR_FORMAT;
-        if (pointer->coefficients_per_component > 1 && !isfinite(record[start + 1]))
+        if (!isfinite(w->record[start])) return JPL_ERROR_FORMAT;
+        if (pointer->coefficients_per_component > 1 && !isfinite(w->record[start + 1]))
             return JPL_ERROR_FORMAT;
-        sum = record[start];
+        sum = w->record[start];
         if (pointer->coefficients_per_component > 1) {
             /* Finite seed times a finite argument can still overflow to
              * Inf; that is NUMERIC, not FORMAT (inputs were finite). */
-            sum += record[start + 1] * normalized;
+            sum += w->record[start + 1] * w->normalized;
             if (!isfinite(sum)) return JPL_ERROR_NUMERIC;
         }
         /* Re-evaluate derivative with the standard Chebyshev recurrence.
@@ -1558,20 +1570,20 @@ static jpl_status interp_chebyshev_evaluate(const jpl_ephemeris *e, const jpl_po
          * stage: a nonfinite coefficient read is FORMAT, while overflow
          * from finite values is NUMERIC. */
         if (pointer->coefficients_per_component > 1) {
-            double t0 = 1.0, t1 = normalized, d0 = 0.0, d1 = 1.0;
-            derivative = record[start + 1];
+            double t0 = 1.0, t1 = w->normalized, d0 = 0.0, d1 = 1.0;
+            derivative = w->record[start + 1];
             if (!isfinite(derivative)) return JPL_ERROR_FORMAT;
             for (coefficient = 2; coefficient < (size_t)pointer->coefficients_per_component; ++coefficient) {
-                double t2 = 2.0 * normalized * t1 - t0;
-                double d2 = 2.0 * t1 + 2.0 * normalized * d1 - d0;
+                double t2 = 2.0 * w->normalized * t1 - t0;
+                double d2 = 2.0 * t1 + 2.0 * w->normalized * d1 - d0;
                 double add;
-                if (!isfinite(record[start + coefficient])) return JPL_ERROR_FORMAT;
+                if (!isfinite(w->record[start + coefficient])) return JPL_ERROR_FORMAT;
                 if (!isfinite(t2) || !isfinite(d2)) return JPL_ERROR_NUMERIC;
-                add = record[start + coefficient] * t2;
+                add = w->record[start + coefficient] * t2;
                 if (!isfinite(add)) return JPL_ERROR_NUMERIC;
                 sum += add;
                 if (!isfinite(sum)) return JPL_ERROR_NUMERIC;
-                add = record[start + coefficient] * d2;
+                add = w->record[start + coefficient] * d2;
                 if (!isfinite(add)) return JPL_ERROR_NUMERIC;
                 derivative += add;
                 if (!isfinite(derivative)) return JPL_ERROR_NUMERIC;
@@ -1580,84 +1592,81 @@ static jpl_status interp_chebyshev_evaluate(const jpl_ephemeris *e, const jpl_po
         }
         /* Transactional locals: the caller's state[] is published only
          * after every component passes (see the commit loop below). */
-        local_state[component] = sum;
-        local_state[component + 3] = derivative * 2.0 / substep;
-        if (!isfinite(local_state[component]) || !isfinite(local_state[component + 3]))
+        w->local_state[component] = sum;
+        w->local_state[component + 3] = derivative * 2.0 / w->substep;
+        if (!isfinite(w->local_state[component]) || !isfinite(w->local_state[component + 3]))
             return JPL_ERROR_NUMERIC;
     }
     /* Nutations interpolate 2 components; zero the unused third slot. */
-    for (; component < 3; ++component) { local_state[component] = 0.0; local_state[component + 3] = 0.0; }
+    for (; component < 3; ++component) { w->local_state[component] = 0.0; w->local_state[component + 3] = 0.0; }
     return JPL_OK;
 }
 
 /* Copy computed locals to the caller's output and refresh the single-record
  * cache on the FILE path only. Best-effort cache refresh: a failed cache
- * malloc does not discard good state. Caller must free `record` after this. */
-static void interp_publish_state(const jpl_ephemeris *e, size_t record_index,
-                                 const double local_state[6], double state[6],
-                                 const double *record, int cached) {
+ * malloc does not discard good state. Caller frees w->record after this. */
+static void interp_publish_state(const jpl_ephemeris *e, const interp_work *w, double state[6]) {
     int use_cache;
-    memcpy(state, local_state, 6 * sizeof(double));
+    memcpy(state, w->local_state, 6 * sizeof(double));
     /* Refresh the single-record cache only on the FILE path, and only now
      * that interpolation succeeded. Best-effort: a failed cache malloc
      * must not discard good state. On failure paths above the function
      * returns early, so the prior entry is never invalidated by a miss. */
     use_cache = !e->is_mmap;
-    if (!use_cache || cached) return;
+    if (!use_cache || w->cached) return;
     if (!((jpl_ephemeris *)e)->cache.record) {
-        ((jpl_ephemeris *)e)->cache.record = malloc(e->header.record_double_count * sizeof *record);
+        ((jpl_ephemeris *)e)->cache.record = malloc(e->header.record_double_count * sizeof *w->record);
         if (!((jpl_ephemeris *)e)->cache.record) return;
     }
-    memcpy(((jpl_ephemeris *)e)->cache.record, record, e->header.record_double_count * sizeof *record);
-    ((jpl_ephemeris *)e)->cache.index = record_index;
+    memcpy(((jpl_ephemeris *)e)->cache.record, w->record, e->header.record_double_count * sizeof *w->record);
+    ((jpl_ephemeris *)e)->cache.index = w->record_index;
     ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
+/* Single evaluation seam: interpolate one pointer's coefficients at an
+ * epoch. Owns record selection, the cached record read, bounds
+ * verification, subinterval location, Chebyshev evaluation, and
+ * transactional publish. Callers pass the possibly-unnormalized epoch;
+ * it is normalized once here, at this trust boundary. */
 static jpl_status jpl_evaluate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
                                size_t components, double state[6]) {
-    double *record;
-    double norm[2], file_start[2], file_end[2], sub_origin[2];
-    double substep, normalized;
-    double local_state[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    size_t record_index, subinterval;
+    interp_work w;
     size_t nsub;
-    int cached;
     jpl_status status;
     if (!e || !jd || !pointer || !state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
-    status = jpl_date_normalize(jd, norm);
+    memset(&w, 0, sizeof w);
+    status = jpl_date_normalize(jd, w.norm);
     if (status != JPL_OK) return status;
     /* Coverage precedes the missing-dataset report (TT-TDB path order):
      * valid in-coverage queries for absent data are UNSUPPORTED, while
      * out-of-coverage queries stay RANGE even when the dataset is absent. */
-    status = jpl_date_normalize(e->header.start_jd, file_start);
+    status = jpl_date_normalize(e->header.start_jd, w.file_start);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(e->header.end_jd, file_end);
+    status = jpl_date_normalize(e->header.end_jd, w.file_end);
     if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(norm, file_start) < 0 || jpl_date_compare(norm, file_end) > 0)
+    if (jpl_date_compare(w.norm, w.file_start) < 0 || jpl_date_compare(w.norm, w.file_end) > 0)
         return JPL_ERROR_RANGE;
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
     if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
-    status = select_record(e, norm, &record_index, file_start, file_end);
+    status = select_record(e, w.norm, &w.record_index, w.file_start, w.file_end);
     if (status != JPL_OK) return status;
-    status = interp_read_record_cached(e, record_index, &record, &cached);
+    status = interp_read_record_cached(e, &w);
     if (status != JPL_OK) return status;
-    status = interp_verify_record_bounds(norm, record, file_start, file_end);
-    if (status != JPL_OK) { free(record); return status; }
+    status = interp_verify_record_bounds(&w);
+    if (status != JPL_OK) { free(w.record); return status; }
     /* The scalar span, subinterval rate, and Chebyshev argument are nearby
      * durations obtained after compensated date subtraction, not full
      * Julian epochs. The candidate subinterval is verified against
      * two-part boundaries below; invalid record spans report FORMAT. */
     nsub = (size_t)pointer->subintervals;
-    status = interp_find_subinterval(norm, file_start, file_end, nsub,
-                                      &subinterval, sub_origin, &normalized, &substep);
-    if (status != JPL_OK) { free(record); return status; }
-    status = interp_chebyshev_evaluate(e, pointer, record, subinterval,
-                                        normalized, components, substep, local_state);
-    if (status != JPL_OK) { free(record); return status; }
-    interp_publish_state(e, record_index, local_state, state, record, cached);
-    free(record);
+    status = interp_find_subinterval(&w, nsub);
+    if (status != JPL_OK) { free(w.record); return status; }
+    status = interp_chebyshev_evaluate(e, pointer, &w, components);
+    if (status != JPL_OK) { free(w.record); return status; }
+    interp_publish_state(e, &w, state);
+    free(w.record);
     return JPL_OK;
 }
 

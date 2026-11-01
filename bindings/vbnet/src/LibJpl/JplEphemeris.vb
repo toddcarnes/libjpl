@@ -198,17 +198,26 @@ Public NotInheritable Class JplEphemeris
         Return New TtMinusTdbResult With {.Seconds = seconds, .RatePerDay = rate}
     End Function
 
-    ' Frame conversions
+    ' Frame conversions (ecliptic-to-ICRS via a cached frame context)
     Public Shared Function EclipticToIcrs(state As Double(), jdTt As Double()) As Double()
         Dim nativeIn As New JplStateNative With {.X = state(0), .Y = state(1), .Z = state(2),
                                                 .Vx = state(3), .Vy = state(4), .Vz = state(5)}
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
         Dim nativeOut As JplStateNative
-        Dim status As JplStatus = Native.jpl_ecliptic_to_icrs(nativeIn, jd, nativeOut)
+        Dim ctx As IntPtr = IntPtr.Zero
+        Dim status As JplStatus = Native.jpl_frame_context_create(jd, ctx)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
-        Return {nativeOut.X, nativeOut.Y, nativeOut.Z, nativeOut.Vx, nativeOut.Vy, nativeOut.Vz}
+        Try
+            status = Native.jpl_frame_context_rotate_state(ctx, nativeIn, nativeOut)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return {nativeOut.X, nativeOut.Y, nativeOut.Z, nativeOut.Vx, nativeOut.Vy, nativeOut.Vz}
+        Finally
+            Native.jpl_frame_context_destroy(ctx)
+        End Try
     End Function
 
     Public Shared Function IcrsToEcliptic(state As Double(), jdTt As Double()) As Double()

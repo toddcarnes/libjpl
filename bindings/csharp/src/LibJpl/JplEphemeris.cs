@@ -171,17 +171,29 @@ public sealed class JplEphemeris : SafeHandle
 
 
 
-    // Frame conversions
+    // Frame conversions (ecliptic-to-ICRS via a cached frame context)
     public static double[] EclipticToIcrs(double[] state, double[] jdTt)
     {
         var st = new JplState { X = state[0], Y = state[1], Z = state[2], Vx = state[3], Vy = state[4], Vz = state[5] };
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
-        JplStatus status = Native.jpl_ecliptic_to_icrs(st, jd, out JplState outState);
+        JplStatus status = Native.jpl_frame_context_create(jd, out IntPtr ctx);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
         }
-        return new double[] { outState.X, outState.Y, outState.Z, outState.Vx, outState.Vy, outState.Vz };
+        try
+        {
+            status = Native.jpl_frame_context_rotate_state(ctx, st, out JplState outState);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new double[] { outState.X, outState.Y, outState.Z, outState.Vx, outState.Vy, outState.Vz };
+        }
+        finally
+        {
+            Native.jpl_frame_context_destroy(ctx);
+        }
     }
 
     public static double[] IcrsToEcliptic(double[] state, double[] jdTt)

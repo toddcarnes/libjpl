@@ -16,7 +16,7 @@ int main(void) {
     jpl_state icrs, back;
     static const jpl_date jd_j2000 = {2451545.0, 0.0};
     static const jpl_date jd_off = {2460000.5, 0.0};
-    JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&st, &jd_j2000, &icrs) == JPL_OK);
+    JPL_TEST_CHECK(test_ecliptic_to_icrs(&st, &jd_j2000, &icrs) == JPL_OK);
     JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&icrs, &jd_j2000, &back) == JPL_OK);
     for (int i=0;i<6;++i) JPL_TEST_CHECK(fabs(test_state_component(&back,i)-test_state_component(&st,i)) < 1e-9);
     /* Absolute: ecliptic north pole must tilt by ~eps (~23.4 deg). J2000
@@ -26,7 +26,7 @@ int main(void) {
         jpl_state eq;
         double eps, ex[3], dot, sep, tilt;
         double rn;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&pole, &jd_j2000, &eq) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&pole, &jd_j2000, &eq) == JPL_OK);
         eps = eraObl06(2400000.5, 2451545.0-2400000.5);
         ex[0]=0.0; ex[1]=-sin(eps); ex[2]=cos(eps);
         rn = sqrt(eq.x*eq.x+eq.y*eq.y+eq.z*eq.z);
@@ -48,7 +48,7 @@ int main(void) {
         eraRxp(R, p, pr);
         {
             jpl_state pole={0,0,1,0,0,0}, eq;
-            JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&pole, &jd_j2000, &eq) == JPL_OK);
+            JPL_TEST_CHECK(test_ecliptic_to_icrs(&pole, &jd_j2000, &eq) == JPL_OK);
             JPL_TEST_CHECK(fabs(pr[0]-eq.x)<1e-15 && fabs(pr[1]-eq.y)<1e-15 && fabs(pr[2]-eq.z)<1e-15);
         }
         for (i=0;i<3;++i) for (j=0;j<3;++j) {
@@ -61,8 +61,8 @@ int main(void) {
         jpl_state alias, ref;
         int i;
         alias = st;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&st, &jd_j2000, &ref) == JPL_OK);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&alias, &jd_j2000, &alias) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&st, &jd_j2000, &ref) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&alias, &jd_j2000, &alias) == JPL_OK);
         for (i=0;i<6;++i) JPL_TEST_CHECK(fabs(test_state_component(&alias,i)-test_state_component(&ref,i)) < 1e-15);
         alias = ref;
         JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&alias, &jd_j2000, &alias) == JPL_OK);
@@ -74,7 +74,7 @@ int main(void) {
         jpl_state o2;
         double R2[3][3], p[3], v[3], pr[3], vr[3];
         int k;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&s2, &jd_off, &o2) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&s2, &jd_off, &o2) == JPL_OK);
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(&jd_off, R2) == JPL_OK);
         for (k = 0; k < 3; ++k) { p[k] = test_state_component(&s2,k); v[k] = test_state_component(&s2,k+3); }
         eraRxp(R2, p, pr); eraRxp(R2, v, vr);
@@ -141,13 +141,13 @@ int main(void) {
         eraRxp(ecm, p, b);
         for (int k = 0; k < 3; ++k) JPL_TEST_CHECK(fabs(a[k] - b[k]) < 1e-12);
     }
-    /* Off-J2000 golden vector: pins jpl_ecliptic_to_icrs output at 2460000.5
+    /* Off-J2000 golden vector: pins ecliptic-to-ICRS output at 2460000.5
      * so a future wrong-routine swap fails even if the composition above
      * were rebuilt from the same wrong call. */
     {
         jpl_state s = {0.2, -0.5, 0.8, 0.001, -0.002, 0.0005};
         jpl_state o;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&s, &jd_off, &o) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&s, &jd_off, &o) == JPL_OK);
         JPL_TEST_CHECK(fabs(o.x - 0.197178391766373) < 1e-12);
         JPL_TEST_CHECK(fabs(o.y - -0.777962617565809) < 1e-12);
         JPL_TEST_CHECK(fabs(o.z - 0.534691357224504) < 1e-12);
@@ -212,13 +212,13 @@ int main(void) {
         bad.y = NAN;
         keep = st;
         got = keep;
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&bad, &jd, &got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&bad, &jd, &got) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
         JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&bad, &jd, &got) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&st, &nan_date, &got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&st, &nan_date, &got) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(memcmp(&got, &keep, sizeof got) == 0);
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(NULL, &jd, &got) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(NULL, &jd, &got) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_icrs_to_ecliptic(&st, &jd, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_frame_rotation_matrix(&jd, NULL) == JPL_ERROR_ARGUMENT);
         /* Nonfinite rotation matrix inputs are ARGUMENT, unchanged. */
@@ -235,7 +235,7 @@ int main(void) {
         /* Very large finite arithmetic: rotation of 1e308-scale vectors
          * stays finite (rotation preserves the norm), so assert success
          * and finiteness rather than overflow here. */
-        JPL_TEST_CHECK(jpl_ecliptic_to_icrs(&huge, &jd, &got) == JPL_OK);
+        JPL_TEST_CHECK(test_ecliptic_to_icrs(&huge, &jd, &got) == JPL_OK);
         JPL_TEST_CHECK(isfinite(got.x) && isfinite(got.y) && isfinite(got.z) &&
                        isfinite(got.vx) && isfinite(got.vy) && isfinite(got.vz));
     }

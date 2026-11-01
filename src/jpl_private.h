@@ -7,7 +7,9 @@
 #ifndef LIBJPL_PRIVATE_H
 #define LIBJPL_PRIVATE_H
 
+#include <assert.h>
 #include <math.h>
+#include <stdint.h>
 
 #include "jpl.h"
 
@@ -53,8 +55,15 @@
 /* Header/record layout field offsets (bytes) in the 2880-byte base header.
  * The IPT 14/15 tail lives past it at JPL_TT_TDB_TAIL_BASE plus 6 bytes per
  * overflow constant name (constant_count - 400 when positive).
- * Kept next to the parser for documentation; parse_header still advances
- * a cursor (p += 8/4) so the two must agree when the layout changes. */
+ * The IPT coefficient-pointer table starts at JPL_HDR_IPT_OFFSET: twelve
+ * 12-byte (3x u32) entries, then the DENUM word and the libration triple.
+ * parse_header walks these fields with a cursor (p += 8/4); the cursor
+ * position is asserted against these constants (see parse_header), so the
+ * two representations must agree when the layout changes. */
+#define JPL_HDR_TITLES_LEN 252
+#define JPL_HDR_TEXT_LEN 2400
+#define JPL_HDR_IPT_OFFSET 2696
+#define JPL_HDR_IPT_ENTRY_BYTES 12
 #define JPL_HDR_TITLES_LEN 252
 #define JPL_HDR_TEXT_LEN 2400
 #define JPL_HDR_START_JD_OFFSET 2652
@@ -74,11 +83,92 @@
 #define JPL_TT_TDB_TAIL_BASE 2856
 #define JPL_TT_TDB_TRIPLET_OFFSET 12
 
+/* Overflow-name tail base for `extra` constant names past the classic 400:
+ * JPL_TT_TDB_TAIL_BASE + 6 * extra, computed with overflow checked.
+ * Shared by the layout validator, the overflow-name reader, and the test
+ * mock builders (single source; was re-derived in three places). Callers
+ * bounds-check the result against their own record width (plus any trailing
+ * bytes they consume) and keep their own error codes. */
+static inline jpl_status jpl_tail_offset(size_t extra_names, size_t *out) {
+    if (!out) return JPL_ERROR_ARGUMENT;
+    if (extra_names > (SIZE_MAX - (size_t)JPL_TT_TDB_TAIL_BASE) /
+            (size_t)JPL_CONSTANT_NAME_LENGTH)
+        return JPL_ERROR_FORMAT;
+    *out = (size_t)JPL_TT_TDB_TAIL_BASE +
+        extra_names * (size_t)JPL_CONSTANT_NAME_LENGTH;
+    return JPL_OK;
+}
+
 static inline double jpl_vec_norm3(const double v[3]) {
     /* Scale-safe Euclidean norm: nested hypot preserves tiny (1e-200)
      * directions and avoids overflow when the norm stays representable. */
     return hypot(hypot(v[0], v[1]), v[2]);
 }
+
+/* Atomic light-time geometry for one target/center/epoch. Everything a
+ * convenience caller needs, computed once in coverage-then-read order:
+ * the retarded relative state, the solved delay, the observer's
+ * reception-epoch velocity, the observer-to-Sun vector, and the emission
+ * epoch (tdb minus delay via compensated subtraction). Mixing reception
+ * and emission inputs is a type-level impossibility for callers: they
+ * read named fields instead of threading three epochs by hand.
+ * sun_vec is all zeros when the center is the Sun (no Sun leg needed). */
+typedef struct jpl_geometry {
+    jpl_state rel_state;
+    double light_time_days;
+    double observer_vel[3];
+    double sun_vec[3];
+    jpl_date emission;
+} jpl_geometry;
+
+/* Apparent-place pipeline stage types (src/jpl_convenience.c). Values flow
+ * geometric state -> Direction -> deflected -> aberrated -> true ecliptic;
+ * past construction no bare double[3] crosses a stage seam. */
+/* A finite unit vector. The only supported way to obtain one is
+ * jpl_direction_from_raw, which normalizes finite nonzero input exactly
+ * once; NULL/nonfinite/zero input fails instead of flowing silently into
+ * eraLd (regression guard for the 2026-10-31 Sun-to-observer e-vector
+ * fix). Outputs are transactional: out is untouched unless JPL_OK. */
+typedef struct jpl_direction { double v[3]; } jpl_direction;
+static inline jpl_status jpl_direction_from_raw(const double in[3], jpl_direction *out) {
+    double norm;
+    size_t i;
+    if (!in || !out) return JPL_ERROR_ARGUMENT;
+    for (i = 0; i < 3; ++i) {
+        if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
+    }
+    norm = jpl_vec_norm3(in);
+    if (!isfinite(norm) || !(norm > 0.0)) return JPL_ERROR_NUMERIC;
+    out->v[0] = in[0] / norm;
+    out->v[1] = in[1] / norm;
+    out->v[2] = in[2] / norm;
+    return JPL_OK;
+}
+/* Exact negation of a constructed direction (Sun->observer from
+ * observer->Sun for the eraLd e argument). Both sides are already
+ * directions, so there is nothing to validate: in and out must be
+ * non-NULL and may alias. */
+static inline void jpl_direction_negate(const jpl_direction *in, jpl_direction *out) {
+    out->v[0] = -in->v[0];
+    out->v[1] = -in->v[1];
+    out->v[2] = -in->v[2];
+}
+/* Longitude-rate estimator policy: central, one-sided, and adaptive-h
+ * finite differences over a caller-supplied sampler. Extracted from
+ * jpl_apparent_ecliptic_position so the one-sided/adaptive-h branches are
+ * unit-testable without ephemeris data.
+ * sample(ctx, tt, days, position) reports the apparent ecliptic
+ * position[3] (longitude deg, latitude deg, range AU) at tt+days, or
+ * JPL_ERROR_RANGE past coverage (any other error aborts the estimate).
+ * center_longitude_deg is the already-sampled rate-epoch longitude.
+ * Returns the longitude rate in deg/day, or RANGE when every shrinking-h
+ * sample stays out of coverage. rate_out is untouched on failure. */
+typedef jpl_status (*jpl_ecliptic_sampler)(void *ctx, const jpl_date *tt,
+                                           double days, double position[3]);
+jpl_status jpl_estimate_longitude_rate(jpl_ecliptic_sampler sample, void *ctx,
+                                       const jpl_date *tt,
+                                       double center_longitude_deg,
+                                       double *rate_out);
 
 /* Conversion helpers between public struct types and internal double[2]/double[6] */
 static inline void jpl_date_to_pair(const jpl_date *d, double out[2]) {
@@ -99,8 +189,21 @@ static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
 /* Compensated two-part Julian-date arithmetic (src/jpl_date.c).
  * The represented epoch is the mathematical sum of two finite binary64
  * values. Status-returning helpers validate finiteness, leave outputs
- * untouched on failure, and support exact input/output aliasing;
- * jpl_date_compare consumes normalized finite pairs only. */
+ * untouched on failure, and support exact input/output aliasing.
+ *
+ * Normalization discipline (single source of truth for the date protocol):
+ * every public entry point normalizes user-supplied dates exactly once via
+ * jpl_date_normalize (the trust-boundary funnel: it accepts any finite
+ * pair and publishes a canonical one). Past that funnel, internal producers
+ * emit canonical pairs and internal pure arithmetic (add_core) asserts it
+ * in debug builds via JPL_ASSERT_NORMALIZED. jpl_date_compare is
+ * lexicographic over all finite pairs (pinned by tests/test_dates.c) --
+ * callers pass it normalized pairs, where lexicographic order coincides
+ * with chronological order. Re-normalizing an already-normal pair is
+ * idempotent but pointless; do not add defensive re-normalizations inside
+ * the library (each one must name the trust boundary it guards, or be
+ * removed). Raw on-disk scalar epochs stay scalar; convert at the
+ * serialization boundary only. */
 jpl_status jpl_date_normalize(const double in[2], double out[2]);
 jpl_status jpl_date_add(const double a[2], const double b[2], double out[2]);
 jpl_status jpl_date_subtract(const double a[2], const double b[2], double out[2]);
@@ -110,6 +213,21 @@ jpl_status jpl_date_add_scaled(const double date[2], double step,
 jpl_status jpl_date_partition(const double begin[2], const double end[2],
                               size_t count, size_t index, double out[2]);
 int jpl_date_compare(const double a[2], const double b[2]);
+
+/* Normalized-pair predicate for debug assertions (see the discipline note
+ * above). A finite pair is normalized when it is a fixed point of
+ * jpl_date_normalize -- exactly what two_sum plus zero-canonicalization
+ * produces, so every internal producer's output qualifies by construction.
+ * Fixed-point comparison (rather than an epsilon/ULP bound) cannot
+ * false-fire on legitimate pairs, including huge or tiny magnitudes.
+ * Debug-only: JPL_ASSERT_NORMALIZED vanishes under NDEBUG like assert(). */
+static inline int jpl_date_is_normalized(const double p[2]) {
+    double n[2];
+    if (!isfinite(p[0]) || !isfinite(p[1])) return 0;
+    if (jpl_date_normalize(p, n) != JPL_OK) return 0;
+    return n[0] == p[0] && n[1] == p[1];
+}
+#define JPL_ASSERT_NORMALIZED(p) assert(jpl_date_is_normalized(p))
 
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */

@@ -12,6 +12,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with `add_core()` asserting the contract in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test. No behavior change (audit found no redundant or missing normalizations).
+- Deleted `jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path); thinned `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and context creation onto a single internal matrix computer. All in-repo and binding callers migrated to the context API; no behavior change.
+
+- Interpolation internals now thread an `interp_work` bundle through a single `jpl_evaluate()` seam instead of seven helpers with five-plus parameters each; the `interp_select_record` passthrough was folded into its caller. No behavior change.
+- New atomic `jpl_geometry` (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) built once by `jpl_compute_geometry()` in coverage-then-read order; both convenience call sites consume its named fields instead of threading three epochs by hand (replacing `observer_geometry()` and the inline duplicate).
+- Layout offsets now have a single source of truth: `JPL_HDR_IPT_OFFSET`/`JPL_HDR_IPT_ENTRY_BYTES` name the IPT table, and `jpl_tail_offset()` centralizes the overflow-name tail computation shared by the layout validator, the overflow-name reader, and the test mock builders (which now use the same constants). `parse_header` asserts its cursor against the named offsets.
+- Apparent-place pipeline now threads struct-typed stages: the internal `jpl_direction` (finite unit vector; `jpl_direction_from_raw` normalizes once) gates the solar-deflection stage, replacing both manual `/distance` renormalizations, and the longitude-rate policy (central/one-sided/adaptive-`h` finite differences) is extracted as `jpl_estimate_longitude_rate` over a sampler callback, unit-tested with a synthetic sampler and no ephemeris data. No behavior change (Horizons goldens byte-identical).
+
+### Fixed
+
+- Removed accidentally committed `tests/test_convenience.c.bak` scratch copy.
+
 ## [0.7.0] - 2026-11-01
 
 ### Changed

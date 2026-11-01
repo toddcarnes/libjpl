@@ -70,16 +70,22 @@ jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],
     return JPL_OK;
 }
 
-jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]) {
+/* Single rotation-matrix computer: mean ecliptic-of-date to ICRS at a
+ * normalized epoch (bias + precession + mean obliquity, IAU 2006 via
+ * eraEcm06, transposed). Every path that needs R funnels through here so
+ * the ERFA call sequence and finiteness checks exist exactly once. */
+static jpl_status jpl_epoch_matrix(const jpl_date *jd_tt, double R[3][3]) {
     double norm[2], ecm[3][3], local[3][3];
     jpl_status status;
     size_t i, j;
     if (!jd_tt || !R) return JPL_ERROR_ARGUMENT;
     status = check_date(jd_tt);
     if (status != JPL_OK) return status;
-    double jd_tt_arr[2];
-    jpl_date_to_pair(jd_tt, jd_tt_arr);
-    status = jpl_date_normalize(jd_tt_arr, norm);
+    {
+        double jd_tt_arr[2];
+        jpl_date_to_pair(jd_tt, jd_tt_arr);
+        status = jpl_date_normalize(jd_tt_arr, norm);
+    }
     if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
     /* Pass both parts to ERFA: eraEcm06(date1, date2) keeps the small
      * residual alive instead of rounding a scalar full epoch. Compute
@@ -96,60 +102,23 @@ jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]) {
     return JPL_OK;
 }
 
-jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state) {
+jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]) {
+    return jpl_epoch_matrix(jd_tt, R);
+}
+
+jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state) {
     double R[3][3], pr[3], vr[3];
     double m[3][3];
     jpl_status status;
     if (!state || !jd_tt || !out_state) return JPL_ERROR_ARGUMENT;
     status = check_state(state);
     if (status != JPL_OK) return status;
-    status = jpl_frame_rotation_matrix(jd_tt, R);
+    /* Inverse direction through the single matrix computer: transpose the
+     * ecliptic-to-ICRS rotation back to ICRS-to-ecliptic. The transpose of
+     * the computer's finite-checked matrix needs no second finiteness gate. */
+    status = jpl_epoch_matrix(jd_tt, R);
     if (status != JPL_OK) return status;
-    /* Compute into locals first: outputs stay unchanged on failure and
-     * in-place (aliasing) calls stay exact. Publish position only after
-     * velocity also succeeds: both legs share one transactional commit. */
-    memcpy(m, R, sizeof m);
-    {
-        double p[3], v[3];
-        size_t i;
-        p[0] = state->x; p[1] = state->y; p[2] = state->z;
-        v[0] = state->vx; v[1] = state->vy; v[2] = state->vz;
-        eraRxp(m, p, pr);
-        eraRxp(m, v, vr);
-        for (i = 0; i < 3; ++i) {
-            if (!isfinite(pr[i]) || !isfinite(vr[i])) return JPL_ERROR_NUMERIC;
-        }
-    }
-    out_state->x = pr[0]; out_state->y = pr[1]; out_state->z = pr[2];
-    out_state->vx = vr[0]; out_state->vy = vr[1]; out_state->vz = vr[2];
-    return JPL_OK;
-}
-
-jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state) {
-    double norm[2], ecm[3][3], pr[3], vr[3];
-    double m[3][3];
-    jpl_status status;
-    if (!state || !jd_tt || !out_state) return JPL_ERROR_ARGUMENT;
-    status = check_state(state);
-    if (status != JPL_OK) return status;
-    status = check_date(jd_tt);
-    if (status != JPL_OK) return status;
-    double jd_tt_arr[2];
-    jpl_date_to_pair(jd_tt, jd_tt_arr);
-    status = jpl_date_normalize(jd_tt_arr, norm);
-    if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
-    eraEcm06(norm[0], norm[1], ecm);
-    /* Mirror the rotation-matrix finiteness check: do not publish a
-     * nonfinite local matrix from a finite date. */
-    {
-        size_t i, k;
-        for (i = 0; i < 3; ++i) {
-            for (k = 0; k < 3; ++k) {
-                if (!isfinite(ecm[i][k])) return JPL_ERROR_NUMERIC;
-            }
-        }
-    }
-    memcpy(m, ecm, sizeof m);
+    eraTr(R, m);
     {
         double p[3], v[3];
         size_t i;
@@ -229,23 +198,13 @@ jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt) {
 }
 
 jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context) {
-    double norm[2], ecm[3][3], local[3][3];
+    double local[3][3];
     jpl_status status;
-    size_t i, j;
     if (!jd_tt || !out_context) return JPL_ERROR_ARGUMENT;
-    status = check_date(jd_tt);
+    /* Cached matrix comes from the single computer: same epoch handling
+     * and finiteness gate as every other rotation path. */
+    status = jpl_epoch_matrix(jd_tt, local);
     if (status != JPL_OK) return status;
-    double jd_tt_arr[2];
-    jpl_date_to_pair(jd_tt, jd_tt_arr);
-    status = jpl_date_normalize(jd_tt_arr, norm);
-    if (status != JPL_OK) return status == JPL_ERROR_ARGUMENT ? JPL_ERROR_ARGUMENT : JPL_ERROR_NUMERIC;
-    eraEcm06(norm[0], norm[1], ecm);
-    eraTr(ecm, local);
-    for (i = 0; i < 3; ++i) {
-        for (j = 0; j < 3; ++j) {
-            if (!isfinite(local[i][j])) return JPL_ERROR_NUMERIC;
-        }
-    }
     jpl_frame_context *ctx = malloc(sizeof *ctx);
     if (!ctx) return JPL_ERROR_MEMORY;
     memcpy(ctx->matrix, local, sizeof local);

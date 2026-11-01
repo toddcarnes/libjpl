@@ -11,6 +11,33 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+/* Synthetic ecliptic sampler for the rate-estimator unit tests: exact
+ * linear longitude drift (base + rate*days, wrapped to [0, 360)) inside an
+ * acceptance window, RANGE outside it, forced status when set. No
+ * ephemeris data involved. */
+struct estimator_test_ctx {
+    double base_deg;
+    double rate_dpd;
+    double ok_min_days;
+    double ok_max_days;
+    jpl_status forced;
+    double seen_min_abs_days;
+};
+static jpl_status estimator_test_sampler(void *vctx, const jpl_date *tt,
+                                         double days, double position[3]) {
+    struct estimator_test_ctx *c = (struct estimator_test_ctx *)vctx;
+    double lon;
+    (void)tt;
+    if (!c || !position) return JPL_ERROR_ARGUMENT;
+    if (days < c->ok_min_days || days > c->ok_max_days) return JPL_ERROR_RANGE;
+    if (c->forced != JPL_OK) return c->forced;
+    if (fabs(days) < c->seen_min_abs_days) c->seen_min_abs_days = fabs(days);
+    lon = c->base_deg + c->rate_dpd * days;
+    lon = fmod(lon, 360.0);
+    if (lon < 0.0) lon += 360.0;
+    position[0] = lon; position[1] = 0.0; position[2] = 1.0;
+    return JPL_OK;
+}
 int main(void) {
     /* 1 AU/day = AU_KM/86400 km/s ~= 1731.45683; 0.01 -> ~17.3145683,
      * checked absolutely so constant typos fail. Converters return status
@@ -651,6 +678,102 @@ int main(void) {
         }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
+    }
+    /* Apparent-place stage 1: jpl_direction. Finite nonzero input
+     * normalizes to unit exactly once; degenerate input fails at
+     * construction and never reaches eraLd (regression guard for the
+     * 2026-10-31 Sun-to-observer e-vector fix). */
+    {
+        jpl_direction d = {{7.0, 7.0, 7.0}};
+        const jpl_direction keep = {{7.0, 7.0, 7.0}};
+        double norm;
+        static const double raw[3] = {0.2, -0.5, 0.8};
+        JPL_TEST_CHECK(jpl_direction_from_raw(NULL, &d) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(memcmp(&d, &keep, sizeof d) == 0);
+        JPL_TEST_CHECK(jpl_direction_from_raw(raw, NULL) == JPL_ERROR_ARGUMENT);
+        { double bad[3] = {1.0, NAN, 0.0};
+          JPL_TEST_CHECK(jpl_direction_from_raw(bad, &d) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(memcmp(&d, &keep, sizeof d) == 0); }
+        { double bad[3] = {1.0, 0.0, INFINITY};
+          JPL_TEST_CHECK(jpl_direction_from_raw(bad, &d) == JPL_ERROR_ARGUMENT);
+          JPL_TEST_CHECK(memcmp(&d, &keep, sizeof d) == 0); }
+        { double zero[3] = {0.0, 0.0, 0.0};
+          JPL_TEST_CHECK(jpl_direction_from_raw(zero, &d) == JPL_ERROR_NUMERIC);
+          JPL_TEST_CHECK(memcmp(&d, &keep, sizeof d) == 0); }
+        /* Non-unit input normalizes (this is what lets the pipeline drop
+         * its manual /distance renormalizations); single-axis included. */
+        { double two[3] = {2.0, 0.0, 0.0};
+          JPL_TEST_CHECK(jpl_direction_from_raw(two, &d) == JPL_OK);
+          JPL_TEST_CHECK(d.v[0] == 1.0 && d.v[1] == 0.0 && d.v[2] == 0.0); }
+        JPL_TEST_CHECK(jpl_direction_from_raw(raw, &d) == JPL_OK);
+        norm = jpl_vec_norm3(d.v);
+        JPL_TEST_CHECK(fabs(norm - 1.0) < 1e-15);
+        { double n = sqrt(raw[0] * raw[0] + raw[1] * raw[1] + raw[2] * raw[2]);
+          int i; for (i = 0; i < 3; ++i) JPL_TEST_CHECK(fabs(d.v[i] - raw[i] / n) < 1e-15); }
+        /* Negation (Sun->observer from observer->Sun), aliasing-safe. */
+        { jpl_direction n;
+          jpl_direction_negate(&d, &n);
+          { int i; for (i = 0; i < 3; ++i) JPL_TEST_CHECK(n.v[i] == -d.v[i]); }
+          jpl_direction_negate(&n, &n);
+          JPL_TEST_CHECK(memcmp(&n, &d, sizeof d) == 0); }
+    }
+    /* Apparent-place stage 2: the longitude-rate estimator, driven by the
+     * synthetic sampler (no ephemeris data). Covers the central,
+     * one-sided, adaptive-h, and error-propagation branches. */
+    {
+        struct estimator_test_ctx c;
+        jpl_date tt = {2451545.0, 0.0};
+        double rate = 99.0;
+        /* Central difference through the 0/360 wrap (remainder logic). */
+        c.base_deg = 359.99; c.rate_dpd = 2.0;
+        c.ok_min_days = -1.0; c.ok_max_days = 1.0;
+        c.forced = JPL_OK; c.seen_min_abs_days = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 359.99, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 2.0) < 1e-9);
+        /* After-only, second-order one-sided (negative days out of range). */
+        c.base_deg = 100.0; c.rate_dpd = 0.5;
+        c.ok_min_days = 0.0; c.ok_max_days = 1.0;
+        c.forced = JPL_OK; c.seen_min_abs_days = 99.0;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 0.5) < 1e-9);
+        /* After-only, first-order (the +2h sample is out of range too). */
+        c.ok_min_days = 0.0; c.ok_max_days = 0.015;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 0.5) < 1e-9);
+        /* Before-only mirror, second- then first-order. */
+        c.ok_min_days = -1.0; c.ok_max_days = 0.0;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 0.5) < 1e-9);
+        c.ok_min_days = -0.015; c.ok_max_days = 0.005;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 0.5) < 1e-9);
+        /* Adaptive shrinking: only |days| <= 0.003 samples succeed. */
+        c.ok_min_days = -0.003; c.ok_max_days = 0.003;
+        c.forced = JPL_OK; c.seen_min_abs_days = 99.0;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_OK);
+        JPL_TEST_CHECK(fabs(rate - 0.5) < 1e-9);
+        JPL_TEST_CHECK(c.seen_min_abs_days <= 0.0025 + 1e-12);
+        /* Nothing in range, even after shrinking: RANGE, rate untouched. */
+        c.ok_min_days = 1.0; c.ok_max_days = 2.0;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(rate == 99.0);
+        /* Sampler errors abort the estimate (before-side checked first). */
+        c.ok_min_days = -1.0; c.ok_max_days = 1.0;
+        c.forced = JPL_ERROR_NUMERIC;
+        rate = 99.0;
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, &rate) == JPL_ERROR_NUMERIC);
+        JPL_TEST_CHECK(rate == 99.0);
+        /* Bad estimator inputs. */
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(NULL, &c, &tt, 100.0, &rate) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, NULL, 100.0, &rate) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, 100.0, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_estimate_longitude_rate(estimator_test_sampler, &c, &tt, NAN, &rate) == JPL_ERROR_ARGUMENT);
     }
     puts("convenience tests passed"); return 0;
 }

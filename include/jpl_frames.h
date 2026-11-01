@@ -16,25 +16,7 @@ extern "C" {
  *       see LICENSE in the project root. ERFA is used privately by the
  *       implementation; no ERFA declaration is exposed here.
  */
-/**
- * @brief Rotate an ecliptic-of-date state to ICRS.
- * @param state Input state, position (AU) + velocity (AU/day) in ecliptic of date. Must be non-NULL.
- * @param jd_tt TT Julian date as a jpl_date used to evaluate bias/precession/obliquity.
- * @param out_state Output state in ICRS, may alias state. Must be non-NULL.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
- *         date parts or nonfinite state slots, JPL_ERROR_NUMERIC when finite
- *         inputs produce an unrepresentable result.
- * @note Date-dependent (equinox of date, not fixed J2000): the matrix is the
- *       transpose of the IAU 2006 ICRS-to-ecliptic matrix (eraEcm06) at jd_tt,
- *       combining frame bias + precession (eraPmat06) with mean obliquity
- *       (eraObl06).
- * @note Aliasing-safe: position/velocity are rotated via locals before store;
- *       out_state is unchanged on failure.
- * @note Velocity is rotated as a direction at fixed jd_tt (R.v);
- *       frame-rate dR/dt terms from precession are not included
- *       (~50"/yr x 1 AU ~= 1 m/s).
- */
-JPL_API jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
+
 /**
  * @brief Rotate an ICRS state to ecliptic of date.
  * @param state Input state, position (AU) + velocity (AU/day) in ICRS. Must be non-NULL.
@@ -43,7 +25,9 @@ JPL_API jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *
  * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite
  *         date parts or nonfinite state slots, JPL_ERROR_NUMERIC when finite
  *         inputs produce an unrepresentable result.
- * @note Inverse of jpl_ecliptic_to_icrs; same equinox-of-date convention.
+ * @note Inverse of the ecliptic-to-ICRS direction with the same equinox-of-date
+ *       convention: the transpose of the IAU 2006 ICRS-to-ecliptic matrix
+ *       (eraEcm06) at jd_tt.
  * @note Aliasing-safe: position/velocity are rotated via locals before store;
  *       out_state is unchanged on failure.
  * @note Velocity is rotated as a direction at fixed jd_tt (R.v);

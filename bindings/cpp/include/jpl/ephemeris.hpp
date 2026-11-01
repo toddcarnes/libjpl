@@ -207,13 +207,17 @@ public:
         return e;
     }
 
-    // Frame conversions
+    // Frame conversions (via the cached frame context)
     [[nodiscard]] static std::array<double, 6> ecliptic_to_icrs(const std::array<double, 6>& state,
                                                                  const std::array<double, 2>& jd_tt) {
-        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
         jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
         jpl_state out;
-        throw_if_error(::jpl_ecliptic_to_icrs(&in, &jd, &out));
+        jpl_frame_context* ctx = nullptr;
+        throw_if_error(::jpl_frame_context_create(&jd, &ctx));
+        jpl_status status = ::jpl_frame_context_rotate_state(ctx, &in, &out);
+        ::jpl_frame_context_destroy(ctx);
+        throw_if_error(status);
         return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }
 

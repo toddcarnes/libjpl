@@ -91,12 +91,17 @@ ffi.cdef("""
     jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);
     jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone);
 
-    /* jpl_frames.h - frame conversions and time conversions */
-    jpl_status jpl_ecliptic_to_icrs(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
+    /* jpl_frames.h - frame conversions and time conversions.
+     * ecliptic_to_icrs intentionally absent: callers use the cached
+     * frame-context API below (same transform, no duplicate entry). */
     jpl_status jpl_icrs_to_ecliptic(const jpl_state *state, const jpl_date *jd_tt, jpl_state *out_state);
     jpl_status jpl_frame_rotation_matrix(const jpl_date *jd_tt, double R[3][3]);
     jpl_status jpl_tt_to_tdb(const jpl_date *jd_tt, jpl_date *jd_tdb);
     jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt);
+    typedef struct jpl_frame_context jpl_frame_context;
+    jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context);
+    void jpl_frame_context_destroy(jpl_frame_context *context);
+    jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
 
     /* jpl_convenience.h - planet/Moon helpers and unit conversions */
     jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, int planet, int center, jpl_state *state);

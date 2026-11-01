@@ -162,13 +162,9 @@ public static partial class Native
         IntPtr ephem,
         out IntPtr out_clone);
 
-    // jpl_frames.h - frame conversions and time conversions
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern JplStatus jpl_ecliptic_to_icrs(
-        in JplState state,
-        JplDate jd_tt,
-        out JplState out_state);
-
+    // jpl_frames.h - frame conversions and time conversions.
+    // (No ecliptic_to_icrs import: callers use the cached frame-context
+    // API below for the same transform.)
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_icrs_to_ecliptic(
         in JplState state,
@@ -179,6 +175,20 @@ public static partial class Native
     public static extern JplStatus jpl_frame_rotation_matrix(
         JplDate jd_tt,
         [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 9)] double[,] R);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_frame_context_create(
+        JplDate jd_tt,
+        out IntPtr out_context);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void jpl_frame_context_destroy(IntPtr context);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_frame_context_rotate_state(
+        IntPtr context,
+        in JplState state,
+        out JplState out_state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_tt_to_tdb(

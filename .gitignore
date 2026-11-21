@@ -41,6 +41,6 @@ __pycache__/
 # Editor / OS junk
 .vs/
 .vscode/
-*.user
 Desktop.ini
 Thumbs.db
+/build-docs/

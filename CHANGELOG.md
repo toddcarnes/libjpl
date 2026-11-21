@@ -21,6 +21,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Bindings: hardened C# and VB.NET P/Invoke calls with array-length validation and `SafeHandle` `DangerousAddRef`/`DangerousRelease`, populated overflow `ConstantNames` (>400), delegated `JplException` messages to `jpl_status_string()`, and added `ApplyAberrationFull`; made Python `apply_aberration*` `@staticmethod`, guarded closed handles with `JplError`, and fixed `pyproject.toml`; avoided redundant overflow-name reads in C++/Python `constants()`/`read_record()`; fixed all four binding examples.
 - Documentation: aligned `include/jpl.h`, `include/jpl_frames.h`, `README.md`, `BUILDING.md`, `CHANGELOG.md`, `docs/validation.md`, `docs/migration-two-part-dates.md`, `.github/workflows/ci.yml`, and all five `bindings/*/examples/README.md` files with the v0.8.x API.
 
+### Changed
+
+- Documentation: Doxygen project name now includes library version (`libjpl 0.8.1`).
+- Build: ignore `build-docs/` directory in `.gitignore`.
+
 ## [0.8.0] - 2026-11-20
 
 ### Changed

@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-20
+
+### Fixed
+
+- Core: `jpl_frame_context_create()` now sets `*out_context = NULL` on all failure paths; `validate_layout()` propagates `JPL_ERROR_IO`/`JPL_ERROR_MEMORY` from record-endpoint probes; `resolve_reopen_path()` guards Win32 `GetFullPathNameA` buffer growth; `lt_fast_iterate()` checks `fabs(*residual) <= JPL_LIGHTTIME_TOL_DAYS`; `jpl_date_partition()` normalizes endpoint indices; removed unused `identity` struct fields and redundant `select_record()` recomputation.
+- CMake & tests: `jpl_horizons_offline` and `jpl_horizons_reference_mutation` now run unconditionally against the committed DE441 slice (`tests/data/de441_2000_2010.eph`); `jpl_shared` sets `C_VISIBILITY_PRESET hidden` so Unix shared libraries export only `JPL_API` symbols; `jpl_install` supports `-DLIBJPL_BUILD_SHARED=OFF`; expanded `jpl_licenses` sweep to cover C++, C#, VB.NET, and Doxygen files and added missing inventory entries; added direct unit tests for `jpl_frame_context_*`.
+- Bindings: hardened C# and VB.NET P/Invoke calls with array-length validation and `SafeHandle` `DangerousAddRef`/`DangerousRelease`, populated overflow `ConstantNames` (>400), delegated `JplException` messages to `jpl_status_string()`, and added `ApplyAberrationFull`; made Python `apply_aberration*` `@staticmethod`, guarded closed handles with `JplError`, and fixed `pyproject.toml`; avoided redundant overflow-name reads in C++/Python `constants()`/`read_record()`; fixed all four binding examples.
+- Documentation: aligned `include/jpl.h`, `include/jpl_frames.h`, `README.md`, `BUILDING.md`, `CHANGELOG.md`, `docs/validation.md`, `docs/migration-two-part-dates.md`, `.github/workflows/ci.yml`, and all five `bindings/*/examples/README.md` files with the v0.8.x API.
+
 ## [0.8.0] - 2026-11-20
 
 ### Changed

@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.8.0 LANGUAGES C)
+project(libjpl VERSION 0.8.1 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.

@@ -6,7 +6,9 @@ See LICENSE in the project root for the full license text.
 
 Small C17 library for reading JPL Development Ephemeris (DE) binaries.
 Bundles ERFA v2.0.1; no separate third-party library installation is
-required. Static lib `jpl` + three public headers.
+required. Builds static (`jpl_static`) and shared (`jpl_shared`) libraries,
+public C headers (`jpl.h`, `jpl_frames.h`, `jpl_convenience.h`, generated
+`jpl_export.h`), and optional bindings for C++, Python, C#, and VB.NET.
 
 ## Protocol deviations
 
@@ -79,10 +81,12 @@ requirement in the section above assumes the work was done on a branch.
 
 - [Validation notes](docs/validation.md) record current scientific contracts,
   platform support, and verification procedures.
-- Public and in-memory Julian dates use `double[2]`; preserve both parts
-  through arithmetic and ERFA calls. Never split an already-rounded scalar
-  to create a two-part input. Keep standard DE on-disk scalar dates and
-  promote them to `{scalar, 0.0}` when read.
+- Public Julian dates and states use `jpl_date {hi, lo}` and `jpl_state`
+  structs; internal arithmetic uses normalized `double[2]` pairs and
+  `double[6]` arrays. Preserve both date parts through arithmetic and ERFA
+  calls; construct two-part dates directly rather than splitting an
+  already-rounded scalar. Keep standard DE on-disk scalar dates and promote
+  them to `{scalar, 0.0}` when read.
 
 ## Build & test
 

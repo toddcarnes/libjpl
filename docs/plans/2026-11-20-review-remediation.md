@@ -102,12 +102,12 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 ---
 
 ## Workstream 4 — Documentation, Doxygen Inventory & Governance *(skill: `writing-for-agents`)*
-- [ ] **4.1 Doxygen & public symbol inventory (`docs/api.dox`, `tests/public_symbols.txt`)**
+- [x] **4.1 Doxygen & public symbol inventory (`docs/api.dox`, `tests/public_symbols.txt`)**
   - Add `jpl_date`, `jpl_state`, `jpl_frame_context`, and all 5 `jpl_frame_context_*` functions to `tests/public_symbols.txt` and `docs/api.dox`.
-- [ ] **4.2 Fix corrupted characters & duplicate entries (`docs/validation.md`, `CHANGELOG.md`)**
+- [x] **4.2 Fix corrupted characters & duplicate entries (`docs/validation.md`, `CHANGELOG.md`)**
   - Fix literal `\b` in `docs/validation.md:199` and `CHANGELOG.md`.
   - Remove duplicate license-sweep bullets from `0.4.0`/`0.3.0`/`0.2.0` in `CHANGELOG.md`; fix `0.5.0` shared runtime install path; add `[Unreleased]` entries for all changes on this branch.
-- [ ] **4.3 Align stale docs (`AGENTS.md`, `README.md`, `docs/reviews/2026-10-31-review.md`, D1)**
+- [x] **4.3 Align stale docs (`AGENTS.md`, `README.md`, `docs/reviews/2026-10-31-review.md`, D1)**
   - Update `AGENTS.md` using `writing-for-agents` guidelines.
   - Fix `README.md:135` (`jpl::Ephemeris::planet_position`).
   - Fix `docs/reviews/2026-10-31-review.md:1-3` comment syntax (`<!-- ... -->`).

@@ -196,7 +196,7 @@ Direct port of C# API: `LibJpl.JplEphemeris : SafeHandle`,
 `LibJplApi.Open`/`OpenMmap`, identical enums and exceptions. CMake option:
 `LIBJPL_BUILD_VBNET_BINDING=ON`. Requires .NET 8 SDK.
 
-Binding tests are executed in CI on Windows (indings-windows job) and Linux (indings-linux job). C++ tests link against the static library, while Python, C#, and VB.NET link against the shared library.
+Binding tests are executed in CI on Windows (`bindings-windows` job) and Linux (`bindings-linux` job). C++ tests link against the static library, while Python, C#, and VB.NET link against the shared library.
 
 ## Procedures and historical evidence (2026-09-19 checkpoint)
 

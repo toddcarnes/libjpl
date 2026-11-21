@@ -45,6 +45,11 @@
  * - @ref jpl_au_per_day_to_km_per_s "jpl_au_per_day_to_km_per_s()" - Convert velocity units.
  * - @ref jpl_km_to_au "jpl_km_to_au()" - Convert distance units.
  *
+ * ## Core types
+ * - @ref jpl_date "jpl_date" - Two-part Julian date (`{hi, lo}`).
+ * - @ref jpl_state "jpl_state" - Six-component position and velocity state vector.
+ * - @ref jpl_frame_context "jpl_frame_context" - Opaque cached frame conversion context.
+ *
  * ## Status and errors
  * - @ref jpl_status_string "jpl_status_string()" - Describe a status code.
  *

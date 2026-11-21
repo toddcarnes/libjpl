@@ -216,23 +216,7 @@ void jpl_frame_context_destroy(jpl_frame_context *context) {
     if (context) free(context);
 }
 
-jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
-    double m[3][3], p[3], pr[3];
-    if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
-    for (int i = 0; i < 3; ++i) {
-        if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
-        p[i] = in[i];
-    }
-    memcpy(m, context->matrix, sizeof m);
-    eraRxp(m, p, pr);
-    for (int i = 0; i < 3; ++i) {
-        if (!isfinite(pr[i])) return JPL_ERROR_NUMERIC;
-    }
-    out[0] = pr[0]; out[1] = pr[1]; out[2] = pr[2];
-    return JPL_OK;
-}
-
-jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
+static jpl_status rotate_vec3(const jpl_frame_context *context, const double in[3], double out[3]) {
     double m[3][3], v[3], vr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
@@ -246,6 +230,14 @@ jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, c
     }
     out[0] = vr[0]; out[1] = vr[1]; out[2] = vr[2];
     return JPL_OK;
+}
+
+jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
+    return rotate_vec3(context, in, out);
+}
+
+jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
+    return rotate_vec3(context, in, out);
 }
 
 jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {

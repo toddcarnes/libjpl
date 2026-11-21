@@ -95,7 +95,7 @@ class JplPointer:
 
 class JplHeader:
     """Parsed DE header (snapshot copied from the native struct; safe after close)."""
-    def __init__(self, c_header, handle=None):
+    def __init__(self, c_header, handle):
         self._titles = [
             _ffi.string(c_header.titles[i]).decode().rstrip('\x00')
             for i in range(3)
@@ -105,7 +105,7 @@ class JplHeader:
         inline_limit = min(self._constant_count, 400)
         for i in range(inline_limit):
             names.append(_ffi.string(c_header.constant_names[i]).decode().rstrip('\x00'))
-        if self._constant_count > 400 and handle is not None:
+        if self._constant_count > 400:
             name_buf = _ffi.new("char[7]")
             for i in range(400, self._constant_count):
                 _check(_lib.jpl_get_constant_name(handle, i, name_buf))

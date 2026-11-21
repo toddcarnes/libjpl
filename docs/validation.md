@@ -21,7 +21,19 @@ Evidence for `docs/plans/2026-11-20-review-remediation.md` was collected on
   - Debug: **52/52 passed**, zero compiler warnings.
   - Release: **52/52 passed**, zero compiler warnings.
   - Includes `jpl_docs_symbols`, `jpl_docs_paths`, `jpl_docs_only` (Doxygen 1.18.0, `WARN_AS_ERROR=YES`), `jpl_licenses`, `jpl_install`, `jpl_horizons_offline`, `jpl_horizons_reference_mutation`, `jpl_horizons_de441_local`, `jpl_cpp_binding`, `jpl_python_binding`, `jpl_csharp_binding`, and `jpl_vbnet_binding`.
-- Linux GCC/Clang, ASan/UBSan, and `bindings-linux` (System V ABI) were not run locally in this session; CI will establish those gates.
+- Ubuntu WSL (native Linux filesystem `/tmp/libjpl-wsl-verify`, GCC 11.4.0,
+  Clang, Doxygen + Graphviz `dot`, Python 3 + `cffi` 2.1.1):
+  - GCC Debug (`-DLIBJPL_BUILD_DOCS=ON`, C++/Python bindings ON,
+    `-Werror=implicit-function-declaration`): **47/47 passed**, zero warnings.
+  - GCC Release (C++/Python bindings ON, `-Werror=implicit-function-declaration`):
+    **45/45 passed**, zero warnings.
+  - Clang Debug (C++/Python bindings ON, `-Werror=implicit-function-declaration`):
+    **45/45 passed**, zero warnings.
+  - ASan/UBSan/float-cast-overflow (excluding `jpl_install|jpl_docs_paths`):
+    **42/42 passed**.
+  - TSan (`setarch x86_64 -R`, `jpl_threads|jpl_mmap`): **2/2 passed**.
+  - `.NET 8` SDK is not installed in WSL; Linux C#/VB.NET P/Invoke (`bindings-linux`)
+    remains for CI.
 
 ## Review follow-up acceptance (2026-09-25)
 

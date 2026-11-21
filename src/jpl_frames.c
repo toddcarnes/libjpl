@@ -216,14 +216,15 @@ void jpl_frame_context_destroy(jpl_frame_context *context) {
     if (context) free(context);
 }
 
-jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]) {
-    double p[3], pr[3];
+jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
+    double m[3][3], p[3], pr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
         p[i] = in[i];
     }
-    eraRxp(context->matrix, p, pr);
+    memcpy(m, context->matrix, sizeof m);
+    eraRxp(m, p, pr);
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(pr[i])) return JPL_ERROR_NUMERIC;
     }
@@ -231,14 +232,15 @@ jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const d
     return JPL_OK;
 }
 
-jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]) {
-    double v[3], vr[3];
+jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
+    double m[3][3], v[3], vr[3];
     if (!context || !in || !out) return JPL_ERROR_ARGUMENT;
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(in[i])) return JPL_ERROR_ARGUMENT;
         v[i] = in[i];
     }
-    eraRxp(context->matrix, v, vr);
+    memcpy(m, context->matrix, sizeof m);
+    eraRxp(m, v, vr);
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(vr[i])) return JPL_ERROR_NUMERIC;
     }
@@ -246,15 +248,16 @@ jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const d
     return JPL_OK;
 }
 
-jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
-    double pr[3], vr[3];
+jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
+    double m[3][3], pr[3], vr[3];
     if (!context || !state || !out_state) return JPL_ERROR_ARGUMENT;
     jpl_status s = check_state(state);
     if (s != JPL_OK) return s;
     double p[3] = {state->x, state->y, state->z};
     double v[3] = {state->vx, state->vy, state->vz};
-    eraRxp(context->matrix, p, pr);
-    eraRxp(context->matrix, v, vr);
+    memcpy(m, context->matrix, sizeof m);
+    eraRxp(m, p, pr);
+    eraRxp(m, v, vr);
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(pr[i]) || !isfinite(vr[i])) return JPL_ERROR_NUMERIC;
     }

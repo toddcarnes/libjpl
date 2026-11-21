@@ -110,34 +110,40 @@ JPL_API jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_con
 JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
 
 /**
- * @brief Rotates a position vector using a precomputed frame context.
+ * @brief Rotates a mean-ecliptic-of-date position vector to ICRS using a precomputed frame context.
  * @param context Context from jpl_frame_context_create().
- * @param in Input position vector (AU). Must be non-NULL.
- * @param out Output position vector (AU). Must be non-NULL; may alias in.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @param in Input position vector in mean ecliptic of date (AU). Must be non-NULL.
+ * @param out Output position vector in ICRS (AU). Must be non-NULL; may alias in.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs,
+ *         JPL_ERROR_NUMERIC on unrepresentable output.
+ * @note Applies the cached ecliptic-of-date-to-ICRS rotation matrix (transpose of eraEcm06).
  * @since 0.7.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_position(jpl_frame_context *context, const double in[3], double out[3]);
+JPL_API jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]);
 
 /**
- * @brief Rotates a velocity vector using a precomputed frame context.
+ * @brief Rotates a mean-ecliptic-of-date velocity vector to ICRS using a precomputed frame context.
  * @param context Context from jpl_frame_context_create().
- * @param in Input velocity vector (AU/day). Must be non-NULL.
- * @param out Output velocity vector (AU/day). Must be non-NULL; may alias in.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @param in Input velocity vector in mean ecliptic of date (AU/day). Must be non-NULL.
+ * @param out Output velocity vector in ICRS (AU/day). Must be non-NULL; may alias in.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs,
+ *         JPL_ERROR_NUMERIC on unrepresentable output.
+ * @note Rotates velocity as a direction at fixed epoch (R*v); frame-rate dR/dt terms are not included.
  * @since 0.7.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_velocity(jpl_frame_context *context, const double in[3], double out[3]);
+JPL_API jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]);
 
 /**
- * @brief Rotates a full state vector using a precomputed frame context.
+ * @brief Rotates a full mean-ecliptic-of-date state vector to ICRS using a precomputed frame context.
  * @param context Context from jpl_frame_context_create().
- * @param state Input state (position AU + velocity AU/day). Must be non-NULL.
- * @param out_state Output state. Must be non-NULL; may alias state.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs.
+ * @param state Input state in mean ecliptic of date (position AU + velocity AU/day). Must be non-NULL.
+ * @param out_state Output state in ICRS. Must be non-NULL; may alias state.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs,
+ *         JPL_ERROR_NUMERIC on unrepresentable output.
+ * @note Applies the cached ecliptic-of-date-to-ICRS rotation matrix to position and velocity at fixed epoch.
  * @since 0.7.0
  */
-JPL_API jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
+JPL_API jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
 
 #ifdef __cplusplus
 }

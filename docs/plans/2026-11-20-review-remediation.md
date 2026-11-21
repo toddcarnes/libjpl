@@ -61,17 +61,17 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 ---
 
 ## Workstream 1 — Core C Library Correctness & UB *(skill: `tdd`)*
-- [ ] **1.1 Solar light deflection (`src/jpl_convenience.c`, `tests/test_convenience.c`)**
+- [x] **1.1 Solar light deflection (`src/jpl_convenience.c`, `tests/test_convenience.c`)**
   - Red: Add near-solar-limb (~1° elongation) regression test in `tests/test_convenience.c` comparing `jpl_apparent_ecliptic_position()` against independent `eraLd()` with `q = Sun->target`, `e = Sun->observer`.
   - Green: Fix `apparent_apply_deflection()` and `apparent_position_at_tt()` to pass `q` (`sun_to_target` normalized) and `to_sun` (negated to `e`), and update the doc comment in `src/jpl_convenience.c`.
   - Verify `jpl_convenience`, `jpl_numeric`, and `jpl_horizons_*` against `D:\ephem\JPL\bin\DE441.eph`.
-- [ ] **1.2 C17 UB & strict-aliasing cleanup (`src/jpl.c`)**
+- [x] **1.2 C17 UB & strict-aliasing cleanup (`src/jpl.c`)**
   - Replace `(&state->x)[i]` in `jpl_apply_aberration()` with `pos[i]`.
   - Replace `(double *)state` in `jpl_get_state()` (nutations/librations) with `local[6]` + `jpl_array_to_state(local, state)`.
   - Add portable `#else` byte-swap fallback in `read_f64()`.
-- [ ] **1.3 `jpl_frame_context` `const`-correctness & docs (`include/jpl_frames.h`, `src/jpl_frames.c`)**
+- [x] **1.3 `jpl_frame_context` `const`-correctness & docs (`include/jpl_frames.h`, `src/jpl_frames.c`)**
   - Apply D3 (`const jpl_frame_context *context`) and document rotation direction (mean ecliptic-of-date -> ICRS).
-- [ ] **1.4 Core hygiene (`src/jpl_private.h`, `src/jpl_convenience.c`)**
+- [x] **1.4 Core hygiene (`src/jpl_private.h`, `src/jpl_convenience.c`)**
   - Remove duplicate `JPL_HDR_TITLES_LEN` / `JPL_HDR_TEXT_LEN` defines in `src/jpl_private.h`.
   - Deduplicate `eff_center != JPL_SUN` branches and remove unused `lt` in `jpl_planet_position()`.
   - Replace `180.0 / acos(-1.0)` with `ERFA_DR2D` in `apparent_project_ecliptic()`.

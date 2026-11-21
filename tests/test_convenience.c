@@ -251,7 +251,11 @@ int main(void) {
             double new_lon_rad = out_pos.longitude_deg * (acos(-1.0) / 180.0);
             double diff = new_lon_rad - lon_old;
             difference = atan2(sin(diff), cos(diff));
-            (void)difference;
+            /* Mercury at (-0.5, +0.01, 0) AU behind the Sun at (0,0,0) as seen
+             * from Earth at (+1,0,0) has impact parameter ~0.0067 AU (~1.43 R_sun),
+             * producing ~1.2 arcsec (~5.8e-6 rad) of solar gravitational deflection.
+             * jpl_planet_position omits deflection, so the two must differ. */
+            JPL_TEST_CHECK(fabs(difference) > 1e-6 && fabs(difference) < 1e-4);
         }
         JPL_TEST_CHECK(out_pos.range_au > 1.5);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1);

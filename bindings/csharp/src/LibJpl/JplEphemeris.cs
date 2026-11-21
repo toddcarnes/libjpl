@@ -54,53 +54,53 @@ public sealed class JplEphemeris : SafeHandle
         SetHandle(handle);
     }
 
-    public void Clone(out JplEphemeris clone)
+    private static void ValidateLength(double[] arr, int minLength, string paramName)
+    {
+        if (arr == null)
+            throw new ArgumentNullException(paramName);
+        if (arr.Length < minLength)
+            throw new ArgumentException($"Expected at least {minLength} elements.", paramName);
+    }
+
+    private T WithHandle<T>(Func<IntPtr, T> action)
     {
         if (IsInvalid)
             throw new ObjectDisposedException(nameof(JplEphemeris));
 
-        JplStatus status = Native.jpl_ephemeris_clone(handle, out IntPtr cloneHandle);
-        if (status != JplStatus.Ok)
+        bool addedRef = false;
+        try
         {
-            throw new JplException(status);
+            DangerousAddRef(ref addedRef);
+            return action(DangerousGetHandle());
         }
-        clone = new JplEphemeris(cloneHandle);
+        finally
+        {
+            if (addedRef)
+                DangerousRelease();
+        }
+    }
+
+    public void Clone(out JplEphemeris clone)
+    {
+        clone = Clone();
     }
 
     public JplHeader GetHeader()
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
-        IntPtr headerPtr = Native.jpl_get_header(handle);
-        if (headerPtr == IntPtr.Zero)
-            throw new JplException(JplStatus.ErrorArgument);
-
-        return JplHeader.FromNative(headerPtr);
-    }
-
-    public double[] ReadConstants()
-    {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
-        var header = GetHeader();
-        double[] values = new double[header.ConstantCount];
-        JplStatus status = Native.jpl_read_constants(handle, values, values.Length);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return values;
+            IntPtr headerPtr = Native.jpl_get_header(h);
+            if (headerPtr == IntPtr.Zero)
+                throw new JplException(JplStatus.ErrorArgument);
+
+            return JplHeader.FromNative(headerPtr, idx => GetConstantNameFromHandle(h, idx));
+        });
     }
 
-    public string GetConstantName(long index)
+    private static string GetConstantNameFromHandle(IntPtr h, long index)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
         byte[] name = new byte[7];
-        JplStatus status = Native.jpl_get_constant_name(handle, index, name);
+        JplStatus status = Native.jpl_get_constant_name(h, index, name);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
@@ -108,65 +108,96 @@ public sealed class JplEphemeris : SafeHandle
         return System.Text.Encoding.ASCII.GetString(name).TrimEnd('\0');
     }
 
-    public double[] ReadRecord(long recordIndex)
+    public double[] ReadConstants()
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
-        var header = GetHeader();
-        double[] values = new double[header.RecordDoubleCount];
-        JplStatus status = Native.jpl_read_record(handle, recordIndex, values, values.Length);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return values;
+            IntPtr headerPtr = Native.jpl_get_header(h);
+            if (headerPtr == IntPtr.Zero)
+                throw new JplException(JplStatus.ErrorArgument);
+
+            JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
+            double[] values = new double[native.ConstantCount];
+            JplStatus status = Native.jpl_read_constants(h, values, values.Length);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return values;
+        });
     }
 
-    public long RecordCount => IsInvalid ? 0 : Native.jpl_record_count(handle);
+    public string GetConstantName(long index)
+    {
+        return WithHandle(h => GetConstantNameFromHandle(h, index));
+    }
+
+    public double[] ReadRecord(long recordIndex)
+    {
+        return WithHandle(h =>
+        {
+            IntPtr headerPtr = Native.jpl_get_header(h);
+            if (headerPtr == IntPtr.Zero)
+                throw new JplException(JplStatus.ErrorArgument);
+
+            JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
+            double[] values = new double[(long)native.RecordDoubleCount];
+            JplStatus status = Native.jpl_read_record(h, recordIndex, values, values.Length);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return values;
+        });
+    }
+
+    public long RecordCount => IsInvalid ? 0 : WithHandle(h => Native.jpl_record_count(h));
 
     public (double Seconds, double RatePerDay) GetTtMinusTdb(double[] jdTdb)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTdb, 2, nameof(jdTdb));
         var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
-        JplStatus status = Native.jpl_get_tt_minus_tdb(handle, jd, out double seconds, out double rate);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return (seconds, rate);
+            JplStatus status = Native.jpl_get_tt_minus_tdb(h, jd, out double seconds, out double rate);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return (seconds, rate);
+        });
     }
 
-    public bool HasTtTdb => !IsInvalid && Native.jpl_has_tt_tdb(handle) != 0;
+    public bool HasTtTdb => !IsInvalid && WithHandle(h => Native.jpl_has_tt_tdb(h) != 0);
 
     public double[] GetState(double[] jdTdb, JplTarget target, JplTarget center)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTdb, 2, nameof(jdTdb));
         var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
-        JplStatus status = Native.jpl_get_state(handle, jd, (int)target, (int)center, out JplState state);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+            JplStatus status = Native.jpl_get_state(h, jd, (int)target, (int)center, out JplState state);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+        });
     }
 
     public (double[] State, double LightTimeDays) GetStateLighttime(double[] jdTdb, JplTarget target, JplTarget center)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTdb, 2, nameof(jdTdb));
         var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
-        JplStatus status = Native.jpl_get_state_lighttime(handle, jd, (int)target, (int)center, out JplState state, out double lt);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return (new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz }, lt);
+            JplStatus status = Native.jpl_get_state_lighttime(h, jd, (int)target, (int)center, out JplState state, out double lt);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return (new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz }, lt);
+        });
     }
 
 
@@ -174,6 +205,8 @@ public sealed class JplEphemeris : SafeHandle
     // Frame conversions (ecliptic-to-ICRS via a cached frame context)
     public static double[] EclipticToIcrs(double[] state, double[] jdTt)
     {
+        ValidateLength(state, 6, nameof(state));
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var st = new JplState { X = state[0], Y = state[1], Z = state[2], Vx = state[3], Vy = state[4], Vz = state[5] };
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         JplStatus status = Native.jpl_frame_context_create(jd, out IntPtr ctx);
@@ -198,6 +231,8 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[] IcrsToEcliptic(double[] state, double[] jdTt)
     {
+        ValidateLength(state, 6, nameof(state));
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var st = new JplState { X = state[0], Y = state[1], Z = state[2], Vx = state[3], Vy = state[4], Vz = state[5] };
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         JplStatus status = Native.jpl_icrs_to_ecliptic(st, jd, out JplState outState);
@@ -210,6 +245,7 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[,] FrameRotationMatrix(double[] jdTt)
     {
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         double[,] R = new double[3, 3];
         JplStatus status = Native.jpl_frame_rotation_matrix(jd, R);
@@ -222,6 +258,7 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[] TtToTdb(double[] jdTt)
     {
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
         JplStatus status = Native.jpl_tt_to_tdb(jd, out JplDate jdTdb);
         if (status != JplStatus.Ok)
@@ -233,6 +270,7 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[] TdbToTt(double[] jdTdb)
     {
+        ValidateLength(jdTdb, 2, nameof(jdTdb));
         var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
         JplStatus status = Native.jpl_tdb_to_tt(jd, out JplDate jdTt);
         if (status != JplStatus.Ok)
@@ -244,8 +282,15 @@ public sealed class JplEphemeris : SafeHandle
 
     public static double[] ApplyAberration(double[] geomState, double[] obsVel)
     {
+        return ApplyAberrationFull(geomState, obsVel, 0.0);
+    }
+
+    public static double[] ApplyAberrationFull(double[] geomState, double[] obsVel, double sunDistanceAu)
+    {
+        ValidateLength(geomState, 6, nameof(geomState));
+        ValidateLength(obsVel, 3, nameof(obsVel));
         var st = new JplState { X = geomState[0], Y = geomState[1], Z = geomState[2], Vx = geomState[3], Vy = geomState[4], Vz = geomState[5] };
-        JplStatus status = Native.jpl_apply_aberration(st, obsVel, 0.0, out JplState outState);
+        JplStatus status = Native.jpl_apply_aberration(st, obsVel, sunDistanceAu, out JplState outState);
         if (status != JplStatus.Ok)
         {
             throw new JplException(status);
@@ -256,71 +301,75 @@ public sealed class JplEphemeris : SafeHandle
     // Convenience: Clone returning JplEphemeris
     public JplEphemeris Clone()
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
-        JplStatus status = Native.jpl_ephemeris_clone(handle, out IntPtr cloneHandle);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return new JplEphemeris(cloneHandle);
+            JplStatus status = Native.jpl_ephemeris_clone(h, out IntPtr cloneHandle);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new JplEphemeris(cloneHandle);
+        });
     }
 
     // Convenience functions
     public double[] PlanetPosition(double[] jdTt, JplTarget planet, JplTarget center)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
-        JplStatus status = Native.jpl_planet_position(handle, jd, (int)planet, (int)center, out JplState state);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+            JplStatus status = Native.jpl_planet_position(h, jd, (int)planet, (int)center, out JplState state);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+        });
     }
 
     public double[] MoonPosition(double[] jdTt)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
-        JplStatus status = Native.jpl_moon_position(handle, jd, out JplState state);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
-        return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+            JplStatus status = Native.jpl_moon_position(h, jd, out JplState state);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new double[] { state.X, state.Y, state.Z, state.Vx, state.Vy, state.Vz };
+        });
     }
 
     public ApparentEclipticResult ApparentEclipticPosition(double[] jdTt, JplTarget target)
     {
-        if (IsInvalid)
-            throw new ObjectDisposedException(nameof(JplEphemeris));
-
+        ValidateLength(jdTt, 2, nameof(jdTt));
         var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
-        JplStatus status = Native.jpl_apparent_ecliptic_position(
-            handle, jd, (int)target, out JplApparentEclipticResultNative result);
-        if (status != JplStatus.Ok)
+        return WithHandle(h =>
         {
-            throw new JplException(status);
-        }
+            JplStatus status = Native.jpl_apparent_ecliptic_position(
+                h, jd, (int)target, out JplApparentEclipticResultNative result);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
 
-        return new ApparentEclipticResult
-        {
-            LongitudeDeg = result.LongitudeDeg,
-            LatitudeDeg = result.LatitudeDeg,
-            RangeAu = result.RangeAu,
-            LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
-            RangeRateKmPerS = result.RangeRateKmPerS
-        };
+            return new ApparentEclipticResult
+            {
+                LongitudeDeg = result.LongitudeDeg,
+                LatitudeDeg = result.LatitudeDeg,
+                RangeAu = result.RangeAu,
+                LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
+                RangeRateKmPerS = result.RangeRateKmPerS
+            };
+        });
     }
 
     public static double[] AuPerDayToKmPerS(double[] velAuDay)
     {
+        ValidateLength(velAuDay, 3, nameof(velAuDay));
         double[] outVel = new double[3];
         JplStatus status = Native.jpl_au_per_day_to_km_per_s(velAuDay, outVel);
         if (status != JplStatus.Ok)

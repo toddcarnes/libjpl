@@ -37,7 +37,7 @@ endif()
 
 # Build the library project; the managed configuration follows the CMake
 # configuration so a Release run never exercises Debug assemblies.
-add_custom_target(LibJpl
+add_custom_target(LibJpl ALL
     COMMAND "${DOTNET_EXECUTABLE}" build "${CMAKE_CURRENT_SOURCE_DIR}/src/LibJpl/LibJpl.csproj"
         --configuration $<CONFIG>
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -46,7 +46,7 @@ add_custom_target(LibJpl
 )
 
 # Build the test project
-add_custom_target(LibJplTests
+add_custom_target(LibJplTests ALL
     COMMAND "${DOTNET_EXECUTABLE}" build "${CMAKE_CURRENT_SOURCE_DIR}/tests/LibJpl.Tests.csproj"
         --configuration $<CONFIG>
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -69,6 +69,6 @@ add_test(NAME jpl_csharp_binding
     COMMAND "${CMAKE_COMMAND}" -E env "${JPL_CSHARP_TEST_ENV}"
         "${DOTNET_EXECUTABLE}" run --configuration $<CONFIG>
         --project "${CMAKE_CURRENT_SOURCE_DIR}/tests/LibJpl.Tests.csproj" --
-        "${CMAKE_SOURCE_DIR}/tests/data/de441_2000_2010.eph"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/data/de441_2000_2010.eph"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests"
 )

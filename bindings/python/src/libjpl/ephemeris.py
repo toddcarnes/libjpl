@@ -201,15 +201,16 @@ class Ephemeris:
     """An open DE file. Use as a context manager; closes on exit."""
 
     def __init__(self, path):
-        self._handle = None
+        self._handle = _ffi.NULL
         handle = _ffi.new("jpl_ephemeris **")
         _check(_lib.jpl_open(path.encode("utf-8"), handle))
         self._handle = handle[0]
 
     def close(self):
-        if getattr(self, "_handle", None) is not None:
-            _lib.jpl_close(self._handle)
-            self._handle = None
+        handle = getattr(self, "_handle", _ffi.NULL)
+        if handle is not None and handle != _ffi.NULL:
+            _lib.jpl_close(handle)
+            self._handle = _ffi.NULL
 
     def __enter__(self):
         return self
@@ -229,10 +230,13 @@ class Ephemeris:
 
     def constants(self):
         """Read all constants."""
-        hdr = self.header
-        vals = _ffi.new(f"double[{hdr.constant_count}]")
-        _check(_lib.jpl_read_constants(self._handle, vals, hdr.constant_count))
-        return [float(vals[i]) for i in range(hdr.constant_count)]
+        c_header = _lib.jpl_get_header(self._handle)
+        if c_header == _ffi.NULL:
+            raise JplError(JplStatus.ERROR_ARGUMENT)
+        count = int(c_header.constant_count)
+        vals = _ffi.new(f"double[{count}]")
+        _check(_lib.jpl_read_constants(self._handle, vals, count))
+        return [float(vals[i]) for i in range(count)]
 
     def constant_name(self, index):
         """Get constant name by index."""
@@ -242,10 +246,13 @@ class Ephemeris:
 
     def read_record(self, record_index):
         """Read a complete coefficient record."""
-        hdr = self.header
-        vals = _ffi.new(f"double[{hdr.record_double_count}]")
-        _check(_lib.jpl_read_record(self._handle, record_index, vals, hdr.record_double_count))
-        return [float(vals[i]) for i in range(hdr.record_double_count)]
+        c_header = _lib.jpl_get_header(self._handle)
+        if c_header == _ffi.NULL:
+            raise JplError(JplStatus.ERROR_ARGUMENT)
+        count = int(c_header.record_double_count)
+        vals = _ffi.new(f"double[{count}]")
+        _check(_lib.jpl_read_record(self._handle, record_index, vals, count))
+        return [float(vals[i]) for i in range(count)]
 
     def record_count(self):
         return _lib.jpl_record_count(self._handle)
@@ -276,7 +283,8 @@ class Ephemeris:
         _check(_lib.jpl_get_state_lighttime(self._handle, jd, int(target), int(center), out, lt))
         return (_state_list(out), float(lt[0]))
 
-    def apply_aberration(self, state, observer_vel):
+    @staticmethod
+    def apply_aberration(state, observer_vel):
         """Apply stellar aberration (without solar term). Returns aberrated state."""
         in_state = _jpl_state(state)
         in_vel = _ffi.new("double[3]", [float(x) for x in observer_vel])
@@ -284,7 +292,8 @@ class Ephemeris:
         _check(_lib.jpl_apply_aberration(in_state, in_vel, 0.0, out))
         return _state_list(out)
 
-    def apply_aberration_full(self, state, observer_vel, sun_distance_au):
+    @staticmethod
+    def apply_aberration_full(state, observer_vel, sun_distance_au):
         """Apply full stellar aberration with solar term. Returns aberrated state."""
         in_state = _jpl_state(state)
         in_vel = _ffi.new("double[3]", [float(x) for x in observer_vel])

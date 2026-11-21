@@ -12,39 +12,10 @@ public sealed class JplException : Exception
     public JplStatus Status { get; }
 
     public JplException(JplStatus status)
-        : base($"libjpl error: {GetStatusString(status)}")
+        : base($"libjpl error: {LibJplApi.StatusString(status)}")
     {
         Status = status;
     }
-
-    private static string GetStatusString(JplStatus status)
-    {
-        return status switch
-        {
-            JplStatus.Ok => "success",
-            JplStatus.ErrorArgument => "invalid argument",
-            JplStatus.ErrorIo => "I/O error",
-            JplStatus.ErrorFormat => "invalid format",
-            JplStatus.ErrorRange => "index or date out of range",
-            JplStatus.ErrorMemory => "out of memory",
-            JplStatus.ErrorUnsupported => "unsupported",
-            JplStatus.ErrorConvergence => "convergence failure",
-            JplStatus.ErrorNumeric => "numeric error",
-            _ => $"unknown error (status={status})"
-        };
-    }
-}
-
-public struct TtMinusTdbResult
-{
-    public double Seconds;
-    public double RatePerDay;
-}
-
-public struct LightTimeResult
-{
-    public double[] State;
-    public double LightTimeDays;
 }
 
 public struct ApparentEclipticResult
@@ -82,7 +53,7 @@ public class JplHeader
     public long RecordDoubleCount { get; internal set; }
     public JplByteOrder ByteOrder { get; internal set; }
 
-internal static JplHeader FromNative(IntPtr headerPtr)
+internal static JplHeader FromNative(IntPtr headerPtr, Func<long, string>? getOverflowName = null)
 {
     if (headerPtr == IntPtr.Zero)
         throw new ArgumentException("Invalid header pointer");
@@ -103,11 +74,19 @@ internal static JplHeader FromNative(IntPtr headerPtr)
         titles[i] = FixedString(native.TitlesFlat, i * 85, 85);
     }
 
-    int nameCount = Math.Clamp(native.ConstantCount, 0, 400);
-    var constantNames = new string[nameCount];
-    for (int i = 0; i < constantNames.Length; ++i)
+    int totalNames = Math.Max(native.ConstantCount, 0);
+    int inlineCount = Math.Min(totalNames, 400);
+    var constantNames = new string[getOverflowName != null ? totalNames : inlineCount];
+    for (int i = 0; i < inlineCount; ++i)
     {
         constantNames[i] = FixedString(native.ConstantNamesFlat, i * 7, 7);
+    }
+    if (getOverflowName != null)
+    {
+        for (int i = inlineCount; i < totalNames; ++i)
+        {
+            constantNames[i] = getOverflowName(i);
+        }
     }
 
     var pointers = new JplPointer[12];

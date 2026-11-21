@@ -15,7 +15,7 @@ cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_PYTHON_BINDING=ON
 # Build
 cmake --build build --config Debug
 
-# Run example
+# Run example (put build/bin/Debug or build/shared on PATH / LD_LIBRARY_PATH / DYLD_LIBRARY_PATH)
 python bindings/python/examples/planet_positions.py /path/to/DE441.eph
 ```
 
@@ -79,7 +79,7 @@ try:
     with Ephemeris("DE441.eph") as eph:
         state = eph.get_state([2451545.0, 0.0], 3, 11)
 except JplError as e:
-    print(f"JplError: {e.message} (status={e.status})")
+    print(f"JplError: {e} (status={e.status})")
 except Exception as e:
     print(f"Error: {e}")
 
@@ -144,6 +144,6 @@ JplReferenceFrame.ICRF          # 3
 cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_PYTHON_BINDING=ON
 cmake --build build --config Debug
 
-# Run
+# Run (ensure jpl.dll / libjpl.so is on PATH / LD_LIBRARY_PATH / DYLD_LIBRARY_PATH)
 python bindings/python/examples/planet_positions.py /path/to/DE441.eph
 ```

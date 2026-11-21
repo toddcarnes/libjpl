@@ -15,9 +15,13 @@ cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CSHARP_BINDING=ON
 # Build
 cmake --build build --config Debug
 
-# Run example
-dotnet run --project bindings/csharp/examples/PlanetPositions.csproj /path/to/DE441.eph
+# Run the C# binding test suite
+ctest --test-dir build -C Debug -R jpl_csharp_binding --output-on-failure
 ```
+
+To run `PlanetPositions.cs` standalone, add it to a .NET 8 console project
+referencing `bindings/csharp/src/LibJpl/LibJpl.csproj` and ensure
+`jpl.dll` / `libjpl.so` is on `PATH` / `LD_LIBRARY_PATH`.
 
 ## Requirements
 
@@ -39,21 +43,21 @@ double[] jdTdb = JplEphemeris.TtToTdb(new double[] { 2451545.0, 0.0 });
 // Get state vector (position + velocity in AU, AU/day)
 var state = eph.GetState(jdTdb, JplTarget.Earth, JplTarget.Sun);
 
-// Frame conversions
-var icrsState = JplEphemeris.EclipticToIcrs(state, new double[] { 2451545.0, 0.0 });
-var eclipticState = JplEphemeris.IcrsToEcliptic(state, new double[] { 2451545.0, 0.0 });
-var R = JplEphemeris.FrameRotationMatrix(new double[] { 2451545.0, 0.0 });
+// Frame conversions (ICRS -> mean ecliptic of date -> ICRS)
+var eclipticState = JplEphemeris.IcrsToEcliptic(state, jdTt);
+var icrsState = JplEphemeris.EclipticToIcrs(eclipticState, jdTt);
+var R = JplEphemeris.FrameRotationMatrix(jdTt);
 
-// Time conversions
-var jdTdb = JplEphemeris.TtToTdb(new double[] { 2451545.0, 0.0 });
-var jdTt = JplEphemeris.TdbToTt(jdTdb);
+// Time conversion round-trip
+var jdTtBack = JplEphemeris.TdbToTt(jdTdb);
 
 // Light time
 var ltResult = eph.GetStateLighttime(jdTdb, JplTarget.Earth, JplTarget.Sun);
 
-// Aberration
-var aberrated = JplEphemeris.ApplyAberration(geomState, obsVel);
-var aberratedFull = JplEphemeris.ApplyAberrationFull(geomState, obsVel, sunDistAu);
+// Aberration (observer velocity in AU/day)
+double[] obsVel = { 0.0, 0.0172, 0.0 };
+var aberrated = JplEphemeris.ApplyAberration(state, obsVel);
+var aberratedFull = JplEphemeris.ApplyAberrationFull(state, obsVel, 1.0);
 
 // Planet/Moon positions
 var planetState = eph.PlanetPosition(jdTt, JplTarget.Earth, JplTarget.Sun);
@@ -62,15 +66,12 @@ var moonState = eph.MoonPosition(jdTt);
 // Apparent ecliptic position
 var appPos = eph.ApparentEclipticPosition(jdTt, JplTarget.Moon);
 
-// Light time
-var ltResult = eph.GetStateLighttime(jdTdb, JplTarget.Earth, JplTarget.Sun);
-
 // Clone for thread safety
 using var clone = eph.Clone();
 
 // Error handling
 try {
-    using var eph = LibJplApi.Open("DE441.eph");
+    using var eph2 = LibJplApi.Open("DE441.eph");
 } catch (JplException ex) {
     Console.WriteLine($"Error: {ex.Message} (status={ex.Status})");
 }
@@ -83,7 +84,7 @@ try {
 | `JplEphemeris : SafeHandle` | RAII handle to ephemeris |
 | `LibJplApi` | Static entry point (`Open`, `OpenMmap`, `StatusString`) |
 | `JplEphemeris` | Instance methods for ephemeris operations |
-| `Native` | P/Invoke signatures (internal) |
+| `Native` | P/Invoke signatures |
 | `JplStatus` | Error codes enum |
 | `JplTarget` | Target body codes enum |
 | `JplByteOrder` | Byte order enum |
@@ -107,23 +108,22 @@ try {
 
 ```csharp
 public enum JplTarget {
-    Mercury = 1, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune,
-    Pluto, Moon, Sun, SolarSystemBarycenter, EarthMoonBarycenter,
-    Nutations, Librations, TtTdb, Ssb = 0
+    Mercury = 1, Venus = 2, Earth = 3, Mars = 4, Jupiter = 5, Saturn = 6,
+    Uranus = 7, Neptune = 8, Pluto = 9, Moon = 10, Sun = 11,
+    SolarSystemBarycenter = 12, EarthMoonBarycenter = 13,
+    Nutations = 14, Librations = 15, TtTdb = 17, Ssb = 0
 }
 
 public enum JplReferenceFrame {
-    Unknown = 0, Dynamical1950, Dynamical2000, Icrf
+    Unknown = 0, Dynamical1950 = 1, Dynamical2000 = 2, Icrf = 3
 }
 
-public enum JplByteOrder { LittleEndian, BigEndian }
+public enum JplByteOrder { LittleEndian = 0, BigEndian = 1 }
 ```
 
-## Structs
+## Structs and Classes
 
 ```csharp
-public struct TtMinusTdbResult { public double Seconds; public double RatePerDay; }
-public struct LightTimeResult { public double[] State; public double LightTimeDays; }
 public struct ApparentEclipticResult {
     public double LongitudeDeg, LatitudeDeg, RangeAu;
     public double LongitudeRateDegPerDay, RangeRateKmPerS;
@@ -131,26 +131,30 @@ public struct ApparentEclipticResult {
 public struct JplPointer {
     public int StartIndex, CoefficientsPerComponent, Subintervals;
 }
-public struct JplHeader {
-    public string[] Titles, ConstantNames;
-    public double[] StartJd, EndJd;
-    public double StepDays, ConstantCount, AstronomicalUnitKm, EarthMoonMassRatio;
-    public JplPointer[] Pointers;
-    public int EphemerisNumber, ReferenceFrame, HasTtTdb;
-    public long RecordDoubleCount;
-    public JplByteOrder ByteOrder;
-    public JplPointer LibrationPointer, TtTdbPointer;
+public class JplHeader {
+    public string[] Titles { get; }
+    public string[] ConstantNames { get; }
+    public double[] StartJd { get; }
+    public double[] EndJd { get; }
+    public double StepDays { get; }
+    public int ConstantCount { get; }
+    public double AstronomicalUnitKm { get; }
+    public double EarthMoonMassRatio { get; }
+    public JplPointer[] Pointers { get; }
+    public int EphemerisNumber { get; }
+    public JplReferenceFrame ReferenceFrame { get; }
+    public JplPointer LibrationPointer { get; }
+    public JplPointer TtTdbPointer { get; }
+    public int HasTtTdb { get; }
+    public long RecordDoubleCount { get; }
+    public JplByteOrder ByteOrder { get; }
 }
 ```
 
-## Running the Example
+## Running the Binding Test
 
 ```bash
-# Build
-dotnet build bindings/csharp/examples/PlanetPositions.csproj
-
-# Run
-dotnet run --project bindings/csharp/examples/PlanetPositions.csproj /path/to/DE441.eph
+ctest --test-dir build -C Debug -R jpl_csharp_binding --output-on-failure
 ```
 
 ## Key Differences from C API

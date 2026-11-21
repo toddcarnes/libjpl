@@ -42,10 +42,18 @@ class Program
             }
 
             // Header metadata must be populated from the native struct.
-            if (header.ConstantCount < 400)
+            if (header.ConstantCount <= 400 || header.ConstantNames.Length != header.ConstantCount)
             {
-                Console.Error.WriteLine($"Expected at least 400 constants, got {header.ConstantCount}");
+                Console.Error.WriteLine($"Unexpected ConstantNames length {header.ConstantNames.Length} vs ConstantCount {header.ConstantCount}");
                 Environment.Exit(1);
+            }
+            foreach (long idx in new long[] { 0, 399, 400, header.ConstantCount - 1 })
+            {
+                if (header.ConstantNames[idx] != eph.GetConstantName(idx))
+                {
+                    Console.Error.WriteLine($"Constant name mismatch at {idx}: '{header.ConstantNames[idx]}' vs '{eph.GetConstantName(idx)}'");
+                    Environment.Exit(1);
+                }
             }
             if (!(header.StartJd[0] < header.EndJd[0]))
             {
@@ -67,9 +75,10 @@ class Program
                 Console.Error.WriteLine($"Bad EMRAT: {header.EarthMoonMassRatio}");
                 Environment.Exit(1);
             }
-            if (header.Pointers[(int)JplTarget.Earth].Subintervals <= 0)
+            // Slot 2 is EMB (0-based file slots: 0=Mercury, 1=Venus, 2=EMB).
+            if (header.Pointers[2].Subintervals <= 0)
             {
-                Console.Error.WriteLine("Earth pointer has no subintervals");
+                Console.Error.WriteLine("EMB pointer has no subintervals");
                 Environment.Exit(1);
             }
 
@@ -169,18 +178,28 @@ class Program
                 Environment.Exit(1);
             }
 
-            // Test aberration
+            // Test aberration (observer velocity in AU/day; Earth orbital speed ~0.0172 AU/day)
             var geomState = new double[] { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-            var obsVel = new double[] { 0.0, 29.78, 0.0 };
+            var obsVel = new double[] { 0.0, 0.0172, 0.0 };
             var aberrated = JplEphemeris.ApplyAberration(geomState, obsVel);
+            var aberratedFull = JplEphemeris.ApplyAberrationFull(geomState, obsVel, 1.0);
             for (int i = 0; i < 6; ++i)
             {
-                if (!double.IsFinite(aberrated[i]))
+                if (!double.IsFinite(aberrated[i]) || !double.IsFinite(aberratedFull[i]))
                 {
-                    Console.Error.WriteLine($"Aberrated state[{i}] is not finite: {aberrated[i]}");
+                    Console.Error.WriteLine($"Aberrated state[{i}] is not finite");
                     Environment.Exit(1);
                 }
             }
+
+            // Short arrays must be rejected in managed code before P/Invoke.
+            try
+            {
+                JplEphemeris.ApplyAberration(geomState, new double[] { 0.0, 0.0172 });
+                Console.Error.WriteLine("Expected ArgumentException for short observer velocity");
+                Environment.Exit(1);
+            }
+            catch (ArgumentException) { }
 
             // Test light time
             var ltResult = eph.GetStateLighttime(new double[] { 2451545.0, 0.0 }, JplTarget.Earth, JplTarget.Sun);

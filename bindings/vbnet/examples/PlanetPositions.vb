@@ -4,11 +4,8 @@
 
 ' Example: Print all planet positions at J2000.0 (2000-01-01 12:00 TT)
 '
-' Build (after configuring with -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_VBNET_BINDING=ON):
-'   dotnet build bindings/vbnet/examples/PlanetPositions.vbproj
-'
-' Run:
-'   dotnet run --project bindings/vbnet/examples/PlanetPositions.vbproj /path/to/DE441.eph
+' Add this file to a .NET 8 console project referencing bindings/vbnet/src/LibJpl/LibJpl.vbproj,
+' and ensure jpl.dll / libjpl.so is on PATH / LD_LIBRARY_PATH.
 
 Imports System
 Imports LibJpl
@@ -21,13 +18,12 @@ Module PlanetPositions
             Environment.Exit(1)
         End If
 
-        Dim path As String = args(0)
-
         Try
             Using eph = LibJplApi.Open(args(0))
 
                 ' J2000.0 = 2000-01-01 12:00 TT = JD 2451545.0 TT
-                Dim jdTdb = JplEphemeris.TtToTdb(New Double() {2451545.0, 0.0})
+                Dim jdTt = New Double() {2451545.0, 0.0}
+                Dim jdTdb = JplEphemeris.TtToTdb(jdTt)
 
                 Console.WriteLine("Planet positions at J2000.0 (2000-01-01 12:00 TT)")
                 Console.WriteLine($"TDB: {jdTdb(0)} + {jdTdb(1)}")
@@ -38,7 +34,7 @@ Module PlanetPositions
                     (1, "Mercury"), (2, "Venus"), (3, "Earth"), (4, "Mars"),
                     (5, "Jupiter"), (6, "Saturn"), (7, "Uranus"), (8, "Neptune"),
                     (9, "Pluto"), (10, "Moon"), (11, "Sun"), (12, "SSB"),
-                    (13, "EMB"), (14, "Nutations"), (15, "Librations"), (17, "TT-TDB")
+                    (13, "EMB"), (14, "Nutations"), (15, "Librations")
                 }
 
                 Console.WriteLine("{0,-12} {1,14} {2,14} {3,14} {4,14} {5,14} {6,14}",
@@ -71,23 +67,23 @@ Module PlanetPositions
                 Console.WriteLine($"  X: {moonState(0):F6} Y: {moonState(1):F6} Z: {moonState(2):F6}")
                 Console.WriteLine($"  VX: {moonState(3):F6} VY: {moonState(4):F6} VZ: {moonState(5):F6}")
 
-                ' Frame conversions
+                ' Frame conversions (ICRS -> mean ecliptic of date)
                 Console.WriteLine()
-                Console.WriteLine("Frame conversion (Ecliptic -> ICRS):")
-                Dim icrsState = JplEphemeris.EclipticToIcrs(earthState, New Double() {2451545.0, 0.0})
-                Console.WriteLine($"  ICRS: X={icrsState(0):F6} Y={icrsState(1):F6} Z={icrsState(2):F6}")
+                Console.WriteLine("Frame conversion (ICRS -> Ecliptic):")
+                Dim eclState = JplEphemeris.IcrsToEcliptic(earthState, jdTt)
+                Console.WriteLine($"  Ecliptic: X={eclState(0):F6} Y={eclState(1):F6} Z={eclState(2):F6}")
 
                 ' Light time
-                Dim ltResult = eph.GetStateLighttime(New Double() {2451545.0, 0.0}, JplTarget.Earth, JplTarget.Sun)
+                Dim ltResult = eph.GetStateLighttime(jdTdb, JplTarget.Earth, JplTarget.Sun)
                 Console.WriteLine($"Light time (Earth-Sun): {ltResult.LightTimeDays:F6} days")
 
                 ' Time conversions
                 Console.WriteLine()
                 Console.WriteLine("Time conversions:")
-                jdTdb = JplEphemeris.TtToTdb(New Double() {2451545.0, 0.0})
-                Dim jdTt = JplEphemeris.TdbToTt(jdTdb)
+                jdTdb = JplEphemeris.TtToTdb(jdTt)
+                Dim jdTtBack = JplEphemeris.TdbToTt(jdTdb)
                 Console.WriteLine($"  TT->TDB: {jdTdb(0)} + {jdTdb(1)}")
-                Console.WriteLine($"  TDB->TT: {jdTt(0)} + {jdTt(1)}")
+                Console.WriteLine($"  TDB->TT: {jdTtBack(0)} + {jdTtBack(1)}")
 
                 ' Aberration (observer velocity in AU/day; Earth orbital speed ~0.0172 AU/day)
                 Console.WriteLine()

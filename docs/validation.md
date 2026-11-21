@@ -122,7 +122,8 @@ Notes:
 
 ## Scientific contracts
 
-- Two-part dates: every computational epoch is a `double[2]` pair whose
+- Two-part dates: every public computational epoch is a `jpl_date {hi, lo}`
+  struct (internal arithmetic uses normalized `double[2]` pairs) whose
   sum is the epoch; both parts survive arithmetic and ERFA calls
   (`eraEcm06`, `eraDtdb`). Scalar full-epoch values exist only at the
   serialization boundary (on-disk record fields, decoded as
@@ -194,10 +195,11 @@ have been removed.
 
 ## Language bindings
 
-Official bindings are provided for four languages. All require the shared
-library (`-DLIBJPL_BUILD_SHARED=ON`) and are built on demand via CMake
-options (default `OFF`). Each binding targets the same C API and passes
-the same offline test suite.
+Official bindings are provided for four languages. Python, C#, and VB.NET
+require the shared library (`-DLIBJPL_BUILD_SHARED=ON`, the default), while
+C++ links the static library. All four are built on demand via CMake
+options (default `OFF`). Each binding targets the same C API and has its own
+offline binding smoke test against the committed DE441 slice.
 
 ### C++ (`bindings/cpp/`)
 
@@ -207,9 +209,10 @@ CMake option: `LIBJPL_BUILD_CPP_BINDING=ON`. Installs headers to
 
 ### Python (`bindings/python/`)
 
-cffi wrapper: `libjpl.Ephemeris` context manager, `libjpl.JplError`,
-`libjpl.get_state`/`planet_position` helpers. CMake option:
-`LIBJPL_BUILD_PYTHON_BINDING=ON`. Requires Python 3 + `cffi`.
+cffi wrapper: `libjpl.Ephemeris` context manager (with `get_state`,
+`planet_position`, and static conversion/aberration methods) and
+`libjpl.JplError`. CMake option: `LIBJPL_BUILD_PYTHON_BINDING=ON`.
+Requires Python 3 + `cffi`.
 
 ### C# (`bindings/csharp/`)
 

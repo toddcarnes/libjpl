@@ -87,24 +87,6 @@ struct jpl_ephemeris {
     size_t record_count;            /* physically readable data records */
     size_t covered_record_count;    /* advertised intervals only */
 
-    /* File identity captured from the open stream (not a path lookup),
-     * used to verify FILE clones reopened the same object. POSIX stores
-     * st_dev/st_ino; Windows stores volume serial + file index from the
-     * underlying handle. file_size mirrors st_size/GetFileSizeEx and is
-     * re-checked in the clone comparison. Contents must stay immutable
-     * while any reader is active: identity validation is not snapshot
-     * isolation against in-place edits. */
-    struct {
-#if !defined(_WIN32)
-        dev_t dev;
-        ino_t ino;
-#else
-        DWORD volume;
-        DWORD index_hi;
-        DWORD index_lo;
-#endif
-    } identity;
-
     /* Shared ownership counter: mmap clones share one heap counter; plain
      * FILE handles own a private count of 1. Windows uses Interlocked* on
      * an int (MSVC lacks C11 atomics without /experimental:c11atomics);
@@ -144,30 +126,22 @@ struct jpl_ephemeris {
     char *path;
 };
 
-/* Capture stream identity from an open FILE: POSIX fstat device+inode,
- * Windows volume/file index from the OS handle behind the CRT stream.
- * Returns 0 on success, -1 when identity cannot be determined. The size
- * comparison lives in stream_identity_matches against the live source
- * stream and expected file_size; capture only records the id fields. */
-static int capture_stream_identity(FILE *file, struct jpl_ephemeris *e) {
+/* Verify that an open FILE exposes stream identity (POSIX fstat or
+ * Windows GetFileInformationByHandle) so clones can later compare live
+ * stream identity in stream_identity_matches. Returns 0 on success, -1
+ * when identity cannot be determined. */
+static int verify_stream_identity(FILE *file) {
 #if !defined(_WIN32)
     struct stat st;
-    if (!file || !e) return -1;
-    if (fstat(fileno(file), &st) != 0) return -1;
-    e->identity.dev = st.st_dev;
-    e->identity.ino = st.st_ino;
-    return 0;
+    if (!file) return -1;
+    return fstat(fileno(file), &st) == 0 ? 0 : -1;
 #else
     HANDLE h;
     BY_HANDLE_FILE_INFORMATION info;
-    if (!file || !e) return -1;
+    if (!file) return -1;
     h = (HANDLE)_get_osfhandle(_fileno(file));
     if (h == INVALID_HANDLE_VALUE) return -1;
-    if (!GetFileInformationByHandle(h, &info)) return -1;
-    e->identity.volume = info.dwVolumeSerialNumber;
-    e->identity.index_hi = info.nFileIndexHigh;
-    e->identity.index_lo = info.nFileIndexLow;
-    return 0;
+    return GetFileInformationByHandle(h, &info) ? 0 : -1;
 #endif
 }
 
@@ -227,7 +201,8 @@ static char *resolve_reopen_path(const char *path) {
         if (len == 0) return copy_string(path);
         char *resolved = (char *)malloc(len);
         if (!resolved) return copy_string(path);
-        if (GetFullPathNameA(path, len, resolved, NULL) == 0) {
+        DWORD written = GetFullPathNameA(path, len, resolved, NULL);
+        if (written == 0 || written >= len) {
             free(resolved);
             return copy_string(path);
         }
@@ -566,6 +541,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                 size_t data_off = width + width;
                 ep_status = header_record_endpoints(source, data_off, width, order,
                                                     first, second);
+                if (ep_status == JPL_ERROR_MEMORY || ep_status == JPL_ERROR_IO) return ep_status;
                 if (ep_status != JPL_OK) continue;
             }
             /* Open checks boundary records only; interior corruption is
@@ -574,8 +550,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             if (scheduled_endpoint(candidate.start_jd, candidate.step_days, 1, sched_last) != JPL_OK) continue;
             if (endpoints_match(sched_first, first[0]) != JPL_OK) continue;
             if (endpoints_match(sched_last, second[0]) != JPL_OK) continue;
-            if (header_record_endpoints(source, off_last, width, order,
-                                        first, second) != JPL_OK) continue;
+            ep_status = header_record_endpoints(source, off_last, width, order,
+                                                first, second);
+            if (ep_status == JPL_ERROR_MEMORY || ep_status == JPL_ERROR_IO) return ep_status;
+            if (ep_status != JPL_OK) continue;
             if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
                                    expected_records - 1, sched_first) != JPL_OK) continue;
             if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
@@ -583,8 +561,10 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             if (endpoints_match(sched_first, first[0]) != JPL_OK) continue;
             if (endpoints_match(sched_last, second[0]) != JPL_OK) continue;
             if (extra_records == 3) {
-                if (header_record_endpoints(source, off_trail, width, order,
-                                            tfirst, tsecond) != JPL_OK) continue;
+                ep_status = header_record_endpoints(source, off_trail, width, order,
+                                                    tfirst, tsecond);
+                if (ep_status == JPL_ERROR_MEMORY || ep_status == JPL_ERROR_IO) return ep_status;
+                if (ep_status != JPL_OK) continue;
                 if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
                                        expected_records, sched_trail) != JPL_OK) continue;
                 if (endpoints_match(sched_trail, tfirst[0]) != JPL_OK) continue;
@@ -994,8 +974,8 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e->file = fopen(resolved, "rb"); if (!e->file) { jpl_close(e); return JPL_ERROR_IO; }
     if (JPL_FSEEK(e->file, 0, SEEK_END) != 0) { jpl_close(e); return JPL_ERROR_IO; }
     { jpl_file_offset end = JPL_FTELL(e->file); if (end < 0 || (uintmax_t)end > SIZE_MAX) { jpl_close(e); return JPL_ERROR_IO; } e->file_size = (size_t)end; }
-    /* Capture identity from the open stream (not a path lookup). */
-    if (capture_stream_identity(e->file, e) != 0) { jpl_close(e); return JPL_ERROR_IO; }
+    /* Verify stream identity is queryable on the open handle. */
+    if (verify_stream_identity(e->file) != 0) { jpl_close(e); return JPL_ERROR_IO; }
     /* One shared validator for FILE and mmap: bounded reads go through
      * the byte source, so both paths evaluate complete LE/BE layout
      * candidates instead of accepting a preliminary byte order. */
@@ -1199,14 +1179,6 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         c->file_size = ephem->file_size;
         c->record_count = ephem->record_count;
         c->covered_record_count = ephem->covered_record_count;
-#if !defined(_WIN32)
-        c->identity.dev = ephem->identity.dev;
-        c->identity.ino = ephem->identity.ino;
-#else
-        c->identity.volume = ephem->identity.volume;
-        c->identity.index_hi = ephem->identity.index_hi;
-        c->identity.index_lo = ephem->identity.index_lo;
-#endif
         /* Cold start: calloc zeroed cache_valid, so this clone never reads
          * the source handle's cached record. */
     }
@@ -1322,15 +1294,10 @@ static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
         below = jpl_date_compare(norm, boundary) < 0;
         above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->covered_record_count;
         if (!below && !above) {
-            status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 1 < e->covered_record_count) {
-                status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, record_end);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            } else {
-                status = jpl_date_normalize(e->header.end_jd, record_end);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            }
+            record_start[0] = boundary[0];
+            record_start[1] = boundary[1];
+            record_end[0] = next[0];
+            record_end[1] = next[1];
             *index_out = candidate;
             return JPL_OK;
         }
@@ -1846,7 +1813,7 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
                                   int fast_budget, double *delay, double *residual,
                                   double rel[6], double state[6]) {
     double emission[2];
-    double lt = *delay, prev = lt;
+    double lt = *delay;
     jpl_status st = JPL_ERROR_CONVERGENCE;
     int i;
     for (i = 0; i < fast_budget; ++i) {
@@ -1855,12 +1822,11 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
         st = lighttime_evaluate(e, target, norm, emission, observer_km, rel, &lt, residual);
         if (st == JPL_ERROR_RANGE) break;
         if (st != JPL_OK) return st;
-        if (fabs(lt - prev) <= JPL_LIGHTTIME_TOL_DAYS) {
+        if (fabs(*residual) <= JPL_LIGHTTIME_TOL_DAYS) {
             memcpy(state, rel, 6 * sizeof(double));
             if (delay) *delay = lt;
             return JPL_OK;
         }
-        prev = lt;
     }
     /* A successful evaluation is not convergence: the settle test above
      * is what accepts a root. Without this reset an exhausted budget with

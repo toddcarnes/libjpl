@@ -72,7 +72,9 @@ endforeach()
 # formats (yml/yaml/json/toml/ini/cfg/in); binary/tooling output stays
 # exempt by directory prefix below, not per file.
 file(GLOB_RECURSE candidates RELATIVE "${SOURCE}"
-  "${SOURCE}/*.c" "${SOURCE}/*.h" "${SOURCE}/*.cmake" "${SOURCE}/*.py"
+  "${SOURCE}/*.c" "${SOURCE}/*.h" "${SOURCE}/*.cpp" "${SOURCE}/*.hpp"
+  "${SOURCE}/*.cs" "${SOURCE}/*.vb" "${SOURCE}/*.csproj" "${SOURCE}/*.vbproj"
+  "${SOURCE}/*.dox" "${SOURCE}/*.cmake" "${SOURCE}/*.py"
   "${SOURCE}/*.md" "${SOURCE}/*.txt"
   "${SOURCE}/*.yml" "${SOURCE}/*.yaml" "${SOURCE}/*.json"
   "${SOURCE}/*.toml" "${SOURCE}/*.ini" "${SOURCE}/*.cfg" "${SOURCE}/*.in"

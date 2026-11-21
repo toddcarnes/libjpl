@@ -126,8 +126,9 @@ public:
     }
 
     [[nodiscard]] std::vector<double> constants() const {
-        Header h = header();
-        std::vector<double> vals(h.constant_count);
+        const jpl_header* c_hdr = ::jpl_get_header(handle_);
+        if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
+        std::vector<double> vals(static_cast<size_t>(c_hdr->constant_count));
         throw_if_error(::jpl_read_constants(handle_, vals.data(), vals.size()));
         return vals;
     }
@@ -139,8 +140,9 @@ public:
     }
 
     [[nodiscard]] std::vector<double> read_record(size_t record_index) const {
-        Header h = header();
-        std::vector<double> vals(h.record_double_count);
+        const jpl_header* c_hdr = ::jpl_get_header(handle_);
+        if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
+        std::vector<double> vals(c_hdr->record_double_count);
         throw_if_error(::jpl_read_record(handle_, record_index, vals.data(), vals.size()));
         return vals;
     }

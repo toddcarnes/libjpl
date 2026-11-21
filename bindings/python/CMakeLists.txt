@@ -7,10 +7,6 @@ if(NOT TARGET jpl_shared)
     return()
 endif()
 
-# Configure pyproject.toml with project version
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml" @ONLY)
-
 # Probe for cffi at configure time
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)
@@ -42,5 +38,5 @@ endif()
 add_test(NAME jpl_python_binding
     COMMAND "${CMAKE_COMMAND}" -E env "${JPL_PYTHON_TEST_ENV}"
         "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python_binding.py"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests/data"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/data"
 )

@@ -334,6 +334,20 @@ int main(void) {
         fill_sentinel(out);
         JPL_TEST_CHECK(jpl_date_partition(nbig, pbig, 2, 1, out) == JPL_ERROR_NUMERIC);
         CHECK_PAIR(out, DATE_SENTINEL, DATE_SENTINEL);
+        /* Partition endpoints normalize and reject sum-overflowing pairs. */
+        {
+            double unnorm[2] = {0.0, 2451545.0};
+            JPL_TEST_CHECK(jpl_date_partition(unnorm, pbig, 4, 0, out) == JPL_OK);
+            CHECK_PAIR(out, 2451545.0, 0.0);
+            JPL_TEST_CHECK(jpl_date_partition(nbig, unnorm, 4, 4, out) == JPL_OK);
+            CHECK_PAIR(out, 2451545.0, 0.0);
+            fill_sentinel(out);
+            JPL_TEST_CHECK(jpl_date_partition(huge, pbig, 4, 0, out) == JPL_ERROR_NUMERIC);
+            CHECK_PAIR(out, DATE_SENTINEL, DATE_SENTINEL);
+            fill_sentinel(out);
+            JPL_TEST_CHECK(jpl_date_partition(nbig, huge, 4, 4, out) == JPL_ERROR_NUMERIC);
+            CHECK_PAIR(out, DATE_SENTINEL, DATE_SENTINEL);
+        }
     }
 
     puts("dates tests passed");

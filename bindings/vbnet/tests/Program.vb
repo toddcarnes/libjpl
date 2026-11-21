@@ -38,10 +38,16 @@ Module Program
                 End If
 
                 ' Header metadata must be populated from the native struct.
-                If header.ConstantCount < 400 Then
-                    Console.Error.WriteLine($"Expected at least 400 constants, got {header.ConstantCount}")
+                If header.ConstantCount <= 400 OrElse header.ConstantNames.Length <> header.ConstantCount Then
+                    Console.Error.WriteLine($"Unexpected ConstantNames length {header.ConstantNames.Length} vs ConstantCount {header.ConstantCount}")
                     Environment.Exit(1)
                 End If
+                For Each idx In New Long() {0, 399, 400, header.ConstantCount - 1}
+                    If header.ConstantNames(CInt(idx)) <> eph.GetConstantName(idx) Then
+                        Console.Error.WriteLine($"Constant name mismatch at {idx}: '{header.ConstantNames(CInt(idx))}' vs '{eph.GetConstantName(idx)}'")
+                        Environment.Exit(1)
+                    End If
+                Next
                 If Not (header.StartJd(0) < header.EndJd(0)) Then
                     Console.Error.WriteLine($"Bad coverage: {header.StartJd(0)} .. {header.EndJd(0)}")
                     Environment.Exit(1)
@@ -58,8 +64,9 @@ Module Program
                     Console.Error.WriteLine($"Bad EMRAT: {header.EarthMoonMassRatio}")
                     Environment.Exit(1)
                 End If
-                If header.Pointers(CInt(LibJpl.JplTarget.Earth)).Subintervals <= 0 Then
-                    Console.Error.WriteLine("Earth pointer has no subintervals")
+                ' Slot 2 is EMB (0-based file slots: 0=Mercury, 1=Venus, 2=EMB).
+                If header.Pointers(2).Subintervals <= 0 Then
+                    Console.Error.WriteLine("EMB pointer has no subintervals")
                     Environment.Exit(1)
                 End If
 
@@ -144,16 +151,25 @@ Module Program
                     Environment.Exit(1)
                 End If
 
-                ' Test aberration
+                ' Test aberration (observer velocity in AU/day; Earth orbital speed ~0.0172 AU/day)
                 Dim geomState = New Double() {1.0, 0.0, 0.0, 0.0, 0.0, 0.0}
-                Dim obsVel = New Double() {0.0, 29.78, 0.0}
+                Dim obsVel = New Double() {0.0, 0.0172, 0.0}
                 Dim aberrated = LibJpl.JplEphemeris.ApplyAberration(geomState, obsVel)
+                Dim aberratedFull = LibJpl.JplEphemeris.ApplyAberrationFull(geomState, obsVel, 1.0)
                 For i = 0 To 5
-                    If Not Double.IsFinite(aberrated(i)) Then
-                        Console.Error.WriteLine($"Aberrated state({i}) is not finite: {aberrated(i)}")
+                    If Not Double.IsFinite(aberrated(i)) OrElse Not Double.IsFinite(aberratedFull(i)) Then
+                        Console.Error.WriteLine($"Aberrated state({i}) is not finite")
                         Environment.Exit(1)
                     End If
                 Next
+
+                ' Short arrays must be rejected in managed code before P/Invoke.
+                Try
+                    LibJpl.JplEphemeris.ApplyAberration(geomState, New Double() {0.0, 0.0172})
+                    Console.Error.WriteLine("Expected ArgumentException for short observer velocity")
+                    Environment.Exit(1)
+                Catch ex As ArgumentException
+                End Try
 
                 ' Test light time
                 Dim ltResult = eph.GetStateLighttime(New Double() {2451545.0, 0.0}, LibJpl.JplTarget.Earth, LibJpl.JplTarget.Sun)

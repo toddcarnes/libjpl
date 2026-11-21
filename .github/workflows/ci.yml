@@ -228,8 +228,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install Doxygen
-        run: sudo apt-get update; sudo apt-get install -y doxygen
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Release -DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build (includes Doxygen XML)

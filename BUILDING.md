@@ -40,7 +40,7 @@ Xcode); omit on single-config Makefiles/Ninja, which default to Release.
 
 ## Language Bindings
 
-All language bindings require the shared library (`-DLIBJPL_BUILD_SHARED=ON`) and Python, C#, and VB.NET link against the shared library at runtime, while the C++ binding links against the static library. Each binding has its own CMake option (default `OFF`) and can be built/tested independently.
+Python, C#, and VB.NET bindings load the shared library at runtime (requiring `-DLIBJPL_BUILD_SHARED=ON`, the default), while the C++ binding links against the static library. Each binding has its own CMake option (default `OFF`) and can be built/tested independently.
 
 ### C++ Binding (Header-only RAII Wrapper)
 

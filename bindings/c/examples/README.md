@@ -70,7 +70,8 @@ static int moon_and_planets(const char *path) {
         jpl_close(de); return 1;
     }
 
-    // Moon from Sun = Moon from Earth + Earth from Sun
+    // Approximate Moon from Sun = Moon from Earth + Earth from Sun
+    // (Note: adding apparent legs mixes emission epochs; approximate only.)
     moon_sun.x = moon_earth.x + earth_sun.x;
     moon_sun.y = moon_earth.y + earth_sun.y;
     moon_sun.z = moon_earth.z + earth_sun.z;
@@ -129,16 +130,16 @@ static int frames(const char *path) {
         jpl_close(de); return 1;
     }
 
-    // Ecliptic -> ICRS (via a cached frame context)
+    // ICRS -> mean ecliptic of date
+    if (jpl_icrs_to_ecliptic(&state, &jd_tt, &ecliptic) != JPL_OK) { jpl_close(de); return 1; }
+
+    // Mean ecliptic of date -> ICRS (via a cached frame context)
     {
         jpl_frame_context *ctx = NULL;
         if (jpl_frame_context_create(&jd_tt, &ctx) != JPL_OK) { jpl_close(de); return 1; }
-        if (jpl_frame_context_rotate_state(ctx, &state, &icrs) != JPL_OK) { jpl_frame_context_destroy(ctx); jpl_close(de); return 1; }
+        if (jpl_frame_context_rotate_state(ctx, &ecliptic, &icrs) != JPL_OK) { jpl_frame_context_destroy(ctx); jpl_close(de); return 1; }
         jpl_frame_context_destroy(ctx);
     }
-
-    // ICRS -> Ecliptic
-    if (jpl_icrs_to_ecliptic(&state, &jd_tt, &ecliptic) != JPL_OK) { jpl_close(de); return 1; }
 
     // Rotation matrix
     if (jpl_frame_rotation_matrix(&jd_tt, R) != JPL_OK) { jpl_close(de); return 1; }
@@ -186,9 +187,8 @@ cmake --build build --config Debug
 
 ## Key Points
 
-1. **Two-part dates**: Always use `jpl_date` structs (high + low parts). Never compute a scalar and split it.
+1. **Two-part dates**: Always build `jpl_date` structs (high + low parts) directly. Never compute a scalar and split it.
 2. **Error handling**: Every function returns `jpl_status`. Check for `JPL_OK`.
-3. **Thread safety**: Use `jpl_ephemeris_clone()` for concurrent reads on FILE path.
+3. **Thread safety**: Use `jpl_ephemeris_clone()` for concurrent reads on FILE path, or `jpl_open_mmap()`.
 4. **Frame restrictions**: `jpl_planet_position` requires `JPL_FRAME_ICRF`.
-5. **Two-part dates**: Build `jpl_date` high+low parts directly. Never split a scalar epoch.
-6. **Resource cleanup**: Always call `jpl_close()` exactly once per handle.
+5. **Resource cleanup**: Always call `jpl_close()` exactly once per handle.

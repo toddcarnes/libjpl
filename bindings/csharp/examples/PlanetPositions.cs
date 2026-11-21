@@ -5,11 +5,8 @@
 /**
  * Example: Print all planet positions at J2000.0 (2000-01-01 12:00 TT)
  *
- * Build (after configuring with -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CSHARP_BINDING=ON):
- *   dotnet build bindings/csharp/examples/PlanetPositions.csproj
- *
- * Run:
- *   dotnet run --project bindings/csharp/examples/PlanetPositions.csproj /path/to/DE441.eph
+ * Add this file to a .NET 8 console project referencing bindings/csharp/src/LibJpl/LibJpl.csproj,
+ * and ensure jpl.dll / libjpl.so is on PATH / LD_LIBRARY_PATH.
  */
 
 using System;
@@ -26,8 +23,6 @@ namespace LibJpl.Examples
                 Console.Error.WriteLine($"Usage: {Environment.GetCommandLineArgs()[0]} <ephemeris-file>");
                 return 1;
             }
-
-            string path = args[0];
 
             try
             {
@@ -47,7 +42,7 @@ namespace LibJpl.Examples
                     (1, "Mercury"), (2, "Venus"), (3, "Earth"), (4, "Mars"),
                     (5, "Jupiter"), (6, "Saturn"), (7, "Uranus"), (8, "Neptune"),
                     (9, "Pluto"), (10, "Moon"), (11, "Sun"), (12, "SSB"),
-                    (13, "EMB"), (14, "Nutations"), (15, "Librations"), (17, "TT-TDB")
+                    (13, "EMB"), (14, "Nutations"), (15, "Librations")
                 };
 
                 Console.WriteLine("{0,-12} {1,14} {2,14} {3,14} {4,14} {5,14} {6,14}",
@@ -82,13 +77,13 @@ namespace LibJpl.Examples
                 Console.WriteLine($"  X: {moonState[0]:F6} Y: {moonState[1]:F6} Z: {moonState[2]:F6}");
                 Console.WriteLine($"  VX: {moonState[3]:F6} VY: {moonState[4]:F6} VZ: {moonState[5]:F6}");
 
-                // Frame conversions
-                Console.WriteLine("\nFrame conversion (Ecliptic -> ICRS):");
-                var icrsState = JplEphemeris.EclipticToIcrs(earthState, new double[] { 2451545.0, 0.0 });
-                Console.WriteLine($"  ICRS: X={icrsState[0]:F6} Y={icrsState[1]:F6} Z={icrsState[2]:F6}");
+                // Frame conversions (ICRS -> mean ecliptic of date)
+                Console.WriteLine("\nFrame conversion (ICRS -> Ecliptic):");
+                var eclState = JplEphemeris.IcrsToEcliptic(earthState, jdTt);
+                Console.WriteLine($"  Ecliptic: X={eclState[0]:F6} Y={eclState[1]:F6} Z={eclState[2]:F6}");
 
                 // Light time
-                var ltResult = eph.GetStateLighttime(new double[] { 2451545.0, 0.0 }, JplTarget.Earth, JplTarget.Sun);
+                var ltResult = eph.GetStateLighttime(jdTdb, JplTarget.Earth, JplTarget.Sun);
                 Console.WriteLine($"\nLight time (Earth-Sun): {ltResult.LightTimeDays:F6} days");
 
                 // Time conversions

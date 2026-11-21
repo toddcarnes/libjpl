@@ -25,12 +25,9 @@ endif()
     message(STATUS "MANIFEST_PATH: ${MANIFEST_PATH}")
 
 # Generate manifest
-    file(GLOB_RECURSE SDK_FILES "${SDK_ROOT}/*")
-    list(FILTER SDK_FILES INCLUDE REGEX ".*")
-    message(STATUS "GLOB found ${SDK_FILES} files under ${SDK_ROOT}")
-    if(SDK_FILES)
-        message(STATUS "First few: ${SDK_FILES}")
-    endif()
+file(GLOB_RECURSE SDK_FILES "${SDK_ROOT}/*")
+list(LENGTH SDK_FILES SDK_FILE_COUNT)
+message(STATUS "GLOB found ${SDK_FILE_COUNT} entries under ${SDK_ROOT}")
 
 set(MANIFEST_LINES)
 foreach(f ${SDK_FILES})
@@ -45,7 +42,8 @@ foreach(f ${MANIFEST_LINES})
     file(APPEND "${MANIFEST_PATH}" "${f}\n")
 endforeach()
 
-message(STATUS "Generated manifest with ${MANIFEST_LINES} files")
+list(LENGTH MANIFEST_LINES MANIFEST_COUNT)
+message(STATUS "Generated manifest with ${MANIFEST_COUNT} files")
 
 # Verify manifest exists and is readable
 if(NOT EXISTS "${MANIFEST_PATH}")
@@ -53,8 +51,8 @@ if(NOT EXISTS "${MANIFEST_PATH}")
 endif()
 
 # Create zip (run from SDK_ROOT so paths in manifest are relative)
-    execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E tar cf "${ZIP_PATH}" --format=zip --files-from=${MANIFEST_PATH}
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E tar cf "${ZIP_PATH}" --format=zip "--files-from=${MANIFEST_PATH}"
         WORKING_DIRECTORY "${SDK_ROOT}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE output

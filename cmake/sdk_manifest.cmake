@@ -18,7 +18,6 @@ if(NOT EXISTS "${SDK_ROOT}")
 endif()
 
 file(GLOB_RECURSE SDK_FILES "${SDK_ROOT}/*")
-list(FILTER SDK_FILES INCLUDE REGEX ".*")  # keep all
 
 # Convert to relative paths
 set(MANIFEST_LINES)
@@ -30,8 +29,9 @@ foreach(f ${SDK_FILES})
 endforeach()
 
 # Write manifest (one file per line for tar --files-from)
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt" "")
-    foreach(f ${MANIFEST_LINES})
-        file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt" "${f}\n")
-    endforeach()
-message(STATUS "Generated SDK manifest with ${MANIFEST_LINES} files")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt" "")
+foreach(f ${MANIFEST_LINES})
+    file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/sdk_manifest.txt" "${f}\n")
+endforeach()
+list(LENGTH MANIFEST_LINES MANIFEST_COUNT)
+message(STATUS "Generated SDK manifest with ${MANIFEST_COUNT} files")

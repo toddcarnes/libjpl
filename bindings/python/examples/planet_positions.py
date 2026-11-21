@@ -44,7 +44,7 @@ def main():
                 1: "Mercury", 2: "Venus", 3: "Earth", 4: "Mars",
                 5: "Jupiter", 6: "Saturn", 7: "Uranus", 8: "Neptune",
                 9: "Pluto", 10: "Moon", 11: "Sun", 12: "SSB",
-                13: "EMB", 14: "Nutations", 15: "Librations", 17: "TT-TDB"
+                13: "EMB", 14: "Nutations", 15: "Librations"
             }
 
             print(f"{'Body':<12} {'X (AU)':>14} {'Y (AU)':>14} {'Z (AU)':>14} "
@@ -74,13 +74,13 @@ def main():
             print(f"  X: {moon[0]:>14.6f} Y: {moon[1]:>14.6f} Z: {moon[2]:>14.6f}")
             print(f"  VX: {moon[3]:>14.6f} VY: {moon[4]:>14.6f} VZ: {moon[5]:>14.6f}")
 
-            # Frame conversions
-            print("\nFrame conversion (Ecliptic -> ICRS):")
-            state_icrs = Ephemeris.ecliptic_to_icrs(state, [2451545.0, 0.0])
-            print(f"  ICRS: X={state_icrs[0]:.6f} Y={state_icrs[1]:.6f} Z={state_icrs[2]:.6f}")
+            # Frame conversions (ICRS -> mean ecliptic of date)
+            print("\nFrame conversion (ICRS -> Ecliptic):")
+            state_ecl = Ephemeris.icrs_to_ecliptic(state, jd_tt)
+            print(f"  Ecliptic: X={state_ecl[0]:.6f} Y={state_ecl[1]:.6f} Z={state_ecl[2]:.6f}")
 
             # Light time
-            lt_result = eph.get_state_lighttime([2451545.0, 0.0], JplTarget.EARTH, JplTarget.SUN)
+            lt_result = eph.get_state_lighttime(jd_tdb, JplTarget.EARTH, JplTarget.SUN)
             print(f"\nLight time (Earth-Sun): {lt_result[1]:.6f} days")
 
             # Time conversions

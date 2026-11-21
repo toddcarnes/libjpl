@@ -212,14 +212,10 @@ jpl_status jpl_date_partition(const double begin[2], const double end[2],
     }
 #endif
     if (index == 0) {
-        out[0] = begin[0];
-        out[1] = begin[1];
-        return JPL_OK;
+        return jpl_date_normalize(begin, out);
     }
     if (index == count) {
-        out[0] = end[0];
-        out[1] = end[1];
-        return JPL_OK;
+        return jpl_date_normalize(end, out);
     }
     n = (double)count;
     di = (double)index;

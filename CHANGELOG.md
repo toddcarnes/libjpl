@@ -12,12 +12,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-20
+
+### Fixed
+
+- Core: `jpl_frame_context_create()` now sets `*out_context = NULL` on all failure paths; `validate_layout()` propagates `JPL_ERROR_IO`/`JPL_ERROR_MEMORY` from record-endpoint probes; `resolve_reopen_path()` guards Win32 `GetFullPathNameA` buffer growth; `lt_fast_iterate()` checks `fabs(*residual) <= JPL_LIGHTTIME_TOL_DAYS`; `jpl_date_partition()` normalizes endpoint indices; removed unused `identity` struct fields and redundant `select_record()` recomputation.
+- CMake & tests: `jpl_horizons_offline` and `jpl_horizons_reference_mutation` now run unconditionally against the committed DE441 slice (`tests/data/de441_2000_2010.eph`); `jpl_shared` sets `C_VISIBILITY_PRESET hidden` so Unix shared libraries export only `JPL_API` symbols; `jpl_install` supports `-DLIBJPL_BUILD_SHARED=OFF`; expanded `jpl_licenses` sweep to cover C++, C#, VB.NET, and Doxygen files and added missing inventory entries; added direct unit tests for `jpl_frame_context_*`.
+- Bindings: hardened C# and VB.NET P/Invoke calls with array-length validation and `SafeHandle` `DangerousAddRef`/`DangerousRelease`, populated overflow `ConstantNames` (>400), delegated `JplException` messages to `jpl_status_string()`, and added `ApplyAberrationFull`; made Python `apply_aberration*` `@staticmethod`, guarded closed handles with `JplError`, and fixed `pyproject.toml`; avoided redundant overflow-name reads in C++/Python `constants()`/`read_record()`; fixed all four binding examples.
+- Documentation: aligned `include/jpl.h`, `include/jpl_frames.h`, `README.md`, `BUILDING.md`, `CHANGELOG.md`, `docs/validation.md`, `docs/migration-two-part-dates.md`, `.github/workflows/ci.yml`, and all five `bindings/*/examples/README.md` files with the v0.8.x API.
+
 ## [0.8.0] - 2026-11-20
 
 ### Changed
 
 - Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with `add_core()` asserting the contract in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test. No behavior change (audit found no redundant or missing normalizations).
-- Deleted `jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path); thinned `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and context creation onto a single internal matrix computer. All in-repo and binding callers migrated to the context API; no behavior change.
+- **BREAKING**: Deleted `jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path); thinned `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and context creation onto a single internal matrix computer. All in-repo and binding callers migrated to the context API; no behavior change.
 
 - Interpolation internals now thread an `interp_work` bundle through a single `jpl_evaluate()` seam instead of seven helpers with five-plus parameters each; the `interp_select_record` passthrough was folded into its caller. No behavior change.
 - New atomic `jpl_geometry` (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) built once by `jpl_compute_geometry()` in coverage-then-read order; both convenience call sites consume its named fields instead of threading three epochs by hand (replacing `observer_geometry()` and the inline duplicate).

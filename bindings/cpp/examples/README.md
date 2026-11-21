@@ -9,26 +9,25 @@ See LICENSE in the project root for the full license text.
 ## Building
 
 ```bash
-# Configure with C++ binding enabled
-cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CPP_BINDING=ON
-
-# Build
+# Configure and build the static library and C++ binding tests
+cmake -S . -B build -DLIBJPL_BUILD_CPP_BINDING=ON
 cmake --build build --config Debug --parallel
 
-# Run example
-./build/bindings/cpp/examples/planet_positions /path/to/DE441.eph
+# Run the C++ binding test suite
+ctest --test-dir build -C Debug -R jpl_cpp_binding --output-on-failure
 ```
+
+To compile `planet_positions.cpp` standalone, compile with C++17 against
+`bindings/cpp/include`, `include/`, `build/generated/`, and the built `jpl`
+static library.
 
 ## Example: Planet Positions at J2000.0
 
 The `planet_positions.cpp` example demonstrates:
 - Opening an ephemeris file
 - Converting TT to TDB
-- Getting planet positions relative to SSB
-- Frame conversions (ecliptic ↔ ICRS)
-- Time conversions (TT ↔ TDB)
-- Light time calculation
-- Aberration correction
+- Getting body states relative to SSB and Earth relative to Sun
+- Handling `jpl::JplError` exceptions
 
 ## API Overview
 
@@ -48,19 +47,21 @@ int main() {
     auto jd_tdb = Ephemeris::tt_to_tdb(jd_tt);
 
     // Get state (position + velocity)
-    auto state = eph.get_state(jd_tdb, JplTarget::Earth, JplTarget::Sun);
+    auto state = eph.get_state(jd_tdb, JPL_EARTH, JPL_SUN);
 
-    // Frame conversion
-    auto icrs = Ephemeris::ecliptic_to_icrs(state, jd_tt);
+    // Frame conversion (ICRS -> mean ecliptic of date -> ICRS)
+    auto ecliptic = Ephemeris::icrs_to_ecliptic(state, jd_tt);
+    auto icrs = Ephemeris::ecliptic_to_icrs(ecliptic, jd_tt);
 
-    // Time conversion
-    auto jd_tt = Ephemeris::tdb_to_tt(jd_tdb);
+    // Time conversion round-trip
+    auto jd_tt_back = Ephemeris::tdb_to_tt(jd_tdb);
 
     // Light time
-    auto lt = eph.get_state_lighttime(jd_tdb, 3, 11);
+    auto lt = eph.get_state_lighttime(jd_tdb, JPL_EARTH, JPL_SUN);
 
-    // Aberration
-    auto aberrated = Ephemeris::apply_aberration(geom_state, obs_vel);
+    // Aberration (observer velocity in AU/day)
+    std::array<double, 3> obs_vel = {0.0, 0.0172, 0.0};
+    auto aberrated = Ephemeris::apply_aberration(state, obs_vel);
 
     // Clone handle for thread safety
     auto clone = eph.clone();

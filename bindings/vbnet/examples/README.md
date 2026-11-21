@@ -15,9 +15,13 @@ cmake -S . -B build -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_VBNET_BINDING=ON
 # Build
 cmake --build build --config Debug
 
-# Run example
-dotnet run --project bindings/vbnet/examples/PlanetPositions.vbproj /path/to/DE441.eph
+# Run the VB.NET binding test suite
+ctest --test-dir build -C Debug -R jpl_vbnet_binding --output-on-failure
 ```
+
+To run `PlanetPositions.vb` standalone, add it to a .NET 8 console project
+referencing `bindings/vbnet/src/LibJpl/LibJpl.vbproj` and ensure
+`jpl.dll` / `libjpl.so` is on `PATH` / `LD_LIBRARY_PATH`.
 
 ## Requirements
 
@@ -33,46 +37,38 @@ Imports LibJpl
 Using eph = LibJplApi.Open("DE441.eph")
 
     ' J2000.0 = 2000-01-01 12:00 TT = JD 2451545.0 TT
-    Dim jdTdb = JplEphemeris.TtToTdb(New Double() {2451545.0, 0.0})
+    Dim jdTt = New Double() {2451545.0, 0.0}
+    Dim jdTdb = JplEphemeris.TtToTdb(jdTt)
 
     ' Get state vector
     Dim state = eph.GetState(jdTdb, JplTarget.Earth, JplTarget.Sun)
 
-    ' Frame conversions
-    Dim icrsState = JplEphemeris.EclipticToIcrs(state, New Double() {2451545.0, 0.0})
-    Dim eclipticState = JplEphemeris.IcrsToEcliptic(state, New Double() {2451545.0, 0.0})
-    Dim R = JplEphemeris.FrameRotationMatrix(New Double() {2451545.0, 0.0})
+    ' Frame conversions (ICRS -> mean ecliptic of date -> ICRS)
+    Dim eclipticState = JplEphemeris.IcrsToEcliptic(state, jdTt)
+    Dim icrsState = JplEphemeris.EclipticToIcrs(eclipticState, jdTt)
+    Dim R = JplEphemeris.FrameRotationMatrix(jdTt)
 
-    ' Time conversions
-    Dim jdTdb = JplEphemeris.TtToTdb(New Double() {2451545.0, 0.0})
-    Dim jdTt = JplEphemeris.TdbToTt(jdTdb)
+    ' Time conversion round-trip
+    Dim jdTtBack = JplEphemeris.TdbToTt(jdTdb)
 
     ' Light time
-    Dim ltResult = eph.GetStateLighttime(New Double() {2451545.0, 0.0}, JplTarget.Earth, JplTarget.Sun)
+    Dim ltResult = eph.GetStateLighttime(jdTdb, JplTarget.Earth, JplTarget.Sun)
 
-    ' Aberration
-    Dim aberrated = JplEphemeris.ApplyAberration(geomState, obsVel)
-    Dim aberratedFull = JplEphemeris.ApplyAberrationFull(geomState, obsVel, sunDistAu)
+    ' Aberration (observer velocity in AU/day)
+    Dim obsVel = New Double() {0.0, 0.0172, 0.0}
+    Dim aberrated = JplEphemeris.ApplyAberration(state, obsVel)
+    Dim aberratedFull = JplEphemeris.ApplyAberrationFull(state, obsVel, 1.0)
 
     ' Planet/Moon positions
-    Dim planetState = eph.PlanetPosition(New Double() {2451545.0, 0.0}, JplTarget.Earth, JplTarget.Sun)
-    Dim moonState = eph.MoonPosition(New Double() {2451545.0, 0.0})
+    Dim planetState = eph.PlanetPosition(jdTt, JplTarget.Earth, JplTarget.Sun)
+    Dim moonState = eph.MoonPosition(jdTt)
 
     ' Apparent ecliptic position
-    Dim appPos = eph.ApparentEclipticPosition(New Double() {2451545.0, 0.0}, JplTarget.Moon)
-
-    ' Light time
-    Dim ltResult = eph.GetStateLighttime(New Double() {2451545.0, 0.0}, JplTarget.Earth, JplTarget.Sun)
+    Dim appPos = eph.ApparentEclipticPosition(jdTt, JplTarget.Moon)
 
     ' Clone for thread safety
     Using clone = eph.Clone()
-
-    ' Error handling
-    Try
-        Using eph = LibJplApi.Open("DE441.eph")
-        Catch ex As JplException
-            Console.WriteLine($"Error: {ex.Message} (status={ex.Status})")
-        End Try
+        Dim clonedState = clone.GetState(jdTdb, JplTarget.Earth, JplTarget.Sun)
     End Using
 End Using
 ```
@@ -99,8 +95,11 @@ Try
     End Using
 Catch ex As JplException
     Console.WriteLine($"Error: {ex.Message} (status={ex.Status})")
-    If ex.Status = JplStatus.ErrorIo Then ' file not found '
-    If ex.Status = JplStatus.ErrorRange Then ' date out of range '
+    If ex.Status = JplStatus.ErrorIo Then
+        ' file not found
+    ElseIf ex.Status = JplStatus.ErrorRange Then
+        ' date out of range
+    End If
 End Try
 ```
 
@@ -108,31 +107,44 @@ End Try
 
 ```vb
 Public Enum JplTarget
-    Mercury = 1, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune,
-    Pluto, Moon, Sun, SolarSystemBarycenter, EarthMoonBarycenter,
-    Nutations, Librations, TtTdb, Ssb = 0
+    Ssb = 0
+    Mercury = 1
+    Venus = 2
+    Earth = 3
+    Mars = 4
+    Jupiter = 5
+    Saturn = 6
+    Uranus = 7
+    Neptune = 8
+    Pluto = 9
+    Moon = 10
+    Sun = 11
+    SolarSystemBarycenter = 12
+    EarthMoonBarycenter = 13
+    Nutations = 14
+    Librations = 15
+    TtTdb = 17
 End Enum
 
 Public Enum JplReferenceFrame
-    Unknown = 0, Dynamical1950, Dynamical2000, Icrf
+    Unknown = 0
+    Dynamical1950 = 1
+    Dynamical2000 = 2
+    Icrf = 3
 End Enum
 
 Public Enum JplByteOrder
-    LittleEndian, BigEndian
+    LittleEndian = 0
+    BigEndian = 1
 End Enum
 ```
 
-## Structs
+## Structs and Classes
 
 ```vb
 Public Structure TtMinusTdbResult
     Public Seconds As Double
     Public RatePerDay As Double
-End Structure
-
-Public Structure LightTimeResult
-    Public State As Double()
-    Public LightTimeDays As Double
 End Structure
 
 Public Structure ApparentEclipticResult
@@ -144,26 +156,30 @@ Public Structure JplPointer
     Public StartIndex, CoefficientsPerComponent, Subintervals As Integer
 End Structure
 
-Public Structure JplHeader
-    Public Titles, ConstantNames As String()
-    Public StartJd, EndJd As Double()
-    Public StepDays, ConstantCount, AstronomicalUnitKm, EarthMoonMassRatio As Double
-    Public Pointers As JplPointer()
-    Public EphemerisNumber, ReferenceFrame, HasTtTdb As Integer
-    Public RecordDoubleCount As Long
-    Public ByteOrder As JplByteOrder
-    Public LibrationPointer, TtTdbPointer As JplPointer
-End Structure
+Public Class JplHeader
+    Public Property Titles As String()
+    Public Property ConstantNames As String()
+    Public Property StartJd As Double()
+    Public Property EndJd As Double()
+    Public Property StepDays As Double
+    Public Property ConstantCount As Integer
+    Public Property AstronomicalUnitKm As Double
+    Public Property EarthMoonMassRatio As Double
+    Public Property Pointers As JplPointer()
+    Public Property EphemerisNumber As Integer
+    Public Property ReferenceFrame As JplReferenceFrame
+    Public Property LibrationPointer As JplPointer
+    Public Property TtTdbPointer As JplPointer
+    Public Property HasTtTdb As Integer
+    Public Property RecordDoubleCount As Long
+    Public Property ByteOrder As JplByteOrder
+End Class
 ```
 
-## Running the Example
+## Running the Binding Test
 
 ```bash
-# Build
-dotnet build bindings/vbnet/examples/PlanetPositions.vbproj
-
-# Run
-dotnet run --project bindings/vbnet/examples/PlanetPositions.vbproj /path/to/DE441.eph
+ctest --test-dir build -C Debug -R jpl_vbnet_binding --output-on-failure
 ```
 
 ## Key Differences from C API

@@ -91,11 +91,13 @@ JPL_API jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt);
 
 /**
  * @brief Creates a frame conversion context for repeated transformations at a fixed epoch.
- * @param jd_tt TT Julian date as a jpl_date. The context caches the precession-nutation
- *        matrix evaluated at this epoch.
+ * @param jd_tt TT Julian date as a jpl_date. The context caches the IAU 2006 mean
+ *        ecliptic-of-date to ICRS rotation matrix (bias + precession + mean obliquity)
+ *        evaluated at this epoch.
  * @param out_context Receives the allocated context on success; set to NULL on failure.
- * @return JPL_OK on success, JPL_ERROR_ARGUMENT if jd_tt or out_context is NULL,
- *         JPL_ERROR_NUMERIC on unrepresentable arithmetic, JPL_ERROR_MEMORY on allocation failure.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT if jd_tt or out_context is NULL or
+ *         either date part is nonfinite, JPL_ERROR_NUMERIC on unrepresentable
+ *         arithmetic, JPL_ERROR_MEMORY on allocation failure.
  * @note The context is immutable after creation and can be reused for many vector rotations.
  *       Destroy with jpl_frame_context_destroy().
  * @since 0.7.0

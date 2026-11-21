@@ -76,6 +76,8 @@ moon_sun.vz = moon_earth.vz + earth_sun.vz;
 
 Note: adding apparent legs mixes emission epochs; approximate only (see jpl_convenience.h).
 
+### TT-to-TDB conversion
+
 ```c
 #include <jpl.h>
 #include <jpl_frames.h>
@@ -88,6 +90,8 @@ jpl_state state;
 if (jpl_tt_to_tdb(&tt, &tdb) != JPL_OK) return 1;
 if (jpl_get_state(ephemeris, &tdb, JPL_EARTH, JPL_SUN, &state) != JPL_OK) return 1;
 ```
+
+### Geometric light-time vs. apparent position
 
 ```c
 #include <jpl.h>
@@ -128,8 +132,10 @@ The `jpl_examples` CTest suite compiles and runs these patterns from
 
 ## Language Bindings
 
-Prebuilt shared-library bindings live under `bindings/<lang>/` and require
-`-DLIBJPL_BUILD_SHARED=ON` plus the language-specific CMake option:
+Optional language bindings live under `bindings/<lang>/` and are enabled via
+their language-specific CMake options (Python, C#, and VB.NET also require
+`-DLIBJPL_BUILD_SHARED=ON`, which is on by default; C++ links the static
+library):
 
 - **C++** (`bindings/cpp/`, `-DLIBJPL_BUILD_CPP_BINDING=ON`): header-only RAII wrapper
   `jpl::Ephemeris`, `jpl::JplError`, `jpl::Ephemeris::planet_position`.

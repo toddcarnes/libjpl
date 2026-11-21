@@ -119,7 +119,8 @@ typedef struct {
 
 /**
  * @brief Opaque frame conversion context for repeated transformations at one epoch.
- * @note Caches the precession-nutation matrix for efficient reuse. Created with
+ * @note Caches the IAU 2006 mean ecliptic-of-date to ICRS rotation matrix
+ *       (bias + precession + mean obliquity) for efficient reuse. Created with
  *       jpl_frame_context_create() and destroyed with jpl_frame_context_destroy().
  * @since 0.7.0
  */
@@ -336,15 +337,15 @@ JPL_API int jpl_has_tt_tdb(const jpl_ephemeris *ephemeris);
  *         mathematical sum is unrepresentable); JPL_ERROR_IO on file
  *         errors, JPL_ERROR_MEMORY on allocation failure.
  * @note Computed outputs are transactional: on failure the caller's state
- *       array is left unchanged, and no partial component is published.
+ *       struct is left unchanged, and no partial component is published.
  *       Failed interpolations never poison the FILE-path record cache.
  *       Raw record/constant reads are the exception: jpl_read_record() and
  *       jpl_read_constants() destination buffers may be partially written
  *       after an I/O failure.
  * @note For targets 1-13, state contains x,y,z (AU) then vx,vy,vz (AU/day)
  *       in the modern AU (149597870.7 km), independent of the header AU.
- *       Nutations (14) return dpsi, deps in state[0], state[1] and their
- *       rates (rad/day) in state[3], state[4]; state[2] and state[5] are
+ *       Nutations (14) return dpsi, deps in state->x, state->y and their
+ *       rates (rad/day) in state->vx, state->vy; state->z and state->vz are
  *       zero. Librations (15) return three angles (rad) and three rates
  *       (rad/day). Both require center 0. For TT-TDB (17) use
  *       jpl_get_tt_minus_tdb().

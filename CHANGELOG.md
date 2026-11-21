@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with `add_core()` asserting the contract in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test. No behavior change (audit found no redundant or missing normalizations).
-- Deleted `jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path); thinned `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and context creation onto a single internal matrix computer. All in-repo and binding callers migrated to the context API; no behavior change.
+- **BREAKING**: Deleted `jpl_ecliptic_to_icrs` (a pure duplicate of the frame-context path); thinned `jpl_icrs_to_ecliptic`, `jpl_frame_rotation_matrix`, and context creation onto a single internal matrix computer. All in-repo and binding callers migrated to the context API; no behavior change.
 
 - Interpolation internals now thread an `interp_work` bundle through a single `jpl_evaluate()` seam instead of seven helpers with five-plus parameters each; the `interp_select_record` passthrough was folded into its caller. No behavior change.
 - New atomic `jpl_geometry` (`rel_state`, `light_time_days`, `observer_vel`, `sun_vec`, `emission`) built once by `jpl_compute_geometry()` in coverage-then-read order; both convenience call sites consume its named fields instead of threading three epochs by hand (replacing `observer_geometry()` and the inline duplicate).

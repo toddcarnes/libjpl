@@ -239,6 +239,60 @@ int main(void) {
         JPL_TEST_CHECK(isfinite(got.x) && isfinite(got.y) && isfinite(got.z) &&
                        isfinite(got.vx) && isfinite(got.vy) && isfinite(got.vz));
     }
+    /* Direct frame-context API tests: creation error contract (*out = NULL),
+     * rotate_position, rotate_velocity, rotate_state, aliasing, and NULL/NaN. */
+    {
+        jpl_frame_context *ctx = (jpl_frame_context *)&st; /* non-NULL sentinel */
+        static const jpl_date jd = {2460000.5, 0.0};
+        static const jpl_date nan_jd = {2451545.0, NAN};
+        double pos[3] = {0.2, -0.5, 0.8};
+        double vel[3] = {0.001, -0.002, 0.0005};
+        double pos_out[3] = {7.0, 8.0, 9.0}, vel_out[3] = {7.0, 8.0, 9.0};
+        double pos_alias[3] = {0.2, -0.5, 0.8}, vel_alias[3] = {0.001, -0.002, 0.0005};
+        double bad_vec[3] = {1.0, NAN, 0.0};
+        jpl_state st_in = {0.2, -0.5, 0.8, 0.001, -0.002, 0.0005};
+        jpl_state st_out;
+        JPL_TEST_CHECK(jpl_frame_context_create(&jd, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_create(NULL, &ctx) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(ctx == NULL);
+        ctx = (jpl_frame_context *)&st;
+        JPL_TEST_CHECK(jpl_frame_context_create(&nan_jd, &ctx) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(ctx == NULL);
+        jpl_frame_context_destroy(NULL); /* must be a safe no-op */
+        JPL_TEST_CHECK(jpl_frame_context_create(&jd, &ctx) == JPL_OK && ctx != NULL);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(ctx, pos, pos_out) == JPL_OK);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(ctx, vel, vel_out) == JPL_OK);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_state(ctx, &st_in, &st_out) == JPL_OK);
+        JPL_TEST_CHECK(fabs(pos_out[0] - st_out.x) < 1e-15 &&
+                       fabs(pos_out[1] - st_out.y) < 1e-15 &&
+                       fabs(pos_out[2] - st_out.z) < 1e-15);
+        JPL_TEST_CHECK(fabs(vel_out[0] - st_out.vx) < 1e-15 &&
+                       fabs(vel_out[1] - st_out.vy) < 1e-15 &&
+                       fabs(vel_out[2] - st_out.vz) < 1e-15);
+        /* In-place aliasing for position and velocity. */
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(ctx, pos_alias, pos_alias) == JPL_OK);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(ctx, vel_alias, vel_alias) == JPL_OK);
+        JPL_TEST_CHECK(fabs(pos_alias[0] - pos_out[0]) < 1e-15 &&
+                       fabs(pos_alias[1] - pos_out[1]) < 1e-15 &&
+                       fabs(pos_alias[2] - pos_out[2]) < 1e-15);
+        JPL_TEST_CHECK(fabs(vel_alias[0] - vel_out[0]) < 1e-15 &&
+                       fabs(vel_alias[1] - vel_out[1]) < 1e-15 &&
+                       fabs(vel_alias[2] - vel_out[2]) < 1e-15);
+        /* NULL and nonfinite inputs leave output unchanged. */
+        pos_out[0] = 7.0; pos_out[1] = 8.0; pos_out[2] = 9.0;
+        vel_out[0] = 7.0; vel_out[1] = 8.0; vel_out[2] = 9.0;
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(NULL, pos, pos_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(ctx, NULL, pos_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(ctx, pos, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_position(ctx, bad_vec, pos_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(pos_out[0] == 7.0 && pos_out[1] == 8.0 && pos_out[2] == 9.0);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(NULL, vel, vel_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(ctx, NULL, vel_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(ctx, vel, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_frame_context_rotate_velocity(ctx, bad_vec, vel_out) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(vel_out[0] == 7.0 && vel_out[1] == 8.0 && vel_out[2] == 9.0);
+        jpl_frame_context_destroy(ctx);
+    }
     puts("frames tests passed");
     return 0;
 }

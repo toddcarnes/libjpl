@@ -200,7 +200,9 @@ jpl_status jpl_tdb_to_tt(const jpl_date *jd_tdb, jpl_date *jd_tt) {
 jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context) {
     double local[3][3];
     jpl_status status;
-    if (!jd_tt || !out_context) return JPL_ERROR_ARGUMENT;
+    if (!out_context) return JPL_ERROR_ARGUMENT;
+    *out_context = NULL;
+    if (!jd_tt) return JPL_ERROR_ARGUMENT;
     /* Cached matrix comes from the single computer: same epoch handling
      * and finiteness gate as every other rotation path. */
     status = jpl_epoch_matrix(jd_tt, local);

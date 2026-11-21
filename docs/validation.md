@@ -10,6 +10,19 @@ Current acceptance is recorded first. The dated 2026-09-19 results below
 remain as historical observations, including tests that were pending then;
 a skipped tier is never a pass.
 
+## 2026-11-20 review remediation acceptance
+
+Evidence for `docs/plans/2026-11-20-review-remediation.md` was collected on
+`fix/2026-11-20-review-remediation`, forked from `main` @ `3a3c4d9`:
+
+- Windows MSVC 19.52 / Visual Studio 18 2026 (`build/remediation`,
+  `-DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON`
+  with all four language bindings enabled and `JPLEPH=D:\ephem\JPL\bin`):
+  - Debug: **52/52 passed**, zero compiler warnings.
+  - Release: **52/52 passed**, zero compiler warnings.
+  - Includes `jpl_docs_symbols`, `jpl_docs_paths`, `jpl_docs_only` (Doxygen 1.18.0, `WARN_AS_ERROR=YES`), `jpl_licenses`, `jpl_install`, `jpl_horizons_offline`, `jpl_horizons_reference_mutation`, `jpl_horizons_de441_local`, `jpl_cpp_binding`, `jpl_python_binding`, `jpl_csharp_binding`, and `jpl_vbnet_binding`.
+- Linux GCC/Clang, ASan/UBSan, and `bindings-linux` (System V ABI) were not run locally in this session; CI will establish those gates.
+
 ## Review follow-up acceptance (2026-09-25)
 
 Evidence for [F1-F7](reviews/2026-09-25-review-followup-resolution.md)

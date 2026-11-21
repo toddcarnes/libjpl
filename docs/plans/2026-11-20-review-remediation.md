@@ -116,10 +116,10 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 ---
 
 ## Workstream 5 — Full Verification & Pre-Merge Review *(skill: `code-review`)*
-- [ ] Windows MSVC Debug & Release with `-DCMAKE_COMPILE_WARNING_AS_ERROR=ON` (offline suite + `jpl_licenses` + `jpl_install` + `jpl_examples` + `jpl_docs_only`).
-- [ ] Horizons suite with `$env:JPLEPH = "D:\ephem\JPL\bin"`.
-- [ ] Docs build (`-DLIBJPL_BUILD_DOCS=ON`): `docs`, `jpl_docs_symbols`, `jpl_docs_paths`.
-- [ ] All bindings enabled (`-DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_{CPP,PYTHON,CSHARP,VBNET}_BINDING=ON`) in Debug & Release.
-- [ ] WSL Linux GCC/Clang + ASan/UBSan + Linux binding tests (if available).
-- [ ] Record observed verification results in `docs/validation.md`.
-- [ ] Run `code-review` skill against `main` and report before requesting merge approval.
+- [x] Windows MSVC Debug & Release with `-DCMAKE_COMPILE_WARNING_AS_ERROR=ON` (offline suite + `jpl_licenses` + `jpl_install` + `jpl_examples` + `jpl_docs_only`): **52/52 Debug**, **52/52 Release**.
+- [x] Horizons suite with `$env:JPLEPH = "D:\ephem\JPL\bin"` (`jpl_horizons_offline`, `jpl_horizons_reference_mutation`, `jpl_horizons_de441_local`).
+- [x] Docs build (`-DLIBJPL_BUILD_DOCS=ON`): `docs`, `jpl_docs_symbols`, `jpl_docs_paths`.
+- [x] All bindings enabled (`-DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_{CPP,PYTHON,CSHARP,VBNET}_BINDING=ON`) in Debug & Release.
+- [ ] WSL Linux GCC/Clang + ASan/UBSan + Linux binding tests (not run locally; deferred to CI).
+- [x] Record observed verification results in `docs/validation.md`.
+- [x] Run `code-review` skill against `main` and report before requesting merge approval.

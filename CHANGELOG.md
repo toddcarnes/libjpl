@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
 ### Changed
 
 - Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with `add_core()` asserting the contract in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test. No behavior change (audit found no redundant or missing normalizations).

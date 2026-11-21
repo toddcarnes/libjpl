@@ -796,6 +796,15 @@ static double read_f64(const unsigned char *p, jpl_byte_order order) {
         bits = _byteswap_uint64(bits);
 #elif defined(__GNUC__) || defined(__clang__)
         bits = __builtin_bswap64(bits);
+#else
+        bits = ((bits & UINT64_C(0x00000000000000FF)) << 56) |
+               ((bits & UINT64_C(0x000000000000FF00)) << 40) |
+               ((bits & UINT64_C(0x0000000000FF0000)) << 24) |
+               ((bits & UINT64_C(0x00000000FF000000)) <<  8) |
+               ((bits & UINT64_C(0x000000FF00000000)) >>  8) |
+               ((bits & UINT64_C(0x0000FF0000000000)) >> 24) |
+               ((bits & UINT64_C(0x00FF000000000000)) >> 40) |
+               ((bits & UINT64_C(0xFF00000000000000)) >> 56);
 #endif
     }
     memcpy(&value, &bits, sizeof value);
@@ -1734,8 +1743,11 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target,
         /* Angular getters route through transactional local output too:
          * interpolate validates and publishes atomically, so a bad
          * second/third component cannot leave partial caller output. */
-        return jpl_evaluate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
-                           target == JPL_NUTATIONS ? 2 : 3, (double*)state);
+        status = jpl_evaluate(e, jd_arr, target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
+                              target == JPL_NUTATIONS ? 2 : 3, local);
+        if (status != JPL_OK) return status;
+        jpl_array_to_state(local, state);
+        return JPL_OK;
     }
     if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
     /* Body codes 1-13 plus center 0/12 route through barycentric legs
@@ -2103,12 +2115,13 @@ jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_ve
      * With m = max|component| > 0, d = pos/m has |d| <= 1, and
      * pnat = d/|d| is exact up to roundoff; r is representable here. */
     {
+        const double pos[3] = { state->x, state->y, state->z };
         double m = 0.0, dl, d[3];
         for (i = 0; i < 3; ++i) {
-            double a = fabs((&state->x)[i]);
+            double a = fabs(pos[i]);
             if (a > m) m = a;
         }
-        for (i = 0; i < 3; ++i) d[i] = (&state->x)[i] / m;
+        for (i = 0; i < 3; ++i) d[i] = pos[i] / m;
         dl = jpl_vec_norm3(d);
         if (!isfinite(dl) || dl == 0.0) return JPL_ERROR_NUMERIC;
         for (i = 0; i < 3; ++i) {

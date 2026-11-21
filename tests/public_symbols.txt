@@ -24,6 +24,11 @@ jpl_open_mmap
 jpl_ephemeris_clone
 jpl_icrs_to_ecliptic
 jpl_frame_rotation_matrix
+jpl_frame_context_create
+jpl_frame_context_destroy
+jpl_frame_context_rotate_position
+jpl_frame_context_rotate_velocity
+jpl_frame_context_rotate_state
 jpl_tt_to_tdb
 jpl_tdb_to_tt
 jpl_planet_position
@@ -68,6 +73,9 @@ JPL_FRAME_UNKNOWN
 JPL_FRAME_DYNAMICAL_1950
 JPL_FRAME_DYNAMICAL_2000
 JPL_FRAME_ICRF
+jpl_date
+jpl_state
+jpl_frame_context
 jpl_pointer
 jpl_header
 jpl_ephemeris

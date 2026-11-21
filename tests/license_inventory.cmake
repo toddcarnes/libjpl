@@ -17,7 +17,6 @@
 #   docs/specs/        - historical design records, preserved verbatim
 #   docs/plans/        - historical implementation plans, preserved verbatim
 #   docs/reviews/      - saved review plus progress ledger, verbatim
-#   docs/superpowers/  - duplicate historical docs, preserved verbatim
 #   build/, out/, cmake-build-*/ - generated build trees, no notices
 #   .git/, .worktrees/, .superpowers/, docs/html/, docs/latex/ - tooling output
 set(JPL_LICENSE_FIRST_PARTY

@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.7.0 LANGUAGES C)
+project(libjpl VERSION 0.8.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -340,7 +340,7 @@ if(LIBJPL_BUILD_TESTS)
     add_executable(jpl_convenience_tests tests/test_convenience.c)
     target_link_libraries(jpl_convenience_tests PRIVATE jpl_testing)
     target_compile_features(jpl_convenience_tests PRIVATE c_std_17)
-    target_include_directories(jpl_convenience_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
+    target_include_directories(jpl_convenience_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa ${CMAKE_CURRENT_SOURCE_DIR}/tests/data)
     target_compile_definitions(jpl_convenience_tests PRIVATE LIBJPL_TESTING)
     add_test(NAME jpl_convenience COMMAND jpl_convenience_tests)
     add_executable(jpl_mmap_tests tests/test_mmap.c)
@@ -1024,6 +1024,14 @@ if(CMAKE_COMMAND AND CMAKE_AR)
     set(JPL_SDK_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/sdk")
     set(JPL_SDK_STAMP "${CMAKE_CURRENT_BINARY_DIR}/sdk_stamp.txt")
 
+    set(JPL_SDK_DOCS_COPY_CMD "")
+    if(DOXYGEN_FOUND)
+        set(JPL_SDK_DOCS_COPY_CMD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${JPL_SDK_DOCS_WORK}/html"
+                "${JPL_SDK_PREFIX}/doc/html")
+    endif()
+
     # Stage directory (outputs stamp)
     add_custom_command(OUTPUT "${JPL_SDK_STAMP}"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${JPL_SDK_PREFIX}"
@@ -1048,9 +1056,7 @@ if(CMAKE_COMMAND AND CMAKE_AR)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/README-ERFA.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/PROVENANCE.md"
             "${JPL_SDK_PREFIX}/doc/"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${JPL_SDK_DOCS_WORK}/html"
-            "${JPL_SDK_PREFIX}/doc/html"
+        ${JPL_SDK_DOCS_COPY_CMD}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
             "${JPL_SDK_PREFIX}/licenses/LICENSE"

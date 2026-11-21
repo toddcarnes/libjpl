@@ -32,6 +32,11 @@
  * - @ref jpl_tdb_to_tt "jpl_tdb_to_tt()" - Convert TDB to TT.
  * - @ref jpl_icrs_to_ecliptic "jpl_icrs_to_ecliptic()" - Rotate an ICRS state to the ecliptic.
  * - @ref jpl_frame_rotation_matrix "jpl_frame_rotation_matrix()" - Get the ecliptic-to-ICRS matrix.
+ * - @ref jpl_frame_context_create "jpl_frame_context_create()" - Create a cached ecliptic-to-ICRS frame context.
+ * - @ref jpl_frame_context_destroy "jpl_frame_context_destroy()" - Destroy a frame context.
+ * - @ref jpl_frame_context_rotate_position "jpl_frame_context_rotate_position()" - Rotate a position vector using a frame context.
+ * - @ref jpl_frame_context_rotate_velocity "jpl_frame_context_rotate_velocity()" - Rotate a velocity vector using a frame context.
+ * - @ref jpl_frame_context_rotate_state "jpl_frame_context_rotate_state()" - Rotate a state vector using a frame context.
  *
  * ## Convenience helpers
  * - @ref jpl_planet_position "jpl_planet_position()" - Compute an apparent planet position.
@@ -39,6 +44,11 @@
  * - @ref jpl_apparent_ecliptic_position "jpl_apparent_ecliptic_position()" - Query geocentric apparent longitude, latitude, and range.
  * - @ref jpl_au_per_day_to_km_per_s "jpl_au_per_day_to_km_per_s()" - Convert velocity units.
  * - @ref jpl_km_to_au "jpl_km_to_au()" - Convert distance units.
+ *
+ * ## Core types
+ * - @ref jpl_date "jpl_date" - Two-part Julian date (`{hi, lo}`).
+ * - @ref jpl_state "jpl_state" - Six-component position and velocity state vector.
+ * - @ref jpl_frame_context "jpl_frame_context" - Opaque cached frame conversion context.
  *
  * ## Status and errors
  * - @ref jpl_status_string "jpl_status_string()" - Describe a status code.

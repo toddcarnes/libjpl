@@ -121,7 +121,7 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_tt_minus_tdb(
         IntPtr ephemeris,
-        JplDate jd_tdb,
+        in JplDate jd_tdb,
         out double seconds,
         out double rate_per_day);
 
@@ -131,7 +131,7 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_state(
         IntPtr ephemeris,
-        JplDate jd_tdb,
+        in JplDate jd_tdb,
         int target,
         int center,
         out JplState state);
@@ -139,7 +139,7 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_get_state_lighttime(
         IntPtr ephemeris,
-        JplDate jd_tdb,
+        in JplDate jd_tdb,
         int target,
         int center,
         out JplState state,
@@ -168,17 +168,17 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_icrs_to_ecliptic(
         in JplState state,
-        JplDate jd_tt,
+        in JplDate jd_tt,
         out JplState out_state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_frame_rotation_matrix(
-        JplDate jd_tt,
+        in JplDate jd_tt,
         [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 9)] double[,] R);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_frame_context_create(
-        JplDate jd_tt,
+        in JplDate jd_tt,
         out IntPtr out_context);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -192,19 +192,19 @@ public static partial class Native
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_tt_to_tdb(
-        JplDate jd_tt,
+        in JplDate jd_tt,
         out JplDate jd_tdb);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_tdb_to_tt(
-        JplDate jd_tdb,
+        in JplDate jd_tdb,
         out JplDate jd_tt);
 
     // jpl_convenience.h - planet/Moon helpers and unit conversions
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_planet_position(
         IntPtr ephem,
-        JplDate jd_tt,
+        in JplDate jd_tt,
         int planet,
         int center,
         out JplState state);
@@ -212,13 +212,13 @@ public static partial class Native
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_moon_position(
         IntPtr ephem,
-        JplDate jd_tt,
+        in JplDate jd_tt,
         out JplState state);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern JplStatus jpl_apparent_ecliptic_position(
         IntPtr ephem,
-        JplDate jd_tt,
+        in JplDate jd_tt,
         int target,
         out JplApparentEclipticResultNative result);
 
@@ -232,7 +232,8 @@ public static partial class Native
         double km,
         out double au);
 
+    // Returns a pointer to a static C string literal; never marshal directly as
+    // string (which would attempt to free the static pointer).
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.LPUTF8Str)]
-    public static extern string jpl_status_string(JplStatus status);
+    public static extern IntPtr jpl_status_string(JplStatus status);
 }

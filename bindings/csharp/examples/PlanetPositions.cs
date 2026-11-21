@@ -60,7 +60,7 @@ namespace LibJpl.Examples
 
                     try
                     {
-                        var state = eph.GetState(jdTdb, code, 0);
+                        var state = eph.GetState(jdTdb, (JplTarget)code, JplTarget.Ssb);
                         Console.WriteLine("{0,-12} {1,14:F6} {2,14:F6} {3,14:F6} {4,14:F6} {5,14:F6} {6,14:F6}",
                             name, state[0], state[1], state[2], state[3], state[4], state[5]);
                     }
@@ -70,11 +70,11 @@ namespace LibJpl.Examples
                     }
                 }
 
-                // Earth-Moon barycenter relative to Sun
-                Console.WriteLine("\nEarth-Moon barycenter relative to Sun:");
-                var state = eph.GetState(jdTdb, JplTarget.Earth, JplTarget.Sun);
-                Console.WriteLine($"  X: {state[0]:F6} Y: {state[1]:F6} Z: {state[2]:F6}");
-                Console.WriteLine($"  VX: {state[3]:F6} VY: {state[4]:F6} VZ: {state[5]:F6}");
+                // Earth relative to Sun
+                Console.WriteLine("\nEarth relative to Sun:");
+                var earthState = eph.GetState(jdTdb, JplTarget.Earth, JplTarget.Sun);
+                Console.WriteLine($"  X: {earthState[0]:F6} Y: {earthState[1]:F6} Z: {earthState[2]:F6}");
+                Console.WriteLine($"  VX: {earthState[3]:F6} VY: {earthState[4]:F6} VZ: {earthState[5]:F6}");
 
                 // Moon position
                 Console.WriteLine("\nMoon position (Earth-centered, ICRS):");
@@ -84,7 +84,7 @@ namespace LibJpl.Examples
 
                 // Frame conversions
                 Console.WriteLine("\nFrame conversion (Ecliptic -> ICRS):");
-                var icrsState = JplEphemeris.EclipticToIcrs(state, new double[] { 2451545.0, 0.0 });
+                var icrsState = JplEphemeris.EclipticToIcrs(earthState, new double[] { 2451545.0, 0.0 });
                 Console.WriteLine($"  ICRS: X={icrsState[0]:F6} Y={icrsState[1]:F6} Z={icrsState[2]:F6}");
 
                 // Light time
@@ -93,15 +93,15 @@ namespace LibJpl.Examples
 
                 // Time conversions
                 Console.WriteLine("\nTime conversions:");
-                var jdTdb = JplEphemeris.TtToTdb(new double[] { 2451545.0, 0.0 });
-                var jdTt = JplEphemeris.TdbToTt(jdTdb);
+                jdTdb = JplEphemeris.TtToTdb(new double[] { 2451545.0, 0.0 });
+                jdTt = JplEphemeris.TdbToTt(jdTdb);
                 Console.WriteLine($"  TT->TDB: {jdTdb[0]} + {jdTdb[1]}");
                 Console.WriteLine($"  TDB->TT: {jdTt[0]} + {jdTt[1]}");
 
-                // Aberration
+                // Aberration (observer velocity in AU/day; Earth orbital speed ~0.0172 AU/day)
                 Console.WriteLine("\nAberration test:");
                 var geom = new double[] { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-                var obsVel = new double[] { 0.0, 29.78, 0.0 };
+                var obsVel = new double[] { 0.0, 0.0172, 0.0 };
                 var aberrated = JplEphemeris.ApplyAberration(geom, obsVel);
                 Console.WriteLine($"  Aberrated X: {aberrated[0]:F6}");
 

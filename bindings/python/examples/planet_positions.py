@@ -62,9 +62,9 @@ def main():
                 except Exception as e:
                     print(f"{name:<12} Error: {e}")
 
-            # Earth-Moon barycenter relative to Sun
-            print("\nEarth-Moon barycenter relative to Sun:")
-            state = eph.get_state(jd_tdb, 3, 11)
+            # Earth relative to Sun
+            print("\nEarth relative to Sun:")
+            state = eph.get_state(jd_tdb, JplTarget.EARTH, JplTarget.SUN)
             print(f"  X: {state[0]:>14.6f} Y: {state[1]:>14.6f} Z: {state[2]:>14.6f}")
             print(f"  VX: {state[3]:>14.6f} VY: {state[4]:>14.6f} VZ: {state[5]:>14.6f}")
 
@@ -77,10 +77,10 @@ def main():
             # Frame conversions
             print("\nFrame conversion (Ecliptic -> ICRS):")
             state_icrs = Ephemeris.ecliptic_to_icrs(state, [2451545.0, 0.0])
-            print(f"  ICRS: X={state[0]:.6f} Y={state[1]:.6f} Z={state[2]:.6f}")
+            print(f"  ICRS: X={state_icrs[0]:.6f} Y={state_icrs[1]:.6f} Z={state_icrs[2]:.6f}")
 
             # Light time
-            lt_result = eph.get_state_lighttime([2451545.0, 0.0], 3, 11)
+            lt_result = eph.get_state_lighttime([2451545.0, 0.0], JplTarget.EARTH, JplTarget.SUN)
             print(f"\nLight time (Earth-Sun): {lt_result[1]:.6f} days")
 
             # Time conversions
@@ -90,9 +90,9 @@ def main():
             print(f"  TT->TDB: {jd_tdb[0]} + {jd_tdb[1]}")
             print(f"  TDB->TT: {jd_tt[0]} + {jd_tt[1]}")
 
-        except Exception as e:
-            print(f"Error: {e}")
-            return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
 
     return 0
 

@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
 ### Changed
 
 - Normalized-date discipline is now documented in one place (`src/jpl_private.h`): public entries normalize user input once via `jpl_date_normalize` at the trust boundary; internals consume normalized pairs, with `add_core()` asserting the contract in debug builds (`JPL_ASSERT_NORMALIZED`). Added a normalization-idempotence test. No behavior change (audit found no redundant or missing normalizations).
@@ -24,6 +26,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fixed solar gravitational light deflection in `jpl_apparent_ecliptic_position()`: `eraLd()` previously received `observer->Sun` and `Sun->observer` as `q` and `e` (making `e x q == 0`, a no-op); it now passes `Sun->target` as `q` and `Sun->observer` as `e`, with a near-solar-limb regression test.
+- Fixed C17 undefined behavior in `jpl_apply_aberration()` (`(&state->x)[i]` replaced with `pos[i]`) and removed the `(double *)state` cast in `jpl_get_state()` for nutations/librations; added a portable byte-swap fallback in `read_f64()`.
+- Made `jpl_frame_context *context` `const` in `jpl_frame_context_rotate_{position,velocity,state}` and documented the ecliptic-of-date-to-ICRS rotation direction.
+- Fixed C# and VB.NET P/Invoke ABI for `const jpl_date *` (`in JplDate` / `ByRef JplDateNative`) and `jpl_status_string` (`IntPtr` + `Marshal.PtrToStringUTF8` so static C strings are never freed).
+- Fixed C++ and Python `header.constant_names` out-of-bounds reads on ephemerides with >400 constants by reading overflow names via `jpl_get_constant_name()`; fixed Python `Ephemeris.__del__` on failed open, `JplHeader` lifetime after close/GC, and top-level `__init__.py` exports.
+- Fixed compile/syntax/unit errors in all four language binding examples (`planet_positions.{cpp,py}` and `PlanetPositions.{cs,vb}`).
+- Removed `#cmakedefine JPL_BUILDING_SHARED` from `cmake/jpl_export.h.in` and guarded SDK HTML doc copy on `DOXYGEN_FOUND`.
+- Added v0.7.0 public symbols (`jpl_date`, `jpl_state`, `jpl_frame_context*`) to `docs/api.dox` and `tests/public_symbols.txt`, removed duplicate `docs/superpowers/` tree, and fixed stale/corrupted documentation entries.
 - Removed accidentally committed `tests/test_convenience.c.bak` scratch copy.
 
 ## [0.7.0] - 2026-11-01
@@ -78,13 +88,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Public headers `jpl.h`, `jpl_frames.h`, `jpl_convenience.h` now include `jpl_export.h` and prefix all public declarations with `JPL_API`.
-- Library install layout: static archive to `${CMAKE_INSTALL_LIBDIR}/static`, shared library to `${CMAKE_INSTALL_LIBDIR}/shared` and `${CMAKE_INSTALL_BINDIR}/shared`.
+- Library install layout: static archive to `${CMAKE_INSTALL_LIBDIR}/static`, shared library to `${CMAKE_INSTALL_LIBDIR}/shared` and `${CMAKE_INSTALL_BINDIR}`.
 - C++ binding installs headers to `${CMAKE_INSTALL_INCLUDEDIR}/jpl/`.
 - `jpl_install` test updated for split static/shared layout.
 
 ### Fixed
 
-- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
+- License sweep: build directories are exempt by name (`build*`, `cmake-build-*`, `out/`) and by `CMakeCache.txt` marker, so `jpl_licenses` and `jpl_install` pass in a build tree of any name.
 
 - `jpl_install` test: POSIX shared-link check now references `${LIBDIR}/static/libjpl.a`.
 - License checker now exempts `build_debug/`, `build_release/`, `obj/`, `bin/` build directories.
@@ -104,8 +114,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added a grouped Doxygen API landing page.
 
 ### Fixed
-
-- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 
 - Kept private parser and light-time test hooks out of the installed static
   library. Install tests now inspect defined archive symbols.
@@ -141,8 +149,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`jpl_docs_paths`); README examples compile and run as `jpl_examples`.
 
 ### Fixed
-
-- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 
 - F01: validator corpus generated once per run via a CTest fixture setup;
   repeated parallel execution no longer truncates shared files.
@@ -181,7 +187,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- License sweep: build directories are exempt by name (uild*, cmake-build-*, out/) and by CMakeCache.txt marker, so jpl_licenses and jpl_install pass in a build tree of any name.
 - Light-time iteration uses the center epoch; observer velocity uses the full aberration term at the reception epoch.
 - SRS relativistic constant corrected.
 - Overflow and record-offset guard wraps closed, including the TT-TDB tail parse.

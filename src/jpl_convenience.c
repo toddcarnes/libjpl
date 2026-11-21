@@ -6,6 +6,7 @@
 #include "jpl_private.h"
 #include "jpl_frames.h"
 #include "erfa.h"
+#include "erfam.h"
 #include <math.h>
 #include <string.h>
 
@@ -99,7 +100,6 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
 
 jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, int planet, int center, jpl_state *st) {
     jpl_date tt, tdb;
-    double lt;
     jpl_state tmp;
     int eff_center;
     jpl_status s;
@@ -128,7 +128,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     /* SSB-observer shortcut: the barycentric observer velocity is
      * zero by definition, so no aberration/Sun lookup is needed. */
     if(eff_center==JPL_SOLAR_SYSTEM_BARYCENTER) {
-        s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, &lt);
+        s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, NULL);
         if(s!=JPL_OK) return s;
         *st = tmp;
         return JPL_OK;
@@ -136,34 +136,19 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     /* Stellar aberration uses the observer's reception velocity; Sun
      * distance supplies its solar-potential term unless the observer
      * itself is the Sun. */
-    if (eff_center != JPL_SUN) {
+    {
         jpl_geometry geo;
-        double sdist;
-        double vobs[3];
+        double sdist = 0.0;
         s = jpl_compute_geometry(e, &tdb, planet, center, &geo);
         if (s != JPL_OK) return s;
         tmp = geo.rel_state;
-        lt = geo.light_time_days;
-        vobs[0] = geo.observer_vel[0];
-        vobs[1] = geo.observer_vel[1];
-        vobs[2] = geo.observer_vel[2];
-        sdist = jpl_vec_norm3(geo.sun_vec);
-        if (!isfinite(sdist)) return JPL_ERROR_NUMERIC;
-        /* Finite nonpositive Sun distance omits the potential term
-         * inside the aberration call; nonfinite is ARGUMENT there. */
-        s = jpl_apply_aberration(&tmp, vobs, sdist, &tmp);
-        if (s != JPL_OK) return s;
-    } else {
-        jpl_geometry geo;
-        double vobs[3];
-        s = jpl_compute_geometry(e, &tdb, planet, center, &geo);
-        if (s != JPL_OK) return s;
-        tmp = geo.rel_state;
-        lt = geo.light_time_days;
-        vobs[0] = geo.observer_vel[0];
-        vobs[1] = geo.observer_vel[1];
-        vobs[2] = geo.observer_vel[2];
-        s = jpl_apply_aberration(&tmp, vobs, 0.0, &tmp);
+        if (eff_center != JPL_SUN) {
+            sdist = jpl_vec_norm3(geo.sun_vec);
+            if (!isfinite(sdist)) return JPL_ERROR_NUMERIC;
+        }
+        /* Finite positive Sun distance includes the solar-potential term;
+         * 0.0 omits it (e.g. when the observer is the Sun). */
+        s = jpl_apply_aberration(&tmp, geo.observer_vel, sdist, &tmp);
         if (s != JPL_OK) return s;
     }
     *st = tmp;
@@ -178,24 +163,25 @@ jpl_status jpl_moon_position(const jpl_ephemeris *e, const jpl_date *jd_tt, jpl_
  * observer-to-target direction around the Sun and return the bent
  * direction (unit; the caller restores the geometric range, which
  * deflection preserves). The eraLd argument order is pinned here, the
- * single place it can be wrong: p = observer->target, q = observer->Sun,
- * e = Sun->observer, em = observer->Sun distance (AU). Directions arrive
- * constructed, so malformed vectors fail before eraLd instead of bending
- * silently (regression guard for the 2026-10-31 e-vector fix). */
+ * single place it can be wrong: p = observer->target, q = Sun->target,
+ * e = Sun->observer (-to_sun), em = observer->Sun distance (AU). Directions
+ * arrive constructed, so malformed vectors fail before eraLd instead of
+ * bending silently. */
 static jpl_status apparent_apply_deflection(const jpl_direction *p,
+                                            const jpl_direction *q,
                                             const jpl_direction *to_sun,
                                             double sun_distance, double dlim,
                                             jpl_direction *bent) {
     jpl_direction from_sun;
     double pv[3], qv[3], ev[3], bv[3], bent_norm;
-    if (!p || !to_sun || !bent) return JPL_ERROR_ARGUMENT;
+    if (!p || !q || !to_sun || !bent) return JPL_ERROR_ARGUMENT;
     if (!isfinite(sun_distance) || !isfinite(dlim)) return JPL_ERROR_ARGUMENT;
     jpl_direction_negate(to_sun, &from_sun);
     /* eraLd takes mutable arrays; copy the validated directions so the
      * stage owns its inputs (same transactional discipline as elsewhere:
      * bent is untouched unless the deflection succeeds). */
     memcpy(pv, p->v, sizeof pv);
-    memcpy(qv, to_sun->v, sizeof qv);
+    memcpy(qv, q->v, sizeof qv);
     memcpy(ev, from_sun.v, sizeof ev);
     eraLd(1.0, pv, qv, ev, sun_distance, dlim, bv);
     bent_norm = jpl_vec_norm3(bv);
@@ -227,9 +213,9 @@ static jpl_status apparent_project_ecliptic(const jpl_state *aberrated,
      * so this copy cannot fail. */
     memcpy(u, unit.v, sizeof u);
     eraP2s(u, &longitude, &latitude, &angular_distance);
-    *longitude_deg = eraAnp(longitude) * (180.0 / acos(-1.0));
+    *longitude_deg = eraAnp(longitude) * ERFA_DR2D;
     if (*longitude_deg >= 360.0) *longitude_deg = 0.0;
-    *latitude_deg = latitude * (180.0 / acos(-1.0));
+    *latitude_deg = latitude * ERFA_DR2D;
     return JPL_OK;
 }
 static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
@@ -241,7 +227,7 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     jpl_state aberrated;
     jpl_direction to_sun, bent;
     double pos[3];
-    double distance, sun_distance, q_distance, longitude, latitude;
+    double distance, sun_distance, longitude, latitude;
     double projected_radial = 0.0;
     double result[3];
     jpl_status s;
@@ -266,23 +252,23 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
         if (!isfinite(projected_radial)) return JPL_ERROR_NUMERIC;
     }
     if (target != JPL_SUN) {
-        jpl_direction p;
+        jpl_direction p, q;
         double tpos[3], limb, dlim;
         s = jpl_get_state(e, &geo.emission, target, JPL_SUN, &sun_to_target);
         if (s != JPL_OK) return s;
         tpos[0] = sun_to_target.x; tpos[1] = sun_to_target.y; tpos[2] = sun_to_target.z;
-        q_distance = jpl_vec_norm3(tpos);
-        if (!isfinite(q_distance) || !(q_distance > 0.0)) return JPL_ERROR_NUMERIC;
-        /* Geometric state -> Direction (constructor normalizes once, so the
-         * manual /distance division below is gone for good). */
+        /* Geometric states -> Directions (constructor normalizes once and
+         * rejects zero/nonfinite vectors before eraLd). */
         s = jpl_direction_from_raw(pos, &p);
+        if (s != JPL_OK) return s;
+        s = jpl_direction_from_raw(tpos, &q);
         if (s != JPL_OK) return s;
         s = jpl_direction_from_raw(geo.sun_vec, &to_sun);
         if (s != JPL_OK) return s;
         limb = atan2(JPL_SOLAR_RADIUS_KM / JPL_AU_KM, sun_distance);
         dlim = 0.5 * limb * limb;
         if (!isfinite(dlim) || !(dlim > 0.0)) return JPL_ERROR_NUMERIC;
-        s = apparent_apply_deflection(&p, &to_sun, sun_distance, dlim, &bent);
+        s = apparent_apply_deflection(&p, &q, &to_sun, sun_distance, dlim, &bent);
         if (s != JPL_OK) return s;
         /* Deflection preserves range: restore it from the geometric solve. */
         state.x = bent.v[0] * distance;

@@ -6,6 +6,7 @@
 #include "jpl_frames.h"
 #include "jpl_private.h"
 #include "jpl_test_util.h"
+#include "erfa.h"
 #include "numerical_reference.h"
 #include <float.h>
 #include <math.h>
@@ -248,10 +249,46 @@ int main(void) {
         lon_old = atan2(old_ecliptic[1], old_ecliptic[0]);
         JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
         {
-            double new_lon_rad = out_pos.longitude_deg * (acos(-1.0) / 180.0);
-            double diff = new_lon_rad - lon_old;
+            /* Independent eraLd reference: Mercury at (-0.5, +0.01, 0) AU behind
+             * the Sun at (0,0,0) as seen from Earth at (+1,0,0). Verify both sign
+             * and magnitude of solar gravitational light deflection (~1.2 arcsec)
+             * against direct eraLd(1.0, p, q=Sun->target, e=Sun->observer, ...). */
+            jpl_state rel_lt, obs_ssb, sun_to_tgt, ref_ab;
+            jpl_date tdb_ref = {0.0, 0.0}, emi_ref = {0.0, 0.0};
+            double lt_ref = 0.0, tdb_arr[2], emi_arr[2];
+            double p_u[3], q_u[3], e_u[3] = {1.0, 0.0, 0.0}, bent_u[3];
+            double r_p, r_q, r_b, limb, dlim, ref_ecl[3], ref_lon, new_lon_rad, diff;
+            JPL_TEST_CHECK(jpl_tt_to_tdb(&jd, &tdb_ref) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state_lighttime(e, &tdb_ref, JPL_MERCURY, JPL_EARTH, &rel_lt, &lt_ref) == JPL_OK);
+            JPL_TEST_CHECK(jpl_get_state(e, &tdb_ref, JPL_EARTH, JPL_SSB, &obs_ssb) == JPL_OK);
+            jpl_date_to_pair(&tdb_ref, tdb_arr);
+            JPL_TEST_CHECK(jpl_date_add_days(tdb_arr, -lt_ref, emi_arr) == JPL_OK);
+            jpl_pair_to_date(emi_arr, &emi_ref);
+            JPL_TEST_CHECK(jpl_get_state(e, &emi_ref, JPL_MERCURY, JPL_SUN, &sun_to_tgt) == JPL_OK);
+            r_p = sqrt(rel_lt.x*rel_lt.x + rel_lt.y*rel_lt.y + rel_lt.z*rel_lt.z);
+            r_q = sqrt(sun_to_tgt.x*sun_to_tgt.x + sun_to_tgt.y*sun_to_tgt.y + sun_to_tgt.z*sun_to_tgt.z);
+            p_u[0] = rel_lt.x / r_p; p_u[1] = rel_lt.y / r_p; p_u[2] = rel_lt.z / r_p;
+            q_u[0] = sun_to_tgt.x / r_q; q_u[1] = sun_to_tgt.y / r_q; q_u[2] = sun_to_tgt.z / r_q;
+            limb = atan2(JPL_SOLAR_RADIUS_KM / JPL_AU_KM, 1.0);
+            dlim = 0.5 * limb * limb;
+            eraLd(1.0, p_u, q_u, e_u, 1.0, dlim, bent_u);
+            r_b = sqrt(bent_u[0]*bent_u[0] + bent_u[1]*bent_u[1] + bent_u[2]*bent_u[2]);
+            rel_lt.x = (bent_u[0] / r_b) * r_p;
+            rel_lt.y = (bent_u[1] / r_b) * r_p;
+            rel_lt.z = (bent_u[2] / r_b) * r_p;
+            { const double vobs[3] = {obs_ssb.vx, obs_ssb.vy, obs_ssb.vz};
+              JPL_TEST_CHECK(jpl_apply_aberration(&rel_lt, vobs, 1.0, &ref_ab) == JPL_OK); }
+            { double ref_arr[6]; jpl_state_to_array(&ref_ab, ref_arr);
+              JPL_TEST_CHECK(jpl_icrs_to_true_ecliptic_position(ref_arr, &jd, ref_ecl) == JPL_OK); }
+            ref_lon = atan2(ref_ecl[1], ref_ecl[0]);
+            new_lon_rad = out_pos.longitude_deg * (acos(-1.0) / 180.0);
+            /* Must differ from undeflected jpl_planet_position by ~5.8e-6 rad
+             * and match the independent eraLd reference to < 1e-12 rad. */
+            diff = new_lon_rad - lon_old;
             difference = atan2(sin(diff), cos(diff));
-            (void)difference;
+            JPL_TEST_CHECK(fabs(difference) > 1e-6 && fabs(difference) < 1e-4);
+            diff = new_lon_rad - ref_lon;
+            JPL_TEST_CHECK(fabs(atan2(sin(diff), cos(diff))) < 1e-12);
         }
         JPL_TEST_CHECK(out_pos.range_au > 1.5);
         JPL_TEST_CHECK(out_pos.longitude_rate_deg_per_day > 0.1);

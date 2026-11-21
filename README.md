@@ -132,7 +132,7 @@ Prebuilt shared-library bindings live under `bindings/<lang>/` and require
 `-DLIBJPL_BUILD_SHARED=ON` plus the language-specific CMake option:
 
 - **C++** (`bindings/cpp/`, `-DLIBJPL_BUILD_CPP_BINDING=ON`): header-only RAII wrapper
-  `jpl::Ephemeris`, `jpl::JplError`, `jpl::planet_position`.
+  `jpl::Ephemeris`, `jpl::JplError`, `jpl::Ephemeris::planet_position`.
 - **Python** (`bindings/python/`, `-DLIBJPL_BUILD_PYTHON_BINDING=ON`): cffi wrapper
   `libjpl.Ephemeris` context manager, `libjpl.JplError`.
 - **C#** (`bindings/csharp/`, `-DLIBJPL_BUILD_CSHARP_BINDING=ON`): P/Invoke with

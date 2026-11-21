@@ -81,7 +81,7 @@ set(known ${JPL_LICENSE_FIRST_PARTY} ${JPL_LICENSE_EXEMPT_FILES})
 set(unlisted "")
 foreach(candidate IN LISTS candidates)
   string(REPLACE "\\" "/" candidate "${candidate}")
-  if(candidate MATCHES "^(src/erfa/|docs/specs/|docs/plans/|docs/reviews/|docs/superpowers/|docs/html/|docs/latex/|out/|\\.worktrees/|\\.git/|\\.superpowers/|build[^/]*/|cmake-build-[^/]*/)" OR candidate MATCHES "/obj/" OR candidate MATCHES "/bin/")
+  if(candidate MATCHES "^(src/erfa/|docs/specs/|docs/plans/|docs/reviews/|docs/html/|docs/latex/|out/|\\.worktrees/|\\.git/|\\.superpowers/|build[^/]*/|cmake-build-[^/]*/)" OR candidate MATCHES "/obj/" OR candidate MATCHES "/bin/")
     continue()
   endif()
   # Build trees may use any name. Skip a top-level directory that carries a

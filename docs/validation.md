@@ -10,6 +10,33 @@ Current acceptance is recorded first. The dated 2026-09-19 results below
 remain as historical observations, including tests that were pending then;
 a skipped tier is never a pass.
 
+## 2026-11-20 review remediation acceptance
+
+Evidence for `docs/plans/2026-11-20-review-remediation.md` was collected on
+`fix/2026-11-20-review-remediation`, forked from `main` @ `3a3c4d9`:
+
+- Windows MSVC 19.52 / Visual Studio 18 2026 (`build/remediation`,
+  `-DLIBJPL_FETCH_EPHEMERIDES=OFF -DLIBJPL_BUILD_DOCS=ON -DCMAKE_COMPILE_WARNING_AS_ERROR=ON`
+  with all four language bindings enabled and `JPLEPH=D:\ephem\JPL\bin`):
+  - Debug: **52/52 passed**, zero compiler warnings.
+  - Release: **52/52 passed**, zero compiler warnings.
+  - Includes `jpl_docs_symbols`, `jpl_docs_paths`, `jpl_docs_only` (Doxygen 1.18.0, `WARN_AS_ERROR=YES`), `jpl_licenses`, `jpl_install`, `jpl_horizons_offline`, `jpl_horizons_reference_mutation`, `jpl_horizons_de441_local`, `jpl_cpp_binding`, `jpl_python_binding`, `jpl_csharp_binding`, and `jpl_vbnet_binding`.
+- Ubuntu WSL (native Linux filesystem `/tmp/libjpl-wsl-verify`, GCC 11.4.0,
+  Clang, Doxygen + Graphviz `dot`, Python 3 + `cffi` 2.1.1):
+  - GCC Debug (`-DLIBJPL_BUILD_DOCS=ON`, C++/Python bindings ON,
+    `-Werror=implicit-function-declaration`): **47/47 passed**, zero warnings.
+  - GCC Release (C++/Python bindings ON, `-Werror=implicit-function-declaration`):
+    **45/45 passed**, zero warnings.
+  - Clang Debug (C++/Python bindings ON, `-Werror=implicit-function-declaration`):
+    **45/45 passed**, zero warnings.
+  - ASan/UBSan/float-cast-overflow (excluding `jpl_install|jpl_docs_paths`):
+    **42/42 passed**.
+  - TSan (`setarch x86_64 -R`, `jpl_threads|jpl_mmap`): **2/2 passed**.
+  - All four bindings with `.NET 8.0.428` (System V AMD64 ABI,
+    `jpl_cpp_binding`, `jpl_python_binding`, `jpl_csharp_binding`,
+    `jpl_vbnet_binding`): Debug **4/4 passed**, Release **4/4 passed**,
+    zero warnings.
+
 ## Review follow-up acceptance (2026-09-25)
 
 Evidence for [F1-F7](reviews/2026-09-25-review-followup-resolution.md)
@@ -196,7 +223,7 @@ Direct port of C# API: `LibJpl.JplEphemeris : SafeHandle`,
 `LibJplApi.Open`/`OpenMmap`, identical enums and exceptions. CMake option:
 `LIBJPL_BUILD_VBNET_BINDING=ON`. Requires .NET 8 SDK.
 
-Binding tests are executed in CI on Windows (indings-windows job) and Linux (indings-linux job). C++ tests link against the static library, while Python, C#, and VB.NET link against the shared library.
+Binding tests are executed in CI on Windows (`bindings-windows` job) and Linux (`bindings-linux` job). C++ tests link against the static library, while Python, C#, and VB.NET link against the shared library.
 
 ## Procedures and historical evidence (2026-09-19 checkpoint)
 

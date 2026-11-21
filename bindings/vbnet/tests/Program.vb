@@ -205,6 +205,13 @@ Module Program
                     End If
                 End Try
 
+                ' Verify StatusString returns static C string safely (must not free it)
+                If LibJpl.LibJplApi.StatusString(LibJpl.JplStatus.Ok) <> "success" OrElse
+                   String.IsNullOrEmpty(LibJpl.LibJplApi.StatusString(LibJpl.JplStatus.ErrorRange)) Then
+                    Console.Error.WriteLine("StatusString returned unexpected value")
+                    Environment.Exit(1)
+                End If
+
                 Console.WriteLine("VB.NET binding test passed")
                 Environment.Exit(0)
             End Using

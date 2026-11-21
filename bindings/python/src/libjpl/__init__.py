@@ -4,6 +4,30 @@
 
 """libjpl Python bindings."""
 
-from .ephemeris import Ephemeris, JplError
+from .ephemeris import (
+    Ephemeris,
+    JplByteOrder,
+    JplError,
+    JplHeader,
+    JplPointer,
+    JplReferenceFrame,
+    JplStatus,
+    JplTarget,
+    open,
+    open_mmap,
+    status_string,
+)
 
-__all__ = ["Ephemeris", "JplError"]
+__all__ = [
+    "Ephemeris",
+    "JplByteOrder",
+    "JplError",
+    "JplHeader",
+    "JplPointer",
+    "JplReferenceFrame",
+    "JplStatus",
+    "JplTarget",
+    "open",
+    "open_mmap",
+    "status_string",
+]

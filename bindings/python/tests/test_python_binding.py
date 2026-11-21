@@ -16,7 +16,11 @@ except ImportError:
     print("SKIP: cffi not available")
     sys.exit(0)
 
-from libjpl import Ephemeris, JplError
+from libjpl import (
+    Ephemeris, JplError, JplStatus, JplTarget, JplByteOrder,
+    JplReferenceFrame, open as jpl_open, open_mmap, status_string,
+)
+import gc
 import math
 
 def test_binding():
@@ -33,7 +37,12 @@ def test_binding():
     with Ephemeris(fixture_path) as eph:
         header = eph.header
         assert header.ephemeris_number == 441, header.ephemeris_number
-        assert header.constant_count >= 400, header.constant_count
+        assert header.constant_count > 400, header.constant_count
+        names = header.constant_names
+        assert len(names) == header.constant_count, len(names)
+        for idx in (0, 399, 400, header.constant_count - 1):
+            assert names[idx] == eph.constant_name(idx), (idx, names[idx], eph.constant_name(idx))
+        assert status_string(JplStatus.OK) == "success"
         assert header.start_jd[0] < header.end_jd[0], header.start_jd
         assert len(header.titles) == 3, header.titles
         assert all(header.titles), header.titles
@@ -56,13 +65,19 @@ def test_binding():
         assert math.isfinite(pos['longitude_rate_deg_per_day'])
         assert math.isfinite(pos['range_rate_km_per_s'])
         assert abs(pos['range_rate_km_per_s']) < 1.0, pos['range_rate_km_per_s']
+        saved_header = header
+    # Header must remain safe to access after the Ephemeris is closed/GC'd.
+    gc.collect()
+    assert saved_header.ephemeris_number == 441
+    assert saved_header.constant_count > 400
 
-    # Test missing path raises JplError
+    # Test missing path raises JplError and GC does not fail in __del__
     try:
         Ephemeris("nonexistent_file.eph")
         assert False, "Expected JplError for missing file"
     except JplError as e:
         assert e.status != 0, f"Expected non-zero status, got {e.status}"
+    gc.collect()
 
     print("Python binding test passed")
 

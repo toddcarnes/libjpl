@@ -157,7 +157,7 @@ Public Module LibJplApi
     End Function
 
     Public Function StatusString(status As JplStatus) As String
-        Return Native.jpl_status_string(status)
+        Return If(Marshal.PtrToStringUTF8(Native.jpl_status_string(status)), String.Empty)
     End Function
 
 End Module

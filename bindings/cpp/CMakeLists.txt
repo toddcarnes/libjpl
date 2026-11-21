@@ -15,4 +15,4 @@ else()
     target_compile_options(jpl_cpp_binding_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 add_test(NAME jpl_cpp_binding
-    COMMAND jpl_cpp_binding_tests "${CMAKE_SOURCE_DIR}/tests/data/de441_2000_2010.eph")
+    COMMAND jpl_cpp_binding_tests "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/data/de441_2000_2010.eph")

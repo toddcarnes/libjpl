@@ -75,6 +75,9 @@ endif()
 if(NOT DEFINED BINDIR OR "${BINDIR}" STREQUAL "")
   set(BINDIR "bin")
 endif()
+if(NOT DEFINED BUILD_SHARED OR "${BUILD_SHARED}" STREQUAL "")
+  set(BUILD_SHARED 1)
+endif()
 
 # Unique owned work tree beneath the primary binary dir; never delete an
 # unknown existing tree, and never touch maintainer-local ephemerides.
@@ -176,21 +179,23 @@ if(NOT targets_content MATCHES "INTERFACE_INCLUDE_DIRECTORIES")
 endif()
 check_archive_symbols("${PREFIX}/${LIBDIR}")
 
-# --- Case 2b: inspect the shared library artifacts. ---
-if(WIN32)
-  if(NOT EXISTS "${PREFIX}/${BINDIR}/jpl.dll")
-    message(FATAL_ERROR "missing installed shared library: ${PREFIX}/${BINDIR}/jpl.dll")
-  endif()
-  if(NOT EXISTS "${PREFIX}/${LIBDIR}/shared/jpl.lib")
-    message(FATAL_ERROR "missing installed import library: ${PREFIX}/${LIBDIR}/shared/jpl.lib")
-  endif()
-else()
-  file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.so*")
-  if(NOT shared_libs)
-    file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.*.dylib")
-  endif()
-  if(NOT shared_libs)
-    message(FATAL_ERROR "missing installed shared library in ${PREFIX}/${LIBDIR}/shared (expected libjpl.so* or libjpl.*.dylib)")
+# --- Case 2b: inspect the shared library artifacts (when built). ---
+if(BUILD_SHARED)
+  if(WIN32)
+    if(NOT EXISTS "${PREFIX}/${BINDIR}/jpl.dll")
+      message(FATAL_ERROR "missing installed shared library: ${PREFIX}/${BINDIR}/jpl.dll")
+    endif()
+    if(NOT EXISTS "${PREFIX}/${LIBDIR}/shared/jpl.lib")
+      message(FATAL_ERROR "missing installed import library: ${PREFIX}/${LIBDIR}/shared/jpl.lib")
+    endif()
+  else()
+    file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.so*")
+    if(NOT shared_libs)
+      file(GLOB shared_libs "${PREFIX}/${LIBDIR}/shared/libjpl.*.dylib")
+    endif()
+    if(NOT shared_libs)
+      message(FATAL_ERROR "missing installed shared library in ${PREFIX}/${LIBDIR}/shared (expected libjpl.so* or libjpl.*.dylib)")
+    endif()
   endif()
 endif()
 
@@ -208,7 +213,7 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   "-DCMAKE_PREFIX_PATH=${default_prefix_path}" "-Dlibjpl_DIR=${default_libjpl_dir}" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-default"
   --config "${CONFIG}" --parallel 4)
-if(WIN32)
+if(WIN32 AND BUILD_SHARED)
   # Copy jpl.dll to the test executable directory so all consumer tests can find it.
   file(COPY "${PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-default/${CONFIG}")
@@ -256,7 +261,7 @@ run_checked("${CMAKE_COMMAND}" -S "${SOURCE}/tests/consumer" -B "${WORK}/consume
   "-DCMAKE_PREFIX_PATH=${SPACE_PREFIX}" "-Dlibjpl_DIR=${space_libjpl_dir}" "-DREQUEST_VERSION=${VERSION}")
 run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-spaces"
   --config "${CONFIG}" --parallel 4)
-if(WIN32)
+if(WIN32 AND BUILD_SHARED)
   file(COPY "${SPACE_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-spaces/${CONFIG}")
 endif()

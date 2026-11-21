@@ -42,5 +42,5 @@ endif()
 add_test(NAME jpl_python_binding
     COMMAND "${CMAKE_COMMAND}" -E env "${JPL_PYTHON_TEST_ENV}"
         "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python_binding.py"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests/data"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/data"
 )

@@ -79,9 +79,9 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 ---
 
 ## Workstream 2 — CMake & Packaging
-- [ ] **2.1 Export header hygiene (`cmake/jpl_export.h.in`)**
+- [x] **2.1 Export header hygiene (`cmake/jpl_export.h.in`)**
   - Remove `#cmakedefine JPL_BUILDING_SHARED` so `jpl_export.h` relies only on `target_compile_definitions(jpl_shared PRIVATE JPL_BUILDING_SHARED)`.
-- [ ] **2.2 `package-sdk` without Doxygen (`CMakeLists.txt`)**
+- [x] **2.2 `package-sdk` without Doxygen (`CMakeLists.txt`)**
   - Guard the `${JPL_SDK_DOCS_WORK}/html` copy on `DOXYGEN_FOUND`.
 
 ---

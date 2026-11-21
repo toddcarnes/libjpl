@@ -1024,6 +1024,14 @@ if(CMAKE_COMMAND AND CMAKE_AR)
     set(JPL_SDK_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/sdk")
     set(JPL_SDK_STAMP "${CMAKE_CURRENT_BINARY_DIR}/sdk_stamp.txt")
 
+    set(JPL_SDK_DOCS_COPY_CMD "")
+    if(DOXYGEN_FOUND)
+        set(JPL_SDK_DOCS_COPY_CMD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${JPL_SDK_DOCS_WORK}/html"
+                "${JPL_SDK_PREFIX}/doc/html")
+    endif()
+
     # Stage directory (outputs stamp)
     add_custom_command(OUTPUT "${JPL_SDK_STAMP}"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${JPL_SDK_PREFIX}"
@@ -1048,9 +1056,7 @@ if(CMAKE_COMMAND AND CMAKE_AR)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/erfa/README-ERFA.md"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/PROVENANCE.md"
             "${JPL_SDK_PREFIX}/doc/"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${JPL_SDK_DOCS_WORK}/html"
-            "${JPL_SDK_PREFIX}/doc/html"
+        ${JPL_SDK_DOCS_COPY_CMD}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
             "${JPL_SDK_PREFIX}/licenses/LICENSE"

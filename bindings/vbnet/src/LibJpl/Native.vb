@@ -117,7 +117,7 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_tt_minus_tdb(
         ephemeris As IntPtr,
-        jd_tdb As JplDateNative,
+        ByRef jd_tdb As JplDateNative,
         <Out()> ByRef seconds As Double,
         <Out()> ByRef rate_per_day As Double) As JplStatus
     End Function
@@ -129,7 +129,7 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_state(
         ephemeris As IntPtr,
-        jd_tdb As JplDateNative,
+        ByRef jd_tdb As JplDateNative,
         target As Integer,
         center As Integer,
         <Out()> ByRef state As JplStateNative) As JplStatus
@@ -138,7 +138,7 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_get_state_lighttime(
         ephemeris As IntPtr,
-        jd_tdb As JplDateNative,
+        ByRef jd_tdb As JplDateNative,
         target As Integer,
         center As Integer,
         <Out()> ByRef state As JplStateNative,
@@ -171,19 +171,19 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_icrs_to_ecliptic(
         ByRef state As JplStateNative,
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         <Out()> ByRef out_state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_frame_rotation_matrix(
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         <Out(), MarshalAs(UnmanagedType.LPArray)> R As Double(,)) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_frame_context_create(
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         ByRef out_context As IntPtr) As JplStatus
     End Function
 
@@ -200,13 +200,13 @@ Friend Module Native
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_tt_to_tdb(
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         <Out()> ByRef jd_tdb As JplDateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_tdb_to_tt(
-        jd_tdb As JplDateNative,
+        ByRef jd_tdb As JplDateNative,
         <Out()> ByRef jd_tt As JplDateNative) As JplStatus
     End Function
 
@@ -214,7 +214,7 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_planet_position(
         ephem As IntPtr,
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         planet As Integer,
         center As Integer,
         <Out()> ByRef state As JplStateNative) As JplStatus
@@ -223,14 +223,14 @@ Friend Module Native
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_moon_position(
         ephem As IntPtr,
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         <Out()> ByRef state As JplStateNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_apparent_ecliptic_position(
         ephem As IntPtr,
-        jd_tt As JplDateNative,
+        ByRef jd_tt As JplDateNative,
         target As Integer,
         ByRef result As JplApparentEclipticResultNative) As JplStatus
     End Function
@@ -247,8 +247,10 @@ Friend Module Native
         <Out()> ByRef au As Double) As JplStatus
     End Function
 
+    ' Returns a pointer to a static C string literal; never marshal directly as
+    ' String (which would attempt to free the static pointer).
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
-    Public Function jpl_status_string(status As JplStatus) As String
+    Public Function jpl_status_string(status As JplStatus) As IntPtr
     End Function
 
 End Module

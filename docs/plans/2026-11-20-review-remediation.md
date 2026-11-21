@@ -87,16 +87,16 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 ---
 
 ## Workstream 3 — Language Bindings & Examples *(skill: `tdd`)*
-- [ ] **3.1 C# & VB.NET P/Invoke ABI & `jpl_status_string` (`bindings/csharp/`, `bindings/vbnet/`)**
+- [x] **3.1 C# & VB.NET P/Invoke ABI & `jpl_status_string` (`bindings/csharp/`, `bindings/vbnet/`)**
   - Red: Add `LibJplApi.StatusString(...)` assertions in `Program.cs` and `Program.vb`.
   - Green: Change all 11 `JplDate`/`JplDateNative` inputs to `in JplDate` / `ByRef ... As JplDateNative`; change `jpl_status_string` return type to `IntPtr` and decode via `Marshal.PtrToStringUTF8(...)`.
-- [ ] **3.2 C++ binding (`bindings/cpp/`)**
+- [x] **3.2 C++ binding (`bindings/cpp/`)**
   - Red: Add test reading `header().constant_names` on `de441_2000_2010.eph` (`constant_count > 400`).
   - Green: Populate all `constant_count` names via `jpl_get_constant_name()` (D2); use `Header::Pointer` for `libration_pointer`/`tt_tdb_pointer`; use `JPL_CONSTANT_NAME_LENGTH + 1`.
-- [ ] **3.3 Python binding (`bindings/python/`)**
+- [x] **3.3 Python binding (`bindings/python/`)**
   - Red: Add tests for failed `Ephemeris("nonexistent")` + GC, `header.constant_names` with `constant_count > 400`, `hdr = eph.header` lifetime after close/GC, and top-level exports.
   - Green: Initialize `self._handle = None` before `jpl_open`; prevent UAF in `JplHeader`; populate all `constant_count` names via `jpl_get_constant_name()` (D2); export full public surface in `__init__.py` and remove duplicate `'JplError'` in `__all__`.
-- [ ] **3.4 Fix all four binding examples**
+- [x] **3.4 Fix all four binding examples**
   - Fix and smoke-test `bindings/cpp/examples/planet_positions.cpp`, `bindings/python/examples/planet_positions.py`, `bindings/csharp/examples/PlanetPositions.cs`, and `bindings/vbnet/examples/PlanetPositions.vb` against `tests/data/de441_2000_2010.eph`.
 
 ---

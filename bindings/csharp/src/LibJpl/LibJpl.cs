@@ -178,6 +178,6 @@ public static class LibJplApi
 
     public static string StatusString(JplStatus status)
     {
-        return Native.jpl_status_string(status);
+        return Marshal.PtrToStringUTF8(Native.jpl_status_string(status)) ?? string.Empty;
     }
 }

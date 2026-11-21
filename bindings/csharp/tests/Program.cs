@@ -241,6 +241,14 @@ class Program
                 }
             }
 
+            // Verify StatusString returns static C string safely (must not free it)
+            if (LibJplApi.StatusString(JplStatus.Ok) != "success" ||
+                string.IsNullOrEmpty(LibJplApi.StatusString(JplStatus.ErrorRange)))
+            {
+                Console.Error.WriteLine("StatusString returned unexpected value");
+                Environment.Exit(1);
+            }
+
             Console.WriteLine("C# binding test passed");
             Environment.Exit(0);
         }

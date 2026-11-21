@@ -17,10 +17,23 @@ int main(int argc, char** argv) {
     try {
         jpl::Ephemeris eph(argv[1]);
 
-        // Check ephemeris number (DE441 = 441)
-        if (eph.header().ephemeris_number != 441) {
-            std::cerr << "Expected ephemeris number 441, got " << eph.header().ephemeris_number << "\n";
+        // Check ephemeris number (DE441 = 441) and overflow constant names (>400)
+        auto hdr = eph.header();
+        if (hdr.ephemeris_number != 441) {
+            std::cerr << "Expected ephemeris number 441, got " << hdr.ephemeris_number << "\n";
             return 1;
+        }
+        if (hdr.constant_count <= 400 || hdr.constant_names.size() != static_cast<size_t>(hdr.constant_count)) {
+            std::cerr << "Unexpected constant_names size: " << hdr.constant_names.size()
+                      << " vs constant_count " << hdr.constant_count << "\n";
+            return 1;
+        }
+        for (size_t idx : {size_t{0}, size_t{399}, size_t{400}, hdr.constant_names.size() - 1}) {
+            if (hdr.constant_names[idx] != eph.constant_name(idx)) {
+                std::cerr << "Constant name mismatch at " << idx << ": '"
+                          << hdr.constant_names[idx] << "' vs '" << eph.constant_name(idx) << "'\n";
+                return 1;
+            }
         }
 
         // Read Earth-from-Sun at J2000.0

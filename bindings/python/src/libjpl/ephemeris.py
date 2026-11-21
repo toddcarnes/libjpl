@@ -94,89 +94,120 @@ class JplPointer:
 
 
 class JplHeader:
-    """Parsed DE header."""
-    def __init__(self, c_header):
-        self._c = c_header
+    """Parsed DE header (snapshot copied from the native struct; safe after close)."""
+    def __init__(self, c_header, handle=None):
+        self._titles = [
+            _ffi.string(c_header.titles[i]).decode().rstrip('\x00')
+            for i in range(3)
+        ]
+        self._constant_count = int(c_header.constant_count)
+        names = []
+        inline_limit = min(self._constant_count, 400)
+        for i in range(inline_limit):
+            names.append(_ffi.string(c_header.constant_names[i]).decode().rstrip('\x00'))
+        if self._constant_count > 400 and handle is not None:
+            name_buf = _ffi.new("char[7]")
+            for i in range(400, self._constant_count):
+                _check(_lib.jpl_get_constant_name(handle, i, name_buf))
+                names.append(_ffi.string(name_buf).decode())
+        self._constant_names = names
+        self._start_jd = [float(c_header.start_jd[0]), float(c_header.start_jd[1])]
+        self._end_jd = [float(c_header.end_jd[0]), float(c_header.end_jd[1])]
+        self._step_days = float(c_header.step_days)
+        self._astronomical_unit_km = float(c_header.astronomical_unit_km)
+        self._earth_moon_mass_ratio = float(c_header.earth_moon_mass_ratio)
+        self._pointers = [
+            JplPointer(c_header.pointers[i].start_index,
+                       c_header.pointers[i].coefficients_per_component,
+                       c_header.pointers[i].subintervals)
+            for i in range(12)
+        ]
+        self._ephemeris_number = int(c_header.ephemeris_number)
+        self._reference_frame = int(c_header.reference_frame)
+        lp = c_header.libration_pointer
+        self._libration_pointer = JplPointer(lp.start_index, lp.coefficients_per_component, lp.subintervals)
+        tp = c_header.tt_tdb_pointer
+        self._tt_tdb_pointer = JplPointer(tp.start_index, tp.coefficients_per_component, tp.subintervals)
+        self._has_tt_tdb = bool(c_header.has_tt_tdb)
+        self._record_double_count = int(c_header.record_double_count)
+        self._byte_order = int(c_header.byte_order)
 
     @property
     def titles(self):
-        return [_ffi.string(self._c.titles[i]).decode().rstrip('\x00') for i in range(3)]
+        return list(self._titles)
 
     @property
     def constant_names(self):
-        return [_ffi.string(self._c.constant_names[i]).decode().rstrip('\x00') for i in range(self._c.constant_count)]
+        return list(self._constant_names)
 
     @property
     def start_jd(self):
-        return [self._c.start_jd[0], self._c.start_jd[1]]
+        return list(self._start_jd)
 
     @property
     def end_jd(self):
-        return [self._c.end_jd[0], self._c.end_jd[1]]
+        return list(self._end_jd)
 
     @property
     def step_days(self):
-        return self._c.step_days
+        return self._step_days
 
     @property
     def constant_count(self):
-        return self._c.constant_count
+        return self._constant_count
 
     @property
     def astronomical_unit_km(self):
-        return self._c.astronomical_unit_km
+        return self._astronomical_unit_km
 
     @property
     def earth_moon_mass_ratio(self):
-        return self._c.earth_moon_mass_ratio
+        return self._earth_moon_mass_ratio
 
     @property
     def pointers(self):
-        return [JplPointer(self._c.pointers[i].start_index,
-                          self._c.pointers[i].coefficients_per_component,
-                          self._c.pointers[i].subintervals) for i in range(12)]
+        return list(self._pointers)
 
     @property
     def ephemeris_number(self):
-        return self._c.ephemeris_number
+        return self._ephemeris_number
 
     @property
     def reference_frame(self):
-        return self._c.reference_frame
+        return self._reference_frame
 
     @property
     def libration_pointer(self):
-        lp = self._c.libration_pointer
-        return JplPointer(lp.start_index, lp.coefficients_per_component, lp.subintervals)
+        return self._libration_pointer
 
     @property
     def tt_tdb_pointer(self):
-        tp = self._c.tt_tdb_pointer
-        return JplPointer(tp.start_index, tp.coefficients_per_component, tp.subintervals)
+        return self._tt_tdb_pointer
 
     @property
     def has_tt_tdb(self):
-        return bool(self._c.has_tt_tdb)
+        return self._has_tt_tdb
 
     @property
     def record_double_count(self):
-        return self._c.record_double_count
+        return self._record_double_count
 
     @property
     def byte_order(self):
-        return self._c.byte_order
+        return self._byte_order
 
 
 class Ephemeris:
     """An open DE file. Use as a context manager; closes on exit."""
 
     def __init__(self, path):
+        self._handle = None
         handle = _ffi.new("jpl_ephemeris **")
         _check(_lib.jpl_open(path.encode("utf-8"), handle))
         self._handle = handle[0]
 
     def close(self):
-        if self._handle is not None:
+        if getattr(self, "_handle", None) is not None:
             _lib.jpl_close(self._handle)
             self._handle = None
 
@@ -194,7 +225,7 @@ class Ephemeris:
         c_header = _lib.jpl_get_header(self._handle)
         if c_header == _ffi.NULL:
             raise JplError(JplStatus.ERROR_ARGUMENT)
-        return JplHeader(c_header)
+        return JplHeader(c_header, self._handle)
 
     def constants(self):
         """Read all constants."""
@@ -391,6 +422,6 @@ def open_mmap(path):
 
 __all__ = [
     'JplError', 'JplStatus', 'JplTarget', 'JplByteOrder', 'JplReferenceFrame',
-    'JplPointer', 'JplHeader', 'Ephemeris', 'JplError',
+    'JplPointer', 'JplHeader', 'Ephemeris',
     'status_string', 'open', 'open_mmap',
 ]

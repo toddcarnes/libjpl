@@ -6,11 +6,12 @@
  * @file planet_positions.cpp
  * @brief Example: Print all planet positions at J2000.0 (2000-01-01 12:00 TT)
  *
- * Build (after configuring with -DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_CPP_BINDING=ON):
- *   cmake --build build --config Debug --target planet_positions
+ * Build:
+ *   Compile against the installed or build-tree libjpl headers and jpl static library
+ *   (C++17), e.g. with g++/clang++ or cl.exe including bindings/cpp/include and include/.
  *
  * Run:
- *   ./build/bindings/cpp/examples/planet_positions /path/to/DE441.eph
+ *   ./planet_positions /path/to/DE441.eph
  */
 
 #include <jpl/jpl.hpp>
@@ -52,15 +53,13 @@ int main(int argc, char** argv) {
                   << std::setw(14) << "VY (AU/d)" << std::setw(14) << "VZ (AU/d)" << "\n";
         std::cout << std::string(98, '-') << "\n";
 
-        jpl::Ephemeris eph(argv[1]);
-
         for (const auto& p : planets) {
             if (p.code == 0) continue; // skip SSB alias
             if (p.code > 17) continue; // skip invalid
 
             try {
                 // Get position relative to SSB (center=0) using TDB
-                auto state = jpl::Ephemeris::get_state(
+                auto state = eph.get_state(
                     jd_tdb,  // J2000.0 TDB
                     p.code,            // target
                     0                  // center = SSB
@@ -79,10 +78,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Also show Earth-Moon barycenter relative to Sun
-        std::cout << "\nEarth-Moon barycenter relative to Sun:\n";
+        // Also show Earth relative to Sun
+        std::cout << "\nEarth relative to Sun:\n";
         try {
-            auto state = jpl::Ephemeris::get_state(jd_tdb, 3, 11);
+            auto state = eph.get_state(jd_tdb, JPL_EARTH, JPL_SUN);
             std::cout << std::fixed << std::setprecision(6)
                       << "X: " << std::setw(14) << state[0]
                       << " Y: " << state[1] << " Z: " << state[2]

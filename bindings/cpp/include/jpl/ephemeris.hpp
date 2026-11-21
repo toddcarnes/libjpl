@@ -78,8 +78,8 @@ public:
         std::array<Pointer, 12> pointers;
         int ephemeris_number;
         jpl_reference_frame reference_frame;
-        struct { int start_index; int coefficients_per_component; int subintervals; } libration_pointer;
-        struct { int start_index; int coefficients_per_component; int subintervals; } tt_tdb_pointer;
+        Pointer libration_pointer;
+        Pointer tt_tdb_pointer;
         int has_tt_tdb;
         size_t record_double_count;
         jpl_byte_order byte_order;
@@ -90,9 +90,15 @@ public:
         if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
         Header h;
         for (int i = 0; i < 3; ++i) h.titles[i] = c_hdr->titles[i];
-        h.constant_names.reserve(c_hdr->constant_count);
+        h.constant_names.reserve(static_cast<size_t>(c_hdr->constant_count));
         for (int i = 0; i < c_hdr->constant_count; ++i) {
-            h.constant_names.emplace_back(c_hdr->constant_names[i]);
+            if (i < JPL_MAX_CONSTANT_NAMES) {
+                h.constant_names.emplace_back(c_hdr->constant_names[i]);
+            } else {
+                char name[JPL_CONSTANT_NAME_LENGTH + 1];
+                throw_if_error(::jpl_get_constant_name(handle_, static_cast<size_t>(i), name));
+                h.constant_names.emplace_back(name);
+            }
         }
         h.start_jd = {c_hdr->start_jd[0], c_hdr->start_jd[1]};
         h.end_jd = {c_hdr->end_jd[0], c_hdr->end_jd[1]};
@@ -127,7 +133,7 @@ public:
     }
 
     [[nodiscard]] std::string constant_name(size_t index) const {
-        char name[7];
+        char name[JPL_CONSTANT_NAME_LENGTH + 1];
         throw_if_error(::jpl_get_constant_name(handle_, index, name));
         return std::string(name);
     }

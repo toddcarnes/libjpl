@@ -7,10 +7,6 @@ if(NOT TARGET jpl_shared)
     return()
 endif()
 
-# Configure pyproject.toml with project version
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/pyproject.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/pyproject.toml" @ONLY)
-
 # Probe for cffi at configure time
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)

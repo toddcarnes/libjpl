@@ -101,7 +101,7 @@ ffi.cdef("""
     typedef struct jpl_frame_context jpl_frame_context;
     jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_context **out_context);
     void jpl_frame_context_destroy(jpl_frame_context *context);
-    jpl_status jpl_frame_context_rotate_state(jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
+    jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state);
 
     /* jpl_convenience.h - planet/Moon helpers and unit conversions */
     jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const jpl_date *jd_tt, int planet, int center, jpl_state *state);

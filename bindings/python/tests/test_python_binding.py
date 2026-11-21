@@ -1,8 +1,8 @@
+#!/usr/bin/env python3
 # Copyright (c) 2026 Todd Carnes
 # SPDX-License-Identifier: MIT
 # See LICENSE in the project root for the full license text.
 
-#!/usr/bin/env python3
 """Python cffi binding test for libjpl."""
 import sys
 import os
@@ -70,6 +70,21 @@ def test_binding():
     gc.collect()
     assert saved_header.ephemeris_number == 441
     assert saved_header.constant_count > 400
+
+    # Calling methods on a closed handle must raise JplError, not cffi TypeError.
+    closed_eph = Ephemeris(fixture_path)
+    closed_eph.close()
+    try:
+        closed_eph.get_state([2451545.0, 0.0], 3, 11)
+        assert False, "Expected JplError on closed handle"
+    except JplError as e:
+        assert e.status == JplStatus.ERROR_ARGUMENT, e.status
+
+    # Aberration helpers must work as static methods (no Ephemeris instance needed).
+    ab = Ephemeris.apply_aberration([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0172, 0.0])
+    assert len(ab) == 6 and all(math.isfinite(v) for v in ab)
+    ab_full = Ephemeris.apply_aberration_full([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0172, 0.0], 1.0)
+    assert len(ab_full) == 6 and all(math.isfinite(v) for v in ab_full)
 
     # Test missing path raises JplError and GC does not fail in __del__
     try:

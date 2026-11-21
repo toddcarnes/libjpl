@@ -10,9 +10,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "libjpl"
-version = "@PROJECT_VERSION@"
+version = "0.8.0"
 description = "Python bindings for libjpl JPL Development Ephemeris reader"
-readme = "README.md"
+readme = "examples/README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Todd Carnes"}

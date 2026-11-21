@@ -13,24 +13,15 @@ Public NotInheritable Class JplException
     Public ReadOnly Property Status As JplStatus
 
     Public Sub New(status As JplStatus)
-        MyBase.New($"libjpl error: {GetStatusString(status)}")
+        MyBase.New($"libjpl error: {LibJplApi.StatusString(status)}")
         Me.Status = status
     End Sub
-
-    Private Shared Function GetStatusString(status As JplStatus) As String
-        Return status.ToString()
-    End Function
 
 End Class
 
 Public Structure TtMinusTdbResult
     Public Seconds As Double
     Public RatePerDay As Double
-End Structure
-
-Public Structure LightTimeResult
-    Public State As Double()
-    Public LightTimeDays As Double
 End Structure
 
 Public Structure ApparentEclipticResult
@@ -65,7 +56,7 @@ Public Class JplHeader
     Public Property RecordDoubleCount As Long
     Public Property ByteOrder As JplByteOrder
 
-    Friend Shared Function FromNative(headerPtr As IntPtr) As JplHeader
+    Friend Shared Function FromNative(headerPtr As IntPtr, Optional getOverflowName As Func(Of Long, String) = Nothing) As JplHeader
         If headerPtr = IntPtr.Zero Then
             Throw New ArgumentException("Invalid header pointer")
         End If
@@ -77,13 +68,20 @@ Public Class JplHeader
             headings(i) = FixedString(native.TitlesFlat, i * 85, 85)
         Next
 
-        Dim nameCount As Integer = Math.Clamp(native.ConstantCount, 0, 400)
+        Dim totalNames As Integer = Math.Max(native.ConstantCount, 0)
+        Dim inlineCount As Integer = Math.Min(totalNames, 400)
+        Dim nameCount As Integer = If(getOverflowName IsNot Nothing, totalNames, inlineCount)
         Dim names As String() = Array.Empty(Of String)()
         If nameCount > 0 Then
             ReDim names(nameCount - 1)
-            For i = 0 To nameCount - 1
+            For i = 0 To inlineCount - 1
                 names(i) = FixedString(native.ConstantNamesFlat, i * 7, 7)
             Next
+            If getOverflowName IsNot Nothing Then
+                For i = inlineCount To totalNames - 1
+                    names(i) = getOverflowName(i)
+                Next
+            End If
         End If
 
         Dim targetPointers(11) As JplPointer

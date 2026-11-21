@@ -59,147 +59,153 @@ Public NotInheritable Class JplEphemeris
         SetHandle(handle)
     End Sub
 
-    Public Sub Clone(ByRef clone As JplEphemeris)
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
+    Private Shared Sub ValidateLength(arr As Double(), minLength As Integer, paramName As String)
+        If arr Is Nothing Then
+            Throw New ArgumentNullException(paramName)
         End If
-
-        Dim cloneHandle As IntPtr = IntPtr.Zero
-        Dim status As JplStatus = Native.jpl_ephemeris_clone(handle, cloneHandle)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
+        If arr.Length < minLength Then
+            Throw New ArgumentException($"Expected at least {minLength} elements.", paramName)
         End If
-        clone = New JplEphemeris(cloneHandle)
     End Sub
 
-    Public Function GetHeader() As JplHeader
+    Private Function WithHandle(Of T)(action As Func(Of IntPtr, T)) As T
         If IsInvalid Then
             Throw New ObjectDisposedException(NameOf(JplEphemeris))
         End If
 
-        Dim headerPtr As IntPtr = Native.jpl_get_header(handle)
-        If headerPtr = IntPtr.Zero Then
-            Throw New JplException(JplStatus.ErrorArgument)
-        End If
-
-        Return JplHeader.FromNative(headerPtr)
+        Dim addedRef As Boolean = False
+        Try
+            DangerousAddRef(addedRef)
+            Return action(DangerousGetHandle())
+        Finally
+            If addedRef Then
+                DangerousRelease()
+            End If
+        End Try
     End Function
 
-    Public Function ReadConstants() As Double()
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
-        Dim header As JplHeader = GetHeader()
-        Dim values(header.ConstantCount - 1) As Double
-        Dim status As JplStatus = Native.jpl_read_constants(handle, values, values.Length)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return values
-    End Function
-
-    Public Function GetConstantName(index As Long) As String
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+    Private Shared Function GetConstantNameFromHandle(h As IntPtr, index As Long) As String
         Dim name(6) As Byte
-        Dim status As JplStatus = Native.jpl_get_constant_name(handle, index, name)
+        Dim status As JplStatus = Native.jpl_get_constant_name(h, index, name)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
         Return System.Text.Encoding.ASCII.GetString(name).TrimEnd(ControlChars.NullChar)
     End Function
 
-    Public Function ReadRecord(recordIndex As Long) As Double()
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
+    Public Sub Clone(ByRef clone As JplEphemeris)
+        clone = Me.Clone()
+    End Sub
 
-        Dim header As JplHeader = GetHeader()
-        Dim values(header.RecordDoubleCount - 1) As Double
-        Dim status As JplStatus = Native.jpl_read_record(handle, recordIndex, values, values.Length)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return values
+    Public Function GetHeader() As JplHeader
+        Return WithHandle(Function(h)
+            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
+            If headerPtr = IntPtr.Zero Then
+                Throw New JplException(JplStatus.ErrorArgument)
+            End If
+            Return JplHeader.FromNative(headerPtr, Function(idx) GetConstantNameFromHandle(h, idx))
+        End Function)
+    End Function
+
+    Public Function ReadConstants() As Double()
+        Return WithHandle(Function(h)
+            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
+            If headerPtr = IntPtr.Zero Then
+                Throw New JplException(JplStatus.ErrorArgument)
+            End If
+            Dim nativeHdr As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
+            Dim values(nativeHdr.ConstantCount - 1) As Double
+            Dim status As JplStatus = Native.jpl_read_constants(h, values, values.Length)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return values
+        End Function)
+    End Function
+
+    Public Function GetConstantName(index As Long) As String
+        Return WithHandle(Function(h) GetConstantNameFromHandle(h, index))
+    End Function
+
+    Public Function ReadRecord(recordIndex As Long) As Double()
+        Return WithHandle(Function(h)
+            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
+            If headerPtr = IntPtr.Zero Then
+                Throw New JplException(JplStatus.ErrorArgument)
+            End If
+            Dim nativeHdr As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
+            Dim values(CInt(nativeHdr.RecordDoubleCount) - 1) As Double
+            Dim status As JplStatus = Native.jpl_read_record(h, recordIndex, values, values.Length)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return values
+        End Function)
     End Function
 
     Public ReadOnly Property RecordCount As Long
         Get
             If IsInvalid Then Return 0
-            Return Native.jpl_record_count(handle)
+            Return WithHandle(Function(h) Native.jpl_record_count(h))
         End Get
     End Property
 
     Public Function GetTtMinusTdb(jdTdb As Double()) As (Seconds As Double, RatePerDay As Double)
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTdb, 2, NameOf(jdTdb))
         Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
-        Dim seconds As Double
-        Dim rate As Double
-        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jd, seconds, rate)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return (seconds, rate)
+        Return WithHandle(Function(h)
+            Dim seconds As Double
+            Dim rate As Double
+            Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(h, jd, seconds, rate)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return (seconds, rate)
+        End Function)
     End Function
 
     Public ReadOnly Property HasTtTdb As Boolean
         Get
-            Return Not IsInvalid AndAlso Native.jpl_has_tt_tdb(handle) <> 0
+            Return Not IsInvalid AndAlso WithHandle(Function(h) Native.jpl_has_tt_tdb(h) <> 0)
         End Get
     End Property
 
     Public Function GetState(jdTdb As Double(), target As JplTarget, center As JplTarget) As Double()
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTdb, 2, NameOf(jdTdb))
         Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
-        Dim stNative As JplStateNative
-        Dim status As JplStatus = Native.jpl_get_state(handle, jd, CInt(target), CInt(center), stNative)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        Return WithHandle(Function(h)
+            Dim stNative As JplStateNative
+            Dim status As JplStatus = Native.jpl_get_state(h, jd, CInt(target), CInt(center), stNative)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        End Function)
     End Function
 
     Public Function GetStateLighttime(jdTdb As Double(), target As JplTarget, center As JplTarget) As (State As Double(), LightTimeDays As Double)
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTdb, 2, NameOf(jdTdb))
         Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
-        Dim stNative As JplStateNative
-        Dim lt As Double
-        Dim status As JplStatus = Native.jpl_get_state_lighttime(handle, jd, CInt(target), CInt(center), stNative, lt)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return ({stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}, lt)
+        Return WithHandle(Function(h)
+            Dim stNative As JplStateNative
+            Dim lt As Double
+            Dim status As JplStatus = Native.jpl_get_state_lighttime(h, jd, CInt(target), CInt(center), stNative, lt)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return ({stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}, lt)
+        End Function)
     End Function
 
     Public Function GetTtMinusTdbResult(jdTdb As Double()) As TtMinusTdbResult
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
-        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
-        Dim seconds As Double
-        Dim rate As Double
-        Dim status As JplStatus = Native.jpl_get_tt_minus_tdb(handle, jd, seconds, rate)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return New TtMinusTdbResult With {.Seconds = seconds, .RatePerDay = rate}
+        Dim res = GetTtMinusTdb(jdTdb)
+        Return New TtMinusTdbResult With {.Seconds = res.Seconds, .RatePerDay = res.RatePerDay}
     End Function
 
     ' Frame conversions (ecliptic-to-ICRS via a cached frame context)
     Public Shared Function EclipticToIcrs(state As Double(), jdTt As Double()) As Double()
+        ValidateLength(state, 6, NameOf(state))
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim nativeIn As New JplStateNative With {.X = state(0), .Y = state(1), .Z = state(2),
                                                 .Vx = state(3), .Vy = state(4), .Vz = state(5)}
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
@@ -221,6 +227,8 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function IcrsToEcliptic(state As Double(), jdTt As Double()) As Double()
+        ValidateLength(state, 6, NameOf(state))
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim nativeIn As New JplStateNative With {.X = state(0), .Y = state(1), .Z = state(2),
                                                 .Vx = state(3), .Vy = state(4), .Vz = state(5)}
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
@@ -233,6 +241,7 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function FrameRotationMatrix(jdTt As Double()) As Double(,)
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
         Dim R(2, 2) As Double
         Dim status As JplStatus = Native.jpl_frame_rotation_matrix(jd, R)
@@ -243,6 +252,7 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function TtToTdb(jdTt As Double()) As Double()
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim jdIn As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
         Dim jdOut As JplDateNative
         Dim status As JplStatus = Native.jpl_tt_to_tdb(jdIn, jdOut)
@@ -253,6 +263,7 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function TdbToTt(jdTdb As Double()) As Double()
+        ValidateLength(jdTdb, 2, NameOf(jdTdb))
         Dim jdIn As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
         Dim jdOut As JplDateNative
         Dim status As JplStatus = Native.jpl_tdb_to_tt(jdIn, jdOut)
@@ -263,10 +274,16 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Shared Function ApplyAberration(geomState As Double(), obsVel As Double()) As Double()
+        Return ApplyAberrationFull(geomState, obsVel, 0.0)
+    End Function
+
+    Public Shared Function ApplyAberrationFull(geomState As Double(), obsVel As Double(), sunDistanceAu As Double) As Double()
+        ValidateLength(geomState, 6, NameOf(geomState))
+        ValidateLength(obsVel, 3, NameOf(obsVel))
         Dim nativeIn As New JplStateNative With {.X = geomState(0), .Y = geomState(1), .Z = geomState(2),
                                                 .Vx = geomState(3), .Vy = geomState(4), .Vz = geomState(5)}
         Dim nativeOut As JplStateNative
-        Dim status As JplStatus = Native.jpl_apply_aberration(nativeIn, obsVel, 0.0, nativeOut)
+        Dim status As JplStatus = Native.jpl_apply_aberration(nativeIn, obsVel, sunDistanceAu, nativeOut)
         If status <> JplStatus.Ok Then
             Throw New JplException(status)
         End If
@@ -275,69 +292,65 @@ Public NotInheritable Class JplEphemeris
 
     ' Convenience: Clone returning JplEphemeris
     Public Function Clone() As JplEphemeris
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
-        Dim cloneHandle As IntPtr = IntPtr.Zero
-        Dim status As JplStatus = Native.jpl_ephemeris_clone(handle, cloneHandle)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return New JplEphemeris(cloneHandle)
+        Return WithHandle(Function(h)
+            Dim cloneHandle As IntPtr = IntPtr.Zero
+            Dim status As JplStatus = Native.jpl_ephemeris_clone(h, cloneHandle)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return New JplEphemeris(cloneHandle)
+        End Function)
     End Function
 
     ' Convenience functions
     Public Function PlanetPosition(jdTt As Double(), planet As JplTarget, center As JplTarget) As Double()
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
-        Dim stNative As JplStateNative
-        Dim status As JplStatus = Native.jpl_planet_position(handle, jd, CInt(planet), CInt(center), stNative)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        Return WithHandle(Function(h)
+            Dim stNative As JplStateNative
+            Dim status As JplStatus = Native.jpl_planet_position(h, jd, CInt(planet), CInt(center), stNative)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        End Function)
     End Function
 
     Public Function MoonPosition(jdTt As Double()) As Double()
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
-        Dim stNative As JplStateNative
-        Dim status As JplStatus = Native.jpl_moon_position(handle, jd, stNative)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        Return WithHandle(Function(h)
+            Dim stNative As JplStateNative
+            Dim status As JplStatus = Native.jpl_moon_position(h, jd, stNative)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return {stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}
+        End Function)
     End Function
 
     Public Function ApparentEclipticPosition(jdTt As Double(), target As JplTarget) As ApparentEclipticResult
-        If IsInvalid Then
-            Throw New ObjectDisposedException(NameOf(JplEphemeris))
-        End If
-
+        ValidateLength(jdTt, 2, NameOf(jdTt))
         Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
-        Dim result As New JplApparentEclipticResultNative()
-        Dim status As JplStatus = Native.jpl_apparent_ecliptic_position(
-            handle, jd, CInt(target), result)
-        If status <> JplStatus.Ok Then
-            Throw New JplException(status)
-        End If
-        Return New ApparentEclipticResult With {
-            .LongitudeDeg = result.LongitudeDeg,
-            .LatitudeDeg = result.LatitudeDeg,
-            .RangeAu = result.RangeAu,
-            .LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
-            .RangeRateKmPerS = result.RangeRateKmPerS
-        }
+        Return WithHandle(Function(h)
+            Dim result As New JplApparentEclipticResultNative()
+            Dim status As JplStatus = Native.jpl_apparent_ecliptic_position(
+                h, jd, CInt(target), result)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return New ApparentEclipticResult With {
+                .LongitudeDeg = result.LongitudeDeg,
+                .LatitudeDeg = result.LatitudeDeg,
+                .RangeAu = result.RangeAu,
+                .LongitudeRateDegPerDay = result.LongitudeRateDegPerDay,
+                .RangeRateKmPerS = result.RangeRateKmPerS
+            }
+        End Function)
     End Function
 
     Public Shared Function AuPerDayToKmPerS(velAuDay As Double()) As Double()
+        ValidateLength(velAuDay, 3, NameOf(velAuDay))
         Dim outVel(2) As Double
         Dim status As JplStatus = Native.jpl_au_per_day_to_km_per_s(velAuDay, outVel)
         If status <> JplStatus.Ok Then

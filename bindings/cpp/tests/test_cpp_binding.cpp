@@ -103,9 +103,9 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        // Test aberration
+        // Test aberration (observer velocity in AU/day; Earth orbital speed ~0.0172 AU/day)
         std::array<double, 6> geom_state = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-        std::array<double, 3> obs_vel = {0.0, 29.78, 0.0}; // ~Earth orbital velocity km/s
+        std::array<double, 3> obs_vel = {0.0, 0.0172, 0.0};
         auto aberrated = jpl::Ephemeris::apply_aberration(geom_state, obs_vel);
         for (int i = 0; i < 6; ++i) {
             if (!std::isfinite(aberrated[i])) {

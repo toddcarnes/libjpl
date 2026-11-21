@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
             {1, "Mercury"}, {2, "Venus"}, {3, "Earth"}, {4, "Mars"},
             {5, "Jupiter"}, {6, "Saturn"}, {7, "Uranus"}, {8, "Neptune"},
             {9, "Pluto"}, {10, "Moon"}, {11, "Sun"}, {12, "SSB"},
-            {13, "EMB"}, {14, "Nutations"}, {15, "Librations"}, {17, "TT-TDB"}
+            {13, "EMB"}, {14, "Nutations"}, {15, "Librations"}
         };
 
         std::cout << std::fixed << std::setprecision(6);

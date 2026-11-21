@@ -120,6 +120,6 @@ CMake/packaging edge cases, and stale/corrupted documentation.
 - [x] Horizons suite with `$env:JPLEPH = "D:\ephem\JPL\bin"` (`jpl_horizons_offline`, `jpl_horizons_reference_mutation`, `jpl_horizons_de441_local`).
 - [x] Docs build (`-DLIBJPL_BUILD_DOCS=ON`): `docs`, `jpl_docs_symbols`, `jpl_docs_paths`.
 - [x] All bindings enabled (`-DLIBJPL_BUILD_SHARED=ON -DLIBJPL_BUILD_{CPP,PYTHON,CSHARP,VBNET}_BINDING=ON`) in Debug & Release.
-- [x] WSL Linux GCC/Clang + ASan/UBSan + TSan + C++/Python bindings (GCC Debug 47/47, GCC Release 45/45, Clang Debug 45/45, ASan/UBSan 42/42, TSan 2/2; `.NET 8` not installed in WSL, so Linux C#/VB.NET remains for CI).
+- [x] WSL Linux GCC/Clang + ASan/UBSan + TSan + all 4 bindings with `.NET 8.0.428` (GCC Debug 47/47, GCC Release 45/45, Clang Debug 45/45, ASan/UBSan 42/42, TSan 2/2, Linux bindings Debug 4/4 & Release 4/4).
 - [x] Record observed verification results in `docs/validation.md`.
 - [x] Run `code-review` skill against `main` and report before requesting merge approval.

@@ -32,8 +32,10 @@ Evidence for `docs/plans/2026-11-20-review-remediation.md` was collected on
   - ASan/UBSan/float-cast-overflow (excluding `jpl_install|jpl_docs_paths`):
     **42/42 passed**.
   - TSan (`setarch x86_64 -R`, `jpl_threads|jpl_mmap`): **2/2 passed**.
-  - `.NET 8` SDK is not installed in WSL; Linux C#/VB.NET P/Invoke (`bindings-linux`)
-    remains for CI.
+  - All four bindings with `.NET 8.0.428` (System V AMD64 ABI,
+    `jpl_cpp_binding`, `jpl_python_binding`, `jpl_csharp_binding`,
+    `jpl_vbnet_binding`): Debug **4/4 passed**, Release **4/4 passed**,
+    zero warnings.
 
 ## Review follow-up acceptance (2026-09-25)
 

@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Doxygen and Graphviz
+        run: choco install -y doxygen.install graphviz
       - name: Configure
         run: cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -46,6 +48,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Initialize MSVC environment
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+      - name: Install Doxygen and Graphviz
+        run: choco install -y doxygen.install graphviz
       - name: Configure (clang-cl, Ninja)
         run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -64,6 +68,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -83,6 +89,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -100,6 +108,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Doxygen and Graphviz
+        run: brew install doxygen graphviz
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -123,6 +133,8 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install cffi
         run: python -m pip install --disable-pip-version-check cffi
+      - name: Install Doxygen and Graphviz
+        run: choco install -y doxygen.install graphviz
       - name: Configure (all bindings, warnings as errors)
         run: >
           cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF
@@ -166,6 +178,8 @@ jobs:
           python3 -m venv .venv
           .venv/bin/python -m pip install --disable-pip-version-check cffi
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure (all bindings, warnings as errors)
         run: >
           cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }}
@@ -198,6 +212,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure
         run: cmake -S . -B build/asan -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_C_FLAGS=-fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer" "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined,float-cast-overflow" -DLIBJPL_FETCH_EPHEMERIDES=OFF
       - name: Build

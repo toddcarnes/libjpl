@@ -247,6 +247,17 @@ jpl_status jpl_entry_prepare(const jpl_ephemeris *e, const double jd[2],
 jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx,
                               const double epoch[2]);
 
+/* TT→TDB policy: file data when present and in coverage, else the model.
+ * The model converts first (seed and guaranteed baseline); when the file
+ * carries TT-TDB and the seed is in coverage, fixed-point refinements
+ * TDB = TT + f(TDB)/86400 converge the millisecond-scale correction to
+ * arithmetic noise. Any file-path failure (absent/span-invalid/corrupt
+ * data, out-of-coverage seed) keeps the model result: the file is an
+ * enhancement, never a new failure mode. Deterministic: fixed iteration
+ * count, no convergence error. Callers keep their own NULL checks. */
+jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt,
+                                jpl_date *tdb);
+
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */
 jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],

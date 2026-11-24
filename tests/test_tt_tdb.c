@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 #include "jpl.h"
+#include "jpl_convenience.h"
 #include "jpl_test_util.h"
 #include "jpl_private.h"
 
@@ -436,6 +437,79 @@ int main(void) {
         jpl_close(m);
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
+    }
+    /* TT→TDB policy: file refinement over a guaranteed model baseline.
+     * The mock carries a 1.0-second constant TT-TDB dataset plus a
+     * constant 2 AU Mars, so the file leg is unmistakable (the model
+     * gives milliseconds) and the file-TT × apparent-place combination
+     * is pinned. */
+    {
+        enum { QDBL = 360 };
+        static unsigned char qhdr[QDBL * 8];
+        static double qcons[QDBL];
+        static double qvals[QDBL];
+        static const jpl_date qtt = {2451545.5, 0.0};
+        jpl_test_mock qm;
+        jpl_ephemeris *qe = NULL;
+        jpl_date qtdb, mtdb;
+        jpl_state qs;
+        size_t k;
+        memset(qhdr, 0, sizeof qhdr);
+        memcpy(qhdr, "policy file TT-TDB", 19);
+        test_mock_header(qhdr, 2451545.0, 2451546.0, 1.0, 2);
+        test_put_ptr(qhdr, 3, 3, 1, 1);
+        test_put_ptr(qhdr, 14, 300, 2, 1);
+        for (k = 0; k < QDBL; ++k) qcons[k] = 0.0;
+        qcons[0] = 1.0;
+        qcons[1] = 2.0;
+        for (k = 0; k < QDBL; ++k) qvals[k] = 0.0;
+        qvals[0] = 2451545.0;
+        qvals[1] = 2451546.0;
+        qvals[2] = 2.0 * JPL_TEST_AU_KM;
+        qvals[299] = 1.0;
+        qvals[300] = 0.0;
+        memset(&qm, 0, sizeof qm);
+        qm.record_doubles = QDBL;
+        qm.advertised_records = 1;
+        qm.denum = 441;
+        qm.constant_count = 2;
+        qm.start[0] = 2451545.0;
+        qm.end[0] = 2451546.0;
+        qm.step_days = 1.0;
+        qm.au_km = JPL_TEST_AU_KM;
+        qm.emrat = JPL_TEST_MASS_RATIO;
+        qm.header = qhdr;
+        qm.constants = qcons;
+        qm.records = qvals;
+        JPL_TEST_CHECK(test_write_mock("jpl_test_policy.bin", &qm) == 0);
+        JPL_TEST_CHECK(jpl_open("jpl_test_policy.bin", &qe) == 0);
+        JPL_TEST_CHECK(jpl_has_tt_tdb(qe) != 0);
+        /* File leg wins: policy lands ~1 s past TT, far from the model. */
+        JPL_TEST_CHECK(jpl_tt_to_tdb(&qtt, &mtdb) == JPL_OK);
+        JPL_TEST_CHECK(jpl_tt_to_tdb_policy(qe, &qtt, &qtdb) == JPL_OK);
+        JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (2451545.5 + 1.0 / 86400.0)) < 1e-9);
+        JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (mtdb.hi + mtdb.lo)) > 1e-9);
+        /* Corrupt file data keeps the model result: the file is an
+         * enhancement, never a new failure mode. */
+        qvals[299] = NAN;
+        JPL_TEST_CHECK(test_write_mock("jpl_test_policy_bad.bin", &qm) == 0);
+        {
+            jpl_ephemeris *qb = NULL;
+            jpl_date btdb;
+            JPL_TEST_CHECK(jpl_open("jpl_test_policy_bad.bin", &qb) == 0);
+            JPL_TEST_CHECK(jpl_tt_to_tdb_policy(qb, &qtt, &btdb) == JPL_OK);
+            JPL_TEST_CHECK(btdb.hi == mtdb.hi && btdb.lo == mtdb.lo);
+            jpl_close(qb);
+            JPL_TEST_CHECK(remove("jpl_test_policy_bad.bin") == 0);
+        }
+        /* File-TT × apparent-place golden: constant 2 AU Mars at
+         * light-time-corrected SSB geometry. */
+        JPL_TEST_CHECK(jpl_planet_position(qe, &qtt, JPL_MARS, JPL_SSB, &qs) == JPL_OK);
+        JPL_TEST_CHECK(fabs(qs.x - 2.0) < 1e-9);
+        JPL_TEST_CHECK(fabs(qs.y) < 1e-12 && fabs(qs.z) < 1e-12);
+        JPL_TEST_CHECK(fabs(qs.vx) < 1e-12 && fabs(qs.vy) < 1e-12 && fabs(qs.vz) < 1e-12);
+        jpl_close(qe);
+        JPL_TEST_CHECK(remove("jpl_test_policy.bin") == 0);
     }
     puts("tt-tdb tests passed");
     return 0;

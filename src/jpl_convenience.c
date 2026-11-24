@@ -36,6 +36,41 @@ jpl_status jpl_km_to_au(double km, double *au) {
     return JPL_OK;
 }
 
+/* TT→TDB policy (see jpl_private.h): file-interpolated refinement over a
+ * guaranteed model baseline. The model converts first (seed and fallback);
+ * when the file carries TT-TDB and the seed is in coverage, fixed-point
+ * refinements TDB = TT + f(TDB)/86400 converge the millisecond-scale
+ * correction to arithmetic noise. Any file-path failure (absent or
+ * span-invalid data, corrupt coefficients, out-of-coverage seed) keeps
+ * the model result: the file is an enhancement, never a new failure mode.
+ * Deterministic: fixed iteration count, no convergence error. The model
+ * leg is accurate to ±3 ns over 1950–2050 (see jpl_tt_to_tdb); outside
+ * that envelope the model value still stands, unchanged from before. */
+jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_date *tdb) {
+    double tt_arr[2], cur[2], sec;
+    int i;
+    jpl_status s;
+    if (!e || !tt || !tdb) return JPL_ERROR_ARGUMENT;
+    s = jpl_tt_to_tdb(tt, tdb);
+    if (s != JPL_OK) return s;
+    if (!jpl_has_tt_tdb(e)) return JPL_OK;
+    jpl_date_to_pair(tt, tt_arr);
+    jpl_date_to_pair(tdb, cur);
+    for (i = 0; i < 3; ++i) {
+        jpl_date cur_date;
+        double next[2];
+        jpl_pair_to_date(cur, &cur_date);
+        s = jpl_get_tt_minus_tdb(e, &cur_date, &sec, NULL);
+        if (s != JPL_OK) return JPL_OK;
+        if (!isfinite(sec)) return JPL_OK;
+        s = jpl_date_add_days(tt_arr, sec / JPL_DAYSEC, next);
+        if (s != JPL_OK) return JPL_OK;
+        cur[0] = next[0]; cur[1] = next[1];
+    }
+    jpl_pair_to_date(cur, tdb);
+    return JPL_OK;
+}
+
 /* The ordinary body-center path needs these evaluations in one order:
  * light-time solve, observer state at reception, Sun leg at reception,
  * then the emission epoch by compensated subtraction. Returns them as one
@@ -84,7 +119,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
     if (s != JPL_OK) return s;
     memcpy(jd_tt_arr, entry.norm, sizeof jd_tt_arr);
     jpl_pair_to_date(jd_tt_arr, tt);
-    s = jpl_tt_to_tdb(tt, tdb);
+    s = jpl_tt_to_tdb_policy(e, tt, tdb);
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;

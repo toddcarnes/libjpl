@@ -34,3 +34,4 @@ Domain language for libjpl. Names here are the approved terms for code comments,
 ## Deepened modules (architecture followup 2026-11-24)
 
 - **EntryGate**: the module owning validate → normalize → coverage at every query entry point (implemented as `jpl_entry_prepare` + `jpl_entry_coverage` in `src/jpl.c`, declared in `src/jpl_private.h`). Every query funnels its input epoch through prepare and checks coverage on the epoch the data reads use before any dataset or frame gating, so RANGE precedes UNSUPPORTED structurally rather than by per-site convention.
+- **TtToTdbPolicy**: the module choosing file-interpolated vs model TT→TDB per query (implemented as `jpl_tt_to_tdb_policy` in `src/jpl_convenience.c`, declared in `src/jpl_private.h`). The model converts first as seed and guaranteed baseline; file data refines when present and in coverage; any file-path failure keeps the model result.

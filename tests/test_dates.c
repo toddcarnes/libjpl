@@ -97,6 +97,17 @@ int main(void) {
         JPL_TEST_CHECK(jpl_date_compare(n, canon) == 0);
     }
 
+    /* Lexicographic, not chronological: equal epochs in different splits
+     * compare by high part. Callers needing chronological order must
+     * funnel through normalize first (see the discipline note in
+     * src/jpl_private.h); compare itself stays total over all finite
+     * pairs, hence the bare finiteness assert. */
+    {
+        double split[2] = {0.0, 2451545.0}, canon[2] = {2451545.0, 0.0};
+        JPL_TEST_CHECK(jpl_date_compare(split, canon) < 0);
+        JPL_TEST_CHECK(jpl_date_compare(canon, split) > 0);
+    }
+
     /* Idempotence: normalizing a normalized pair is a fixed point.
      * Nested entry points (e.g. convenience_epoch into jpl_tt_to_tdb)
      * normalize the same epoch twice in one path; this guarantees the

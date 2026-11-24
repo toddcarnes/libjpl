@@ -201,7 +201,35 @@ static inline void jpl_array_to_state(const double in[6], jpl_state *s) {
  * idempotent but pointless; do not add defensive re-normalizations inside
  * the library (each one must name the trust boundary it guards, or be
  * removed). Raw on-disk scalar epochs stay scalar; convert at the
- * serialization boundary only. */
+ * serialization boundary only.
+ *
+ * Trust-boundary audit (2026-11-24, followup S3): every
+ * jpl_date_normalize call site names the boundary it guards, so future
+ * reviews re-check this list instead of re-deriving it.
+ * - Entry funnels (public API + jpl_entry_prepare): user-supplied pairs
+ *   (possibly unnormalized); the single per-query funnel.
+ * - Utility funnels (jpl_date_add/subtract/add_days/add_scaled/
+ *   jpl_date_partition): directly callable, including by tests, with raw
+ *   pairs (test_dates feeds {1.5, 0.25} and {-0.0, -0.0}). Their
+ *   normalization IS the funnel; internal call sites additionally pass
+ *   normalized pairs, pinned by add_core's asserts on every Debug run.
+ * - select_record: reached through the gate AND directly via its test
+ *   hook, so it keeps its own normalize + coverage (the hook's
+ *   far-beyond-coverage case is load-bearing: RANGE with outputs
+ *   untouched).
+ * - Scalar construction (add_days step, add_scaled/partition offsets,
+ *   subtract's negated pair): computed pairs normalized once at
+ *   construction; sign-flip can introduce -0.0, so negation
+ *   re-normalizes.
+ * - Serialization boundary (header/record words in parse, open,
+ *   select_record's header reads, verify_record_bounds,
+ *   scheduled_endpoint): untrusted file content normalized on read;
+ *   never re-normalized downstream.
+ * - jpl_date_compare stays lexicographic over ALL finite pairs (bare
+ *   finiteness assert): it is chronological only on normalized inputs,
+ *   which is exactly why every consumer above funnels first. Do not
+ *   "unify" its assert with JPL_ASSERT_NORMALIZED; the two spellings
+ *   name different contracts. */
 jpl_status jpl_date_normalize(const double in[2], double out[2]);
 jpl_status jpl_date_add(const double a[2], const double b[2], double out[2]);
 jpl_status jpl_date_subtract(const double a[2], const double b[2], double out[2]);

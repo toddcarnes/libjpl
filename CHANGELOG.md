@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Core: query entry points now funnel validate → normalize → coverage through a single owned entry gate (`jpl_entry_prepare` + `jpl_entry_coverage`); dataset and frame gating still report UNSUPPORTED after RANGE. No behavior change (precedence matrix preserved, goldens byte-identical).
 - Core: TT→TDB conversion in the convenience pipeline now goes through a file-vs-model policy (`jpl_tt_to_tdb_policy`): file-interpolated refinement when TT-TDB data is present and in coverage, else the model. Any file-path failure keeps the model result. No behavior change where no file data exists (all committed goldens); new file-TT × apparent-place golden pins the previously uncovered combination.
+- Dates: trust-boundary audit recorded in `src/jpl_private.h` (every normalization site names its boundary); no redundant normalizations found — `add`/`subtract`/`partition`/`select_record` keep theirs as directly-callable funnels (see `test_dates` split cases and the selector far-date case); `jpl_date_compare` stays lexicographic with a new pinning test. No behavior change.
 
 ## [0.8.1] - 2026-11-20
 

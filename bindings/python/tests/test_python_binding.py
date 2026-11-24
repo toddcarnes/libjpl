@@ -86,6 +86,15 @@ def test_binding():
     ab_full = Ephemeris.apply_aberration_full([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0172, 0.0], 1.0)
     assert len(ab_full) == 6 and all(math.isfinite(v) for v in ab_full)
 
+    # Contract §4: omitting the solar term is identical to passing 0.0.
+    ab_zero = Ephemeris.apply_aberration_full([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0172, 0.0], 0.0)
+    assert ab == ab_zero, (ab, ab_zero)
+    # Contract §5: ecliptic round-trip reproduces the input.
+    icrs = Ephemeris.ecliptic_to_icrs([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [2451545.0, 0.0])
+    back = Ephemeris.icrs_to_ecliptic(icrs, [2451545.0, 0.0])
+    for got, want in zip(back, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]):
+        assert abs(got - want) < 1e-9, (got, want)
+
     # Test missing path raises JplError and GC does not fail in __del__
     try:
         Ephemeris("nonexistent_file.eph")

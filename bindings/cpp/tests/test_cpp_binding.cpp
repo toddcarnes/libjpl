@@ -114,6 +114,24 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Contract §4: omitting the solar term equals an explicit 0.0.
+        auto aberrated_zero = jpl::Ephemeris::apply_aberration_full(geom_state, obs_vel, 0.0);
+        for (int i = 0; i < 6; ++i) {
+            if (aberrated[i] != aberrated_zero[i]) {
+                std::cerr << "Aberration 0.0 mismatch at " << i << "\n";
+                return 1;
+            }
+        }
+
+        // Contract §5: ecliptic round-trip reproduces the input.
+        auto back_to_ecliptic = jpl::Ephemeris::icrs_to_ecliptic(icrs_state, {2451545.0, 0.0});
+        for (int i = 0; i < 6; ++i) {
+            if (std::fabs(back_to_ecliptic[i] - state[i]) > 1e-9) {
+                std::cerr << "Ecliptic round-trip mismatch at " << i << "\n";
+                return 1;
+            }
+        }
+
         // Test light time
         auto lt_result = eph.get_state_lighttime({2451545.0, 0.0}, 3, 11);
         if (!std::isfinite(lt_result.light_time_days) || lt_result.light_time_days <= 0) {

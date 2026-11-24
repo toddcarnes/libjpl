@@ -139,6 +139,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/vbnet/examples/README.md"
   "bindings/vbnet/examples/PlanetPositions.vb"
   "bindings/c/examples/README.md"
+  "bindings/CONTRACT.md"
 )
 # Exempt files and why:
 #   LICENSE - the full MIT grant itself (checked separately for completeness).

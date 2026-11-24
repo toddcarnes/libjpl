@@ -234,27 +234,26 @@ static jpl_status rotate_vec3(const jpl_frame_context *context, const double in[
     return JPL_OK;
 }
 
-jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
-    return rotate_vec3(context, in, out);
-}
-
-jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
+jpl_status jpl_frame_context_rotate_vector(const jpl_frame_context *context, const double in[3], double out[3]) {
     return rotate_vec3(context, in, out);
 }
 
 jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
-    double m[3][3], pr[3], vr[3];
+    double pr[3], vr[3];
+    double p[3], v[3];
+    jpl_status s;
     if (!context || !state || !out_state) return JPL_ERROR_ARGUMENT;
-    jpl_status s = check_state(state);
+    s = check_state(state);
     if (s != JPL_OK) return s;
-    double p[3] = {state->x, state->y, state->z};
-    double v[3] = {state->vx, state->vy, state->vz};
-    memcpy(m, context->matrix, sizeof m);
-    eraRxp(m, p, pr);
-    eraRxp(m, v, vr);
-    for (int i = 0; i < 3; ++i) {
-        if (!isfinite(pr[i]) || !isfinite(vr[i])) return JPL_ERROR_NUMERIC;
-    }
+    p[0] = state->x; p[1] = state->y; p[2] = state->z;
+    v[0] = state->vx; v[1] = state->vy; v[2] = state->vz;
+    /* One computer for every rotation: the state entry is two vector
+     * rotations (each finite-gated inside), so a future frame-rate fix
+     * lands in exactly one place. */
+    s = rotate_vec3(context, p, pr);
+    if (s != JPL_OK) return s;
+    s = rotate_vec3(context, v, vr);
+    if (s != JPL_OK) return s;
     out_state->x = pr[0]; out_state->y = pr[1]; out_state->z = pr[2];
     out_state->vx = vr[0]; out_state->vy = vr[1]; out_state->vz = vr[2];
     return JPL_OK;

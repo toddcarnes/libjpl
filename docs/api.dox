@@ -34,8 +34,7 @@
  * - @ref jpl_frame_rotation_matrix "jpl_frame_rotation_matrix()" - Get the ecliptic-to-ICRS matrix.
  * - @ref jpl_frame_context_create "jpl_frame_context_create()" - Create a cached ecliptic-to-ICRS frame context.
  * - @ref jpl_frame_context_destroy "jpl_frame_context_destroy()" - Destroy a frame context.
- * - @ref jpl_frame_context_rotate_position "jpl_frame_context_rotate_position()" - Rotate a position vector using a frame context.
- * - @ref jpl_frame_context_rotate_velocity "jpl_frame_context_rotate_velocity()" - Rotate a velocity vector using a frame context.
+ * - @ref jpl_frame_context_rotate_vector "jpl_frame_context_rotate_vector()" - Rotate a vector using a frame context.
  * - @ref jpl_frame_context_rotate_state "jpl_frame_context_rotate_state()" - Rotate a state vector using a frame context.
  *
  * ## Convenience helpers

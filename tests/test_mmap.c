@@ -227,6 +227,52 @@ done:
 #endif
 }
 
+/* Cross-backend composition: the same file opened FILE and mmap must
+ * serve identical bytes and states, and a RANGE query between valid
+ * reads must disturb neither backend's cache. This pins the unified
+ * read path (one validator, one reader behind the byte-source seam). */
+static int t13_cross_backend(void) {
+    const char *path = "jpl_t13_cross.eph";
+    jpl_ephemeris *f = NULL, *m = NULL;
+    static const jpl_date mid = {2451545.5, 0.0};
+    static const jpl_date outside = {2451547.0, 0.0};
+    static double fvals[T13_DOUBLES], mvals[T13_DOUBLES];
+    jpl_state fs0, ms0, fs1, ms1;
+    int rc = 0;
+    if (t13_write_probe(path, 11.0) != 0) { fprintf(stderr, "t13 cross: probe write failed\n"); return 1; }
+    if (jpl_open(path, &f) != JPL_OK || f == NULL) { fprintf(stderr, "t13 cross: file open failed\n"); rc = 1; goto done; }
+    if (jpl_open_mmap(path, &m) != JPL_OK || m == NULL) { fprintf(stderr, "t13 cross: mmap open failed\n"); rc = 1; goto done; }
+    /* Identical raw bytes through both readers. */
+    if (jpl_read_record(f, 0, fvals, T13_DOUBLES) != JPL_OK ||
+        jpl_read_record(m, 0, mvals, T13_DOUBLES) != JPL_OK) {
+        fprintf(stderr, "t13 cross: record read failed\n"); rc = 1; goto done;
+    }
+    if (memcmp(fvals, mvals, sizeof fvals) != 0) { fprintf(stderr, "t13 cross: backend bytes differ\n"); rc = 1; goto done; }
+    /* Identical states through the evaluator on both backends. */
+    if (jpl_get_state(f, &mid, JPL_NUTATIONS, 0, &fs0) != JPL_OK ||
+        jpl_get_state(m, &mid, JPL_NUTATIONS, 0, &ms0) != JPL_OK) {
+        fprintf(stderr, "t13 cross: state read failed\n"); rc = 1; goto done;
+    }
+    if (memcmp(&fs0, &ms0, sizeof fs0) != 0) { fprintf(stderr, "t13 cross: backend states differ\n"); rc = 1; goto done; }
+    /* A RANGE query between valid reads disturbs nothing on either side. */
+    if (jpl_get_state(f, &outside, JPL_NUTATIONS, 0, &fs1) != JPL_ERROR_RANGE ||
+        jpl_get_state(m, &outside, JPL_NUTATIONS, 0, &ms1) != JPL_ERROR_RANGE) {
+        fprintf(stderr, "t13 cross: out-of-coverage not RANGE\n"); rc = 1; goto done;
+    }
+    if (jpl_get_state(f, &mid, JPL_NUTATIONS, 0, &fs1) != JPL_OK ||
+        jpl_get_state(m, &mid, JPL_NUTATIONS, 0, &ms1) != JPL_OK) {
+        fprintf(stderr, "t13 cross: reread after RANGE failed\n"); rc = 1; goto done;
+    }
+    if (memcmp(&fs1, &fs0, sizeof fs1) != 0 || memcmp(&ms1, &ms0, sizeof ms1) != 0) {
+        fprintf(stderr, "t13 cross: reread differs (cache poisoned)\n"); rc = 1; goto done;
+    }
+done:
+    if (f) jpl_close(f);
+    if (m) jpl_close(m);
+    remove(path);
+    return rc;
+}
+
 /* Close-order lifetimes for FILE and mmap: close the original
  * before the clone and require valid survivor headers + record reads.
  * Sibling order is extended in test_api_errors.c. */
@@ -343,6 +389,7 @@ int main(void){
       JPL_TEST_CHECK(jpl_read_record(fc,0,vals,360)==JPL_OK && vals[1]==2451546.0);
       jpl_close(fc); jpl_close(fe); }
     JPL_TEST_CHECK(remove(path)==0);
+    if (t13_cross_backend() != 0) return 1;
     if (t13_cwd_clone() != 0) return 1;
     if (t13_replacement() != 0) return 1;
     if (t13_symlink() != 0) return 1;

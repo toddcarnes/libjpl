@@ -100,7 +100,7 @@ jobs:
 
   macos-clang:
     name: macOS Clang ${{ matrix.config }}
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
@@ -133,12 +133,18 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install cffi
         run: python -m pip install --disable-pip-version-check cffi
+      - name: Select Python interpreter for CMake
+        # The image carries several Pythons; find_package(Python3) picks the
+        # newest while `python` on PATH may be older. Pin CMake to the
+        # interpreter that just received cffi so jpl_python_binding registers.
+        run: echo "JPL_PYTHON_EXE=$((Get-Command python).Source)" >> $env:GITHUB_ENV
       - name: Install Doxygen and Graphviz
         run: choco install -y doxygen.install graphviz
       - name: Configure (all bindings, warnings as errors)
         run: >
           cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF
           -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          "-DPython3_EXECUTABLE=$env:JPL_PYTHON_EXE"
           -DLIBJPL_BUILD_SHARED=ON
           -DLIBJPL_BUILD_CPP_BINDING=ON
           -DLIBJPL_BUILD_PYTHON_BINDING=ON
@@ -175,9 +181,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libffi-dev
-          python3 -m venv .venv
-          .venv/bin/python -m pip install --disable-pip-version-check cffi
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          python3 -m venv "$RUNNER_TEMP/.venv"
+          "$RUNNER_TEMP/.venv/bin/python" -m pip install --disable-pip-version-check cffi
+          echo "$RUNNER_TEMP/.venv/bin" >> "$GITHUB_PATH"
       - name: Install Doxygen and Graphviz
         run: sudo apt-get update; sudo apt-get install -y doxygen graphviz
       - name: Configure (all bindings, warnings as errors)

@@ -908,7 +908,7 @@ if(LIBJPL_BUILD_TESTS)
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.
-    foreach(tgt IN ITEMS jpl_fixture_tool jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    foreach(tgt IN ITEMS jpl_fixture_tool jpl_tests jpl_lighttime_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_horizons_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()

@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.9.0 LANGUAGES C)
+project(libjpl VERSION 0.10.0 LANGUAGES C)
 
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
@@ -28,7 +28,6 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpl_export.h.in"
 
 add_library(jpl_static STATIC ${JPL_CORE_SOURCES})
 add_library(jpl::jpl_static ALIAS jpl_static)
-add_library(jpl::jpl ALIAS jpl_static)
 
 target_compile_features(jpl_static PUBLIC c_std_17)
 set_target_properties(jpl_static PROPERTIES
@@ -445,13 +444,10 @@ if(LIBJPL_BUILD_TESTS)
     # binary, canonical reference text (CRLF-to-LF only), and ordered
     # identity list against tests/data/MANIFEST.txt. No new library crypto
     # dependency; file(SHA256) is configure/test-time tooling only.
-    # The three hash variables below are informational only: the checker
-    # reads the authoritative values from the manifest itself, so the
-    # manifest stays the single source of truth. They are intentionally
-    # NOT referenced with ${...} anywhere, which keeps the file free of
-    # "unused variable" diagnostics while documenting the key names.
-    set(LIBJPL_FIXTURE_MANIFEST_KEYS
-        "fixture.binary.sha256;fixture.text.sha256;fixture.rows.sha256")
+    # The manifest keys below are informational only (the checker reads
+    # the authoritative values from the manifest itself, so the manifest
+    # stays the single source of truth):
+    # fixture.binary.sha256, fixture.text.sha256, fixture.rows.sha256
     add_test(NAME jpl_fixture_integrity
         COMMAND ${CMAKE_COMMAND}
             "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"

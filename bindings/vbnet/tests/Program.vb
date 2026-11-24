@@ -181,6 +181,16 @@ Module Program
                     End If
                 Next
 
+                ' Contract: rotate_vector matches the state entry's position half.
+                Dim rv = LibJpl.JplEphemeris.RotateVector(New Double() {1.0, 0.0, 0.0}, New Double() {2451545.0, 0.0})
+                Dim icrsUnit = LibJpl.JplEphemeris.EclipticToIcrs(New Double() {1.0, 0.0, 0.0, 0.0, 0.0, 0.0}, New Double() {2451545.0, 0.0})
+                For i = 0 To 2
+                    If Math.Abs(rv(i) - icrsUnit(i)) > 1e-12 Then
+                        Console.Error.WriteLine($"Rotate-vector mismatch at {i}")
+                        Environment.Exit(1)
+                    End If
+                Next
+
                 ' Short arrays must be rejected in managed code before P/Invoke.
                 Try
                     LibJpl.JplEphemeris.ApplyAberration(geomState, New Double() {0.0, 0.0172})

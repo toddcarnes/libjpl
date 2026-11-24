@@ -3,14 +3,9 @@
 # See LICENSE in the project root for the full license text.
 # Installed libjpl package config template (owned by T19). Relocatable:
 # carries no source/build checkout paths. The generated file pulls in the
-# exported jpl::jpl targets and honors requested components.
+# exported jpl::jpl_static / jpl::jpl_shared targets and honors requested components.
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/libjplTargets.cmake")
-
-# Provide backward-compatibility aliases
-if(TARGET jpl::jpl_static AND NOT TARGET jpl::jpl)
-  add_library(jpl::jpl ALIAS jpl::jpl_static)
-endif()
 
 check_required_components(libjpl)

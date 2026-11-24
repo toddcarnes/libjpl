@@ -216,6 +216,18 @@ public:
     }
 
     // Frame conversions (via the cached frame context)
+    [[nodiscard]] static std::array<double, 3> rotate_vector(const std::array<double, 3>& vec,
+                                                             const std::array<double, 2>& jd_tt) {
+        jpl_date jd{jd_tt[0], jd_tt[1]};
+        jpl_frame_context* ctx = nullptr;
+        throw_if_error(::jpl_frame_context_create(&jd, &ctx));
+        double out[3];
+        jpl_status status = ::jpl_frame_context_rotate_vector(ctx, vec.data(), out);
+        ::jpl_frame_context_destroy(ctx);
+        throw_if_error(status);
+        return {out[0], out[1], out[2]};
+    }
+
     [[nodiscard]] static std::array<double, 6> ecliptic_to_icrs(const std::array<double, 6>& state,
                                                                  const std::array<double, 2>& jd_tt) {
         jpl_date jd{jd_tt[0], jd_tt[1]};

@@ -185,6 +185,12 @@ public static partial class Native
     public static extern void jpl_frame_context_destroy(IntPtr context);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_frame_context_rotate_vector(
+        IntPtr context,
+        double[] vec,
+        [Out] double[] out_vec);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_frame_context_rotate_state(
         IntPtr context,
         in JplState state,

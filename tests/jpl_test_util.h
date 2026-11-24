@@ -75,6 +75,18 @@ static inline void test_put_f64be(unsigned char *at, double v) {
     for (i = 0; i < 8; ++i) at[i] = (unsigned char)(u >> (8 * (7 - i)));
 }
 
+/* IPT/DENUM/triplet field offset shared by the LE and BE pointer writers:
+ * one spelling of the slot layout, two byte orders. */
+static inline size_t test_ptr_offset(int idx) {
+    /* Programming-error trap for out-of-range slots (negative idx would
+     * otherwise wrap to a huge size_t and corrupt memory). JPL_TEST_CHECK
+     * cannot signal failure from a void helper, and assert() vanishes in
+     * Release (NDEBUG), so fail loudly on every build flavor. */
+    JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
+    return idx <= 11 ? (size_t)JPL_HDR_IPT_OFFSET + (size_t)idx * (size_t)JPL_HDR_IPT_ENTRY_BYTES
+         : idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * (size_t)JPL_TT_TDB_TRIPLET_OFFSET;
+}
+
 /* IPT coefficient-pointer entry: idx 0-11 addresses file offset
  * JPL_HDR_IPT_OFFSET + idx*JPL_HDR_IPT_ENTRY_BYTES;
  * pseudo-slot 12 addresses the DENUM+libration words at JPL_HDR_DENUM_OFFSET (DENUM first),
@@ -84,9 +96,7 @@ static inline void test_put_ptr(unsigned char *rec, int idx, uint32_t start, uin
      * otherwise wrap to a huge size_t and corrupt memory). JPL_TEST_CHECK
      * cannot signal failure from a void helper, and assert() vanishes in
      * Release (NDEBUG), so fail loudly on every build flavor. */
-    JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
-    size_t off = idx <= 11 ? (size_t)JPL_HDR_IPT_OFFSET + (size_t)idx * (size_t)JPL_HDR_IPT_ENTRY_BYTES :
-                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * (size_t)JPL_TT_TDB_TRIPLET_OFFSET;
+    size_t off = test_ptr_offset(idx);
     test_put_u32(rec + off, start);
     test_put_u32(rec + off + 4, coeff);
     test_put_u32(rec + off + 8, sub);
@@ -107,10 +117,8 @@ static inline void test_mock_header(unsigned char *rec, double start_jd, double 
 }
 
 static inline void test_put_ptr_be(unsigned char *rec, int idx, uint32_t start, uint32_t coeff, uint32_t sub) {
-    /* Same programming-error trap as test_put_ptr (see comment there). */
-    JPL_TEST_ASSERT(idx >= 0 && idx <= 14);
-    size_t off = idx <= 11 ? (size_t)JPL_HDR_IPT_OFFSET + (size_t)idx * (size_t)JPL_HDR_IPT_ENTRY_BYTES :
-                 idx == 12 ? (size_t)JPL_HDR_DENUM_OFFSET : (size_t)JPL_HDR_IPT14_OFFSET + (size_t)(idx - 13) * (size_t)JPL_TT_TDB_TRIPLET_OFFSET;
+    /* Offset math shared with test_put_ptr (see test_ptr_offset). */
+    size_t off = test_ptr_offset(idx);
     test_put_u32be(rec + off, start);
     test_put_u32be(rec + off + 4, coeff);
     test_put_u32be(rec + off + 8, sub);
@@ -159,10 +167,6 @@ static inline jpl_status test_ecliptic_to_icrs(const jpl_state *s, const jpl_dat
     return status;
 }
 
-/* Minimum physical record width in bytes (classic 2856-byte header). Used
- * to bound record-count conversions by file geometry. */
-#define JPL_TEST_MIN_RECORD_BYTES 2856
-
 /* Configurable mock-ephemeris writer. The caller owns all
  * buffers. `header` is exactly `record_doubles * 8` bytes and carries raw
  * pointer/name mutations in final byte order; the writer overwrites only
@@ -207,7 +211,7 @@ static inline int test_write_mock(const char *path, const jpl_test_mock *mock) {
     if (mock->record_doubles == 0 || mock->record_doubles > SIZE_MAX / 8 ||
         mock->advertised_records == 0) return 1;
     record_bytes = mock->record_doubles * 8;
-    if (record_bytes < JPL_TEST_MIN_RECORD_BYTES) return 1;
+    if (record_bytes < JPL_TEST_RECORD_BYTES) return 1;
     data_records = mock->advertised_records + (mock->trailing_record ? (size_t)1 : (size_t)0);
     if (data_records < mock->advertised_records) return 1;
     hdr = (unsigned char *)malloc(record_bytes);

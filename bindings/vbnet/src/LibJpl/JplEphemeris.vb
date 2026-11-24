@@ -93,10 +93,6 @@ Public NotInheritable Class JplEphemeris
         Return System.Text.Encoding.ASCII.GetString(name).TrimEnd(ControlChars.NullChar)
     End Function
 
-    Public Sub Clone(ByRef clone As JplEphemeris)
-        clone = Me.Clone()
-    End Sub
-
     Public Function GetHeader() As JplHeader
         Return WithHandle(Function(h)
             Dim headerPtr As IntPtr = Native.jpl_get_header(h)
@@ -197,12 +193,28 @@ Public NotInheritable Class JplEphemeris
         End Function)
     End Function
 
-    Public Function GetTtMinusTdbResult(jdTdb As Double()) As TtMinusTdbResult
-        Dim res = GetTtMinusTdb(jdTdb)
-        Return New TtMinusTdbResult With {.Seconds = res.Seconds, .RatePerDay = res.RatePerDay}
+    ' Frame conversions (vector and state via a cached frame context)
+    Public Shared Function RotateVector(vec As Double(), jdTt As Double()) As Double()
+        ValidateLength(vec, 3, NameOf(vec))
+        ValidateLength(jdTt, 2, NameOf(jdTt))
+        Dim jd As New JplDateNative With {.Hi = jdTt(0), .Lo = jdTt(1)}
+        Dim result(2) As Double
+        Dim ctx As IntPtr = IntPtr.Zero
+        Dim status As JplStatus = Native.jpl_frame_context_create(jd, ctx)
+        If status <> JplStatus.Ok Then
+            Throw New JplException(status)
+        End If
+        Try
+            status = Native.jpl_frame_context_rotate_vector(ctx, vec, result)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return result
+        Finally
+            Native.jpl_frame_context_destroy(ctx)
+        End Try
     End Function
 
-    ' Frame conversions (ecliptic-to-ICRS via a cached frame context)
     Public Shared Function EclipticToIcrs(state As Double(), jdTt As Double()) As Double()
         ValidateLength(state, 6, NameOf(state))
         ValidateLength(jdTt, 2, NameOf(jdTt))

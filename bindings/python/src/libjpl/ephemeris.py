@@ -320,6 +320,20 @@ class Ephemeris:
 
     # Frame conversions
     @staticmethod
+    def rotate_vector(vec, jd_tt):
+        """Rotate a mean-ecliptic-of-date vector to ICRS (via a cached frame context)."""
+        in_vec = _ffi.new("double[3]", [float(v) for v in vec])
+        jd = _jpl_date(jd_tt)
+        out = _ffi.new("double[3]")
+        ctx = _ffi.new("jpl_frame_context **")
+        _check(_lib.jpl_frame_context_create(jd, ctx))
+        try:
+            _check(_lib.jpl_frame_context_rotate_vector(ctx[0], in_vec, out))
+        finally:
+            _lib.jpl_frame_context_destroy(ctx[0])
+        return [float(out[i]) for i in range(3)]
+
+    @staticmethod
     def ecliptic_to_icrs(state, jd_tt):
         """Rotate ecliptic-of-date state to ICRS (via a cached frame context)."""
         in_state = _jpl_state(state)

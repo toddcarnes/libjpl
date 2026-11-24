@@ -80,11 +80,6 @@ public sealed class JplEphemeris : SafeHandle
         }
     }
 
-    public void Clone(out JplEphemeris clone)
-    {
-        clone = Clone();
-    }
-
     public JplHeader GetHeader()
     {
         return WithHandle(h =>
@@ -202,7 +197,33 @@ public sealed class JplEphemeris : SafeHandle
 
 
 
-    // Frame conversions (ecliptic-to-ICRS via a cached frame context)
+    // Frame conversions (vector and state via a cached frame context)
+    public static double[] RotateVector(double[] vec, double[] jdTt)
+    {
+        ValidateLength(vec, 3, nameof(vec));
+        ValidateLength(jdTt, 2, nameof(jdTt));
+        double[] result = new double[3];
+        var jd = new JplDate { Hi = jdTt[0], Lo = jdTt[1] };
+        JplStatus status = Native.jpl_frame_context_create(jd, out IntPtr ctx);
+        if (status != JplStatus.Ok)
+        {
+            throw new JplException(status);
+        }
+        try
+        {
+            status = Native.jpl_frame_context_rotate_vector(ctx, vec, result);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return result;
+        }
+        finally
+        {
+            Native.jpl_frame_context_destroy(ctx);
+        }
+    }
+
     public static double[] EclipticToIcrs(double[] state, double[] jdTt)
     {
         ValidateLength(state, 6, nameof(state));

@@ -31,13 +31,11 @@ extern "C" {
 /* The classic binary header has 400 six-character constant-name fields.
  * Additional names follow the classic fields in files with more constants. */
 /** @brief Number of names exposed directly in jpl_header (400).
- *  @note Use jpl_get_constant_name() to access names beyond this limit. */
-#define JPL_MAX_CONSTANT_NAMES 400
-/** @brief Legacy alias kept for compatibility; prefer JPL_MAX_CONSTANT_NAMES.
  *  @note The constants record itself is NOT limited to 400 entries:
  *        header.constant_count may exceed it, so size value buffers from
- *        header.constant_count, not from this macro. */
-#define JPL_MAX_CONSTANTS JPL_MAX_CONSTANT_NAMES
+ *        header.constant_count, not from this macro. Use
+ *        jpl_get_constant_name() for all indices. */
+#define JPL_MAX_CONSTANT_NAMES 400
 /** @brief Number of coefficient-layout file slots (12, including nutations). */
 #define JPL_TARGET_COUNT 12
 

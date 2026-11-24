@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "jpl.h"
 
@@ -274,6 +275,26 @@ jpl_status jpl_entry_prepare(const jpl_ephemeris *e, const double jd[2],
                              jpl_entry_ctx *out);
 jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx,
                               const double epoch[2]);
+
+/* Byte-source seam: FILE and mmap submit raw bytes through one interface
+ * so every open path and every record read shares one validation and
+ * transport policy. Every read checks `offset <= size` and
+ * `count <= size - offset` with subtraction guarded by the first check;
+ * mmap memcpy and FILE seek/read share error classification (IO vs
+ * FORMAT stays with the candidate evaluator). Adapters are defined in
+ * src/jpl.c; the seam is declared here so tests can drive sources
+ * directly. Parser reads go through parser_read_bytes (bounded-read
+ * hook); record-endpoint probes are a constant 16 bytes and share the
+ * same bound. */
+typedef jpl_status (*jpl_read_bytes_fn)(void *context, size_t offset,
+                                        unsigned char *out, size_t count);
+typedef struct jpl_byte_source {
+    void *context;
+    size_t size;
+    jpl_read_bytes_fn read;
+} jpl_byte_source;
+typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_mmap_source;
+typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 
 /* TT→TDB policy: file data when present and in coverage, else the model.
  * The model converts first (seed and guaranteed baseline); when the file

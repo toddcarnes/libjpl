@@ -284,24 +284,9 @@ _Static_assert((uintmax_t)(SIZE_MAX / MIN_RECORD_BYTES) < 9007199254740992ULL,
 /* Byte-source callbacks follow; the sole forward-declaration block above
  * already declares the codecs/seek/parse_header helpers used below. */
 
-/* Bounded storage callbacks: FILE and mmap submit raw bytes through
- * the same jpl_byte_source interface so both open paths run one shared
- * validation policy. Every read checks `offset <= size` and
- * `count <= size - offset` with subtraction guarded by the first check;
- * mmap memcpy and FILE seek/read share error classification (IO vs
- * FORMAT stays with the candidate evaluator). Parser-time reads go
- * through parser_read_bytes (bounded-read hook); record-endpoint probes
- * are a constant 16 bytes and share the same bound. */
-typedef jpl_status (*jpl_read_bytes_fn)(void *context, size_t offset,
-                                        unsigned char *out, size_t count);
-typedef struct jpl_byte_source {
-    void *context;
-    size_t size;
-    jpl_read_bytes_fn read;
-} jpl_byte_source;
-
-typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_mmap_source;
-typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
+/* Byte-source seam: declared in jpl_private.h. Adapters below satisfy it;
+ * parser_read_bytes routes every parser read (including the 16-byte
+ * record-endpoint probes) through the bounded series. */
 
 #ifdef LIBJPL_TESTING
 /* Bounded-read test hook: a nonzero limit fails any parser source read
@@ -927,38 +912,47 @@ static jpl_reference_frame classify_frame(int denum) {
     }
 }
 
-static jpl_status read_doubles_mmap(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
-    const unsigned char *base;
-    size_t i;
-    if (!ephemeris->mmap.base) return JPL_ERROR_IO;
-    if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
-    if (offset > ephemeris->mmap.size || count * 8 > ephemeris->mmap.size - offset) return JPL_ERROR_IO;
-    base = ephemeris->mmap.base + offset;
-    if (ephemeris->header.byte_order == native_order()) { memcpy(values, base, count * 8); return JPL_OK; }
-    for (i = 0; i < count; ++i) values[i] = read_f64(base + i * 8, ephemeris->header.byte_order);
-    return JPL_OK;
-}
-
-static jpl_status read_doubles_file(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
-    unsigned char *bytes;
-    size_t i;
-    if (count > SIZE_MAX / 8 || seek_to(ephemeris->file, offset) != 0) return JPL_ERROR_IO;
-    if (ephemeris->header.byte_order == native_order())
-        return fread(values, 8, count, ephemeris->file) == count ? JPL_OK : JPL_ERROR_IO;
-    bytes = malloc(count * 8); if (!bytes) return JPL_ERROR_MEMORY;
-    if (fread(bytes, 8, count, ephemeris->file) != count) { free(bytes); return JPL_ERROR_IO; }
-    for (i = 0; i < count; ++i) values[i] = read_f64(bytes + i * 8, ephemeris->header.byte_order);
-    free(bytes); return JPL_OK;
-}
-
+/* Read doubles through the handle's byte source: the backend is a
+ * construction-time choice, so no caller names a source kind. The
+ * adapters perform the same bounds-checked transport the split readers
+ * did; byte order stays a read_doubles concern. */
 static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
+    jpl_byte_source source;
+    union { jpl_file_source file; jpl_mmap_source mmap; } storage;
+    unsigned char *bytes;
+    size_t check, i;
+    jpl_status status;
     if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
     /* Zero-count raw reads succeed without backend access: no seek,
      * mapping-base evaluation, malloc(0), read, or copy. Argument and
      * handle validation above still applies. */
     if (count == 0) return JPL_OK;
-    if (ephemeris->is_mmap) return read_doubles_mmap(ephemeris, offset, values, count);
-    return read_doubles_file(ephemeris, offset, values, count);
+    if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
+    if (ephemeris->is_mmap) {
+        if (!ephemeris->mmap.base) return JPL_ERROR_IO;
+        storage.mmap.base = ephemeris->mmap.base;
+        storage.mmap.size = ephemeris->mmap.size;
+        source.context = &storage.mmap;
+        source.size = ephemeris->mmap.size;
+        source.read = mmap_read_bytes;
+    } else {
+        if (!ephemeris->file) return JPL_ERROR_IO;
+        storage.file.file = ephemeris->file;
+        storage.file.size = ephemeris->file_size;
+        source.context = &storage.file;
+        source.size = ephemeris->file_size;
+        source.read = file_read_bytes;
+    }
+    check = count * 8;
+    if (ephemeris->header.byte_order == native_order()) {
+        status = source.read(source.context, offset, (unsigned char *)values, check);
+        return status;
+    }
+    bytes = malloc(check); if (!bytes) return JPL_ERROR_MEMORY;
+    status = source.read(source.context, offset, bytes, check);
+    if (status != JPL_OK) { free(bytes); return status; }
+    for (i = 0; i < count; ++i) values[i] = read_f64(bytes + i * 8, ephemeris->header.byte_order);
+    free(bytes); return JPL_OK;
 }
 
 const char *jpl_status_string(jpl_status status) { static const char *const text[] = { "success", "invalid argument", "I/O error", "invalid JPL DE format", "out of range", "out of memory", "unsupported dataset or frame", "solution did not converge", "unrepresentable numeric result" }; return status >= JPL_OK && status <= JPL_ERROR_NUMERIC ? text[status] : "unknown error"; }

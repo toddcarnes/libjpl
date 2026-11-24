@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Bindings: conversion contract recorded in `bindings/CONTRACT.md` (header snapshot incl. the 400-name overflow rule, date/state bridging, context wrapping, the 0.0-omits-solar-term rule, round-trip rule, per-language error behavior); each language pins overflow-name agreement, aberration equivalence, and the ecliptic round trip. Audit found no behavioral divergences (one stale comment fixed). No behavior change.
+
 ## [0.9.0] - 2026-11-24
 
 ### Changed

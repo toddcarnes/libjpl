@@ -4,7 +4,7 @@
 # Separate installed-package consumer (test-only).
 # Configures against an installed prefix via CMAKE_PREFIX_PATH, never
 # against the source/build checkout. Builds both a C and a C++ executable
-# linking jpl::jpl so C/C++ inclusion and static math/ERFA linkage are
+# linking jpl::jpl_static so C/C++ inclusion and static math/ERFA linkage are
 # exercised outside the library build.
 cmake_minimum_required(VERSION 3.20)
 project(libjpl_consumer LANGUAGES C CXX)
@@ -24,8 +24,8 @@ else()
 endif()
 add_executable(consumer_c main.c)
 add_executable(consumer_cpp main.cpp)
-target_link_libraries(consumer_c PRIVATE jpl::jpl)
-target_link_libraries(consumer_cpp PRIVATE jpl::jpl)
+target_link_libraries(consumer_c PRIVATE jpl::jpl_static)
+target_link_libraries(consumer_cpp PRIVATE jpl::jpl_static)
 enable_testing()
 add_test(NAME consumer_c COMMAND consumer_c)
 add_test(NAME consumer_cpp COMMAND consumer_cpp)

@@ -28,7 +28,6 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpl_export.h.in"
 
 add_library(jpl_static STATIC ${JPL_CORE_SOURCES})
 add_library(jpl::jpl_static ALIAS jpl_static)
-add_library(jpl::jpl ALIAS jpl_static)
 
 target_compile_features(jpl_static PUBLIC c_std_17)
 set_target_properties(jpl_static PROPERTIES

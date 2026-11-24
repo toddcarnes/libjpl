@@ -238,14 +238,6 @@ jpl_status jpl_frame_context_rotate_vector(const jpl_frame_context *context, con
     return rotate_vec3(context, in, out);
 }
 
-jpl_status jpl_frame_context_rotate_position(const jpl_frame_context *context, const double in[3], double out[3]) {
-    return rotate_vec3(context, in, out);
-}
-
-jpl_status jpl_frame_context_rotate_velocity(const jpl_frame_context *context, const double in[3], double out[3]) {
-    return rotate_vec3(context, in, out);
-}
-
 jpl_status jpl_frame_context_rotate_state(const jpl_frame_context *context, const jpl_state *state, jpl_state *out_state) {
     double pr[3], vr[3];
     double p[3], v[3];

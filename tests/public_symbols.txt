@@ -26,8 +26,7 @@ jpl_icrs_to_ecliptic
 jpl_frame_rotation_matrix
 jpl_frame_context_create
 jpl_frame_context_destroy
-jpl_frame_context_rotate_position
-jpl_frame_context_rotate_velocity
+jpl_frame_context_rotate_vector
 jpl_frame_context_rotate_state
 jpl_tt_to_tdb
 jpl_tdb_to_tt

@@ -133,3 +133,17 @@ ctest --test-dir build -C Debug --output-on-failure
   in the file's native comment syntax (C `/* */`, `#` for scripts, `<!-- -->` for
   XML/HTML, `//` for C#). This is enforced by the `jpl_licenses` test via
   `tests/license_inventory.cmake`. New files must be added to that inventory.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `toddcarnes/libjpl`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (root `GLOSSARY.md` + `docs/adr/`). See `docs/agents/domain.md`.

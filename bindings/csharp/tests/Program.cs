@@ -192,6 +192,28 @@ class Program
                 }
             }
 
+            // Contract §4: omitting the solar term equals an explicit 0.0.
+            var aberratedZero = JplEphemeris.ApplyAberrationFull(geomState, obsVel, 0.0);
+            for (int i = 0; i < 6; ++i)
+            {
+                if (aberrated[i] != aberratedZero[i])
+                {
+                    Console.Error.WriteLine($"Aberration 0.0 mismatch at {i}");
+                    Environment.Exit(1);
+                }
+            }
+
+            // Contract §5: ecliptic round-trip reproduces the input.
+            var backToEcliptic = JplEphemeris.IcrsToEcliptic(icrsState, new double[] { 2451545.0, 0.0 });
+            for (int i = 0; i < 6; ++i)
+            {
+                if (Math.Abs(backToEcliptic[i] - state[i]) > 1e-9)
+                {
+                    Console.Error.WriteLine($"Ecliptic round-trip mismatch at {i}");
+                    Environment.Exit(1);
+                }
+            }
+
             // Short arrays must be rejected in managed code before P/Invoke.
             try
             {

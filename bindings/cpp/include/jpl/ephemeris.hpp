@@ -193,7 +193,7 @@ public:
                                                                  const std::array<double, 3>& observer_vel) {
         jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};
         jpl_state out;
-        /* Sun distance 0 omits the solar term (legacy wrapper behaviour). */
+        /* Sun distance 0 omits the solar term. */
         throw_if_error(::jpl_apply_aberration(&in, observer_vel.data(), 0.0, &out));
         return {out.x, out.y, out.z, out.vx, out.vy, out.vz};
     }

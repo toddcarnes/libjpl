@@ -163,6 +163,24 @@ Module Program
                     End If
                 Next
 
+                ' Contract §4: omitting the solar term equals an explicit 0.0.
+                Dim aberratedZero = LibJpl.JplEphemeris.ApplyAberrationFull(geomState, obsVel, 0.0)
+                For i = 0 To 5
+                    If aberrated(i) <> aberratedZero(i) Then
+                        Console.Error.WriteLine($"Aberration 0.0 mismatch at {i}")
+                        Environment.Exit(1)
+                    End If
+                Next
+
+                ' Contract §5: ecliptic round-trip reproduces the input.
+                Dim backToEcliptic = LibJpl.JplEphemeris.IcrsToEcliptic(icrsState, New Double() {2451545.0, 0.0})
+                For i = 0 To 5
+                    If Math.Abs(backToEcliptic(i) - state(i)) > 1e-9 Then
+                        Console.Error.WriteLine($"Ecliptic round-trip mismatch at {i}")
+                        Environment.Exit(1)
+                    End If
+                Next
+
                 ' Short arrays must be rejected in managed code before P/Invoke.
                 Try
                     LibJpl.JplEphemeris.ApplyAberration(geomState, New Double() {0.0, 0.0172})

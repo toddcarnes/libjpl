@@ -79,6 +79,8 @@ static void parse_optional_tt_tdb(jpl_header *header,
                                   const unsigned char tail[24],
                                   jpl_byte_order order);
 static jpl_reference_frame classify_frame(int denum);
+static jpl_status jpl_map_handle(jpl_ephemeris *e, const char *path, size_t *size_out);
+static void jpl_unmap_handle(jpl_ephemeris *e);
 
 struct jpl_ephemeris {
     FILE *file;
@@ -957,38 +959,66 @@ static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, do
 
 const char *jpl_status_string(jpl_status status) { static const char *const text[] = { "success", "invalid argument", "I/O error", "invalid JPL DE format", "out of range", "out of memory", "unsupported dataset or frame", "solution did not converge", "unrepresentable numeric result" }; return status >= JPL_OK && status <= JPL_ERROR_NUMERIC ? text[status] : "unknown error"; }
 
+/* Shared handle allocation: zeroed handle plus owned refcount, or NULL
+ * with nothing to release. */
+static jpl_ephemeris *handle_alloc(void) {
+    jpl_ephemeris *e = calloc(1, sizeof *e);
+    if (!e) return NULL;
+    e->refcount = malloc(sizeof *e->refcount);
+    if (!e->refcount) { free(e); return NULL; }
+    refcount_init(e->refcount);
+    return e;
+}
+
+/* Shared open-path validation: one layout evaluation plus the record
+ * width gate. MEMORY and IO propagate; anything else is FORMAT. */
+static jpl_status validate_open_layout(const jpl_byte_source *source, jpl_header *header,
+                                       size_t *record_count, size_t *covered_record_count) {
+    jpl_status status = select_layout(source, header, record_count, covered_record_count);
+    if (status != JPL_OK)
+        return status == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (status == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT);
+    if (header->record_double_count == 0 || header->record_double_count > SIZE_MAX / 8) return JPL_ERROR_FORMAT;
+    return JPL_OK;
+}
+
 jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
-    jpl_ephemeris *e; jpl_status status;
+    jpl_ephemeris *e;
+    jpl_header header;
     jpl_byte_source source;
     jpl_file_source fsource;
+    size_t record_count = 0, covered_record_count = 0, file_size = 0;
     char *resolved = NULL;
+    jpl_status status;
     if (!path || !out) return JPL_ERROR_ARGUMENT;
     *out = NULL;
-    e = calloc(1, sizeof *e); if (!e) return JPL_ERROR_MEMORY;
-    e->refcount = malloc(sizeof *e->refcount); if (!e->refcount) { free(e); return JPL_ERROR_MEMORY; }
-    refcount_init(e->refcount);
-    e->is_mmap = 0; e->mmap.base = NULL; e->mmap.size = 0;
+    e = handle_alloc();
+    if (!e) return JPL_ERROR_MEMORY;
     /* Resolve the absolute reopen path before fopen and open that exact
      * resolved path, so a later cwd change cannot redirect clones. */
     resolved = resolve_reopen_path(path);
-    if (!resolved) { free(e->refcount); free(e); return JPL_ERROR_MEMORY; }
+    if (!resolved) { jpl_close(e); return JPL_ERROR_MEMORY; }
     e->path = resolved;
-    e->file = fopen(resolved, "rb"); if (!e->file) { jpl_close(e); return JPL_ERROR_IO; }
+    e->file = fopen(resolved, "rb");
+    if (!e->file) { jpl_close(e); return JPL_ERROR_IO; }
     if (JPL_FSEEK(e->file, 0, SEEK_END) != 0) { jpl_close(e); return JPL_ERROR_IO; }
-    { jpl_file_offset end = JPL_FTELL(e->file); if (end < 0 || (uintmax_t)end > SIZE_MAX) { jpl_close(e); return JPL_ERROR_IO; } e->file_size = (size_t)end; }
+    { jpl_file_offset end = JPL_FTELL(e->file); if (end < 0 || (uintmax_t)end > SIZE_MAX) { jpl_close(e); return JPL_ERROR_IO; } file_size = (size_t)end; }
     /* Verify stream identity is queryable on the open handle. */
     if (verify_stream_identity(e->file) != 0) { jpl_close(e); return JPL_ERROR_IO; }
     /* One shared validator for FILE and mmap: bounded reads go through
      * the byte source, so both paths evaluate complete LE/BE layout
      * candidates instead of accepting a preliminary byte order. */
     fsource.file = e->file;
-    fsource.size = e->file_size;
+    fsource.size = file_size;
     source.context = &fsource;
-    source.size = e->file_size;
+    source.size = file_size;
     source.read = file_read_bytes;
-    status = select_layout(&source, &e->header, &e->record_count, &e->covered_record_count);
-    if (status != JPL_OK) { jpl_status keep = status; jpl_close(e); return keep == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (keep == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT); }
-    if (e->header.record_double_count == 0 || e->header.record_double_count > SIZE_MAX / 8) { jpl_close(e); return JPL_ERROR_FORMAT; }
+    status = validate_open_layout(&source, &header, &record_count, &covered_record_count);
+    if (status != JPL_OK) { jpl_close(e); return status; }
+    e->is_mmap = 0;
+    e->header = header;
+    e->file_size = file_size;
+    e->record_count = record_count;
+    e->covered_record_count = covered_record_count;
     *out = e; return JPL_OK;
 }
 
@@ -1005,137 +1035,121 @@ void jpl_close(jpl_ephemeris *e) {
      * Each handle frees its own cache_record: the cache is per-handle, so
      * a closing sibling must not orphan its record buffer. */
     if (refcount_dec(e->refcount) > 0) { free(e->cache.record); free(e); return; }
-    if (e->is_mmap) {
-#if defined(_WIN32)
-        if (e->mmap.base) UnmapViewOfFile(e->mmap.base);
-        if (e->mmap.hMap) CloseHandle(e->mmap.hMap);
-        if (e->mmap.hFile && e->mmap.hFile != INVALID_HANDLE_VALUE) CloseHandle(e->mmap.hFile);
-#else
-        if (e->mmap.base && e->mmap.size > 0) munmap(e->mmap.base, e->mmap.size);
-#endif
-    } else {
-        if (e->file) fclose(e->file);
-    }
+    if (e->is_mmap) jpl_unmap_handle(e);
+    else if (e->file) fclose(e->file);
     free(e->refcount);
     free(e->path);
     free(e->cache.record);
     free(e);
 }
 
+#if defined(_WIN32)
+/* Windows mapping acquisition behind the seam: fills e->mmap (base, size,
+ * handles) or fails cleanly with nothing retained. Re-checks size after
+ * mapping: the file must not change under us (truncation after mapping
+ * faults on access; growth is ignored). */
+static jpl_status jpl_map_handle(jpl_ephemeris *e, const char *path, size_t *size_out) {
+    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hMap = NULL;
+    unsigned char *base = NULL;
+    LARGE_INTEGER size;
+    if (hFile == INVALID_HANDLE_VALUE) return JPL_ERROR_IO;
+    if (!GetFileSizeEx(hFile, &size) || size.QuadPart < (LONGLONG)MIN_RECORD_BYTES ||
+        (uintmax_t)size.QuadPart > (uintmax_t)SIZE_MAX) { CloseHandle(hFile); return JPL_ERROR_IO; }
+    hMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (!hMap) { CloseHandle(hFile); return JPL_ERROR_IO; }
+    {
+        LARGE_INTEGER resize;
+        if (!GetFileSizeEx(hFile, &resize) || resize.QuadPart != size.QuadPart) {
+            CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_IO;
+        }
+    }
+    base = (unsigned char *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
+    if (!base) { CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_IO; }
+    e->mmap.base = base;
+    e->mmap.size = (size_t)size.QuadPart;
+    e->mmap.hFile = hFile;
+    e->mmap.hMap = hMap;
+    *size_out = (size_t)size.QuadPart;
+    return JPL_OK;
+}
+
+/* Release a mapping acquired by jpl_map_handle; safe on a zeroed handle. */
+static void jpl_unmap_handle(jpl_ephemeris *e) {
+    if (e->mmap.base) UnmapViewOfFile(e->mmap.base);
+    if (e->mmap.hMap) CloseHandle(e->mmap.hMap);
+    if (e->mmap.hFile && e->mmap.hFile != INVALID_HANDLE_VALUE) CloseHandle(e->mmap.hFile);
+    e->mmap.base = NULL;
+    e->mmap.size = 0;
+    e->mmap.hFile = NULL;
+    e->mmap.hMap = NULL;
+}
+#else
+/* POSIX mapping acquisition behind the seam: fills e->mmap (base, size)
+ * or fails cleanly with nothing retained. Re-checks size on the SAME fd
+ * after mapping: renames/replacements of path no longer validate the
+ * wrong file. Truncation after mapping can still fault on access
+ * (documented). */
+static jpl_status jpl_map_handle(jpl_ephemeris *e, const char *path, size_t *size_out) {
+    int fd = open(path, O_RDONLY);
+    struct stat st;
+    unsigned char *base = NULL;
+    if (fd < 0) return JPL_ERROR_IO;
+    if (fstat(fd, &st) != 0 || st.st_size < (off_t)MIN_RECORD_BYTES || (uintmax_t)st.st_size > (uintmax_t)SIZE_MAX) {
+        close(fd);
+        return JPL_ERROR_IO;
+    }
+    base = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (base == MAP_FAILED) { close(fd); return JPL_ERROR_IO; }
+    {
+        struct stat rest;
+        if (fstat(fd, &rest) != 0 || rest.st_size != st.st_size) {
+            close(fd); munmap(base, (size_t)st.st_size); return JPL_ERROR_IO;
+        }
+    }
+    close(fd);
+    e->mmap.base = base;
+    e->mmap.size = (size_t)st.st_size;
+    *size_out = (size_t)st.st_size;
+    return JPL_OK;
+}
+
+/* Release a mapping acquired by jpl_map_handle; safe on a zeroed handle. */
+static void jpl_unmap_handle(jpl_ephemeris *e) {
+    if (e->mmap.base && e->mmap.size > 0) munmap(e->mmap.base, e->mmap.size);
+    e->mmap.base = NULL;
+    e->mmap.size = 0;
+}
+#endif
+
 jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
     jpl_ephemeris *e;
     jpl_header header;
-    jpl_status status;
+    jpl_byte_source source;
+    jpl_mmap_source msource;
     size_t file_size = 0, record_count = 0, covered_record_count = 0;
+    jpl_status status;
     if (!path || !out) return JPL_ERROR_ARGUMENT;
     *out = NULL;
-#if defined(_WIN32)
-    {
-        HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE hMap = NULL;
-        unsigned char *base = NULL;
-        LARGE_INTEGER size;
-        if (hFile == INVALID_HANDLE_VALUE) return JPL_ERROR_IO;
-        if (!GetFileSizeEx(hFile, &size) || size.QuadPart < (LONGLONG)MIN_RECORD_BYTES ||
-            (uintmax_t)size.QuadPart > (uintmax_t)SIZE_MAX) { CloseHandle(hFile); return JPL_ERROR_IO; }
-        file_size = (size_t)size.QuadPart;
-        hMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
-        if (!hMap) { CloseHandle(hFile); return JPL_ERROR_IO; }
-        /* Re-check size after mapping: the file must not change under us
-         * (truncation after mapping faults on access; growth is ignored). */
-        {
-            LARGE_INTEGER resize;
-            if (!GetFileSizeEx(hFile, &resize) || resize.QuadPart != (LONGLONG)file_size) {
-                CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_IO;
-            }
-        }
-        base = (unsigned char *)MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
-        if (!base) { CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_IO; }
-        /* Bounded mmap reads through the shared candidate validator. */
-        {
-            jpl_byte_source source;
-            jpl_mmap_source msource;
-            msource.base = base;
-            msource.size = file_size;
-            source.context = &msource;
-            source.size = file_size;
-            source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count, &covered_record_count);
-            if (status == JPL_OK &&
-                (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
-                status = JPL_ERROR_FORMAT;
-        }
-        if (status != JPL_OK) { UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return status == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (status == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT); }
-        e = calloc(1, sizeof *e);
-        if (!e) { UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_MEMORY; }
-        e->refcount = malloc(sizeof *e->refcount);
-        if (!e->refcount) { free(e); UnmapViewOfFile(base); CloseHandle(hMap); CloseHandle(hFile); return JPL_ERROR_MEMORY; }
-        refcount_init(e->refcount);
-        e->is_mmap = 1;
-        e->mmap.base = base;
-        e->mmap.size = file_size;
-        e->mmap.hFile = hFile;
-        e->mmap.hMap = hMap;
-        e->header = header;
-        e->file_size = file_size;
-        e->record_count = record_count;
-        e->covered_record_count = covered_record_count;
-        *out = e;
-        return JPL_OK;
-    }
-#else
-    {
-        int fd = open(path, O_RDONLY);
-        struct stat st;
-        unsigned char *base = NULL;
-        if (fd < 0) return JPL_ERROR_IO;
-        if (fstat(fd, &st) != 0 || st.st_size < (off_t)MIN_RECORD_BYTES || (uintmax_t)st.st_size > (uintmax_t)SIZE_MAX) {
-            close(fd);
-            return JPL_ERROR_IO;
-        }
-        file_size = (size_t)st.st_size;
-        base = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-        if (base == MAP_FAILED) { close(fd); return JPL_ERROR_IO; }
-        /* Re-check size on the SAME fd after mapping: renames/replacements
-         * of path no longer validate the wrong file. Truncation after
-         * mapping can still fault on access (documented). */
-        {
-            struct stat rest;
-            if (fstat(fd, &rest) != 0 || rest.st_size != st.st_size) {
-                close(fd); munmap(base, file_size); return JPL_ERROR_IO;
-            }
-        }
-        close(fd);
-        {
-            jpl_byte_source source;
-            jpl_mmap_source msource;
-            msource.base = base;
-            msource.size = file_size;
-            source.context = &msource;
-            source.size = file_size;
-            source.read = mmap_read_bytes;
-            status = select_layout(&source, &header, &record_count, &covered_record_count);
-            if (status == JPL_OK &&
-                (header.record_double_count == 0 || header.record_double_count > SIZE_MAX / 8))
-                status = JPL_ERROR_FORMAT;
-        }
-        if (status != JPL_OK) { munmap(base, file_size); return status == JPL_ERROR_MEMORY ? JPL_ERROR_MEMORY : (status == JPL_ERROR_IO ? JPL_ERROR_IO : JPL_ERROR_FORMAT); }
-        e = calloc(1, sizeof *e);
-        if (!e) { munmap(base, file_size); return JPL_ERROR_MEMORY; }
-        e->refcount = malloc(sizeof *e->refcount);
-        if (!e->refcount) { free(e); munmap(base, file_size); return JPL_ERROR_MEMORY; }
-        refcount_init(e->refcount);
-        e->is_mmap = 1;
-        e->mmap.base = base;
-        e->mmap.size = file_size;
-        e->header = header;
-        e->file_size = file_size;
-        e->record_count = record_count;
-        e->covered_record_count = covered_record_count;
-        *out = e;
-        return JPL_OK;
-    }
-#endif
+    e = handle_alloc();
+    if (!e) return JPL_ERROR_MEMORY;
+    status = jpl_map_handle(e, path, &file_size);
+    if (status != JPL_OK) { jpl_close(e); return status; }
+    e->is_mmap = 1;
+    /* Bounded mmap reads through the shared candidate validator. */
+    msource.base = e->mmap.base;
+    msource.size = file_size;
+    source.context = &msource;
+    source.size = file_size;
+    source.read = mmap_read_bytes;
+    status = validate_open_layout(&source, &header, &record_count, &covered_record_count);
+    if (status != JPL_OK) { jpl_close(e); return status; }
+    e->header = header;
+    e->file_size = file_size;
+    e->record_count = record_count;
+    e->covered_record_count = covered_record_count;
+    *out = e;
+    return JPL_OK;
 }
 
 jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_clone) {
@@ -1153,12 +1167,9 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
         c->refcount = ephem->refcount;
-        c->mmap.base = ephem->mmap.base;
-        c->mmap.size = ephem->mmap.size;
-#if defined(_WIN32)
-        c->mmap.hFile = ephem->mmap.hFile;
-        c->mmap.hMap = ephem->mmap.hMap;
-#endif
+        /* Shared mapping state (base, size, and on Windows the handles,
+         * which stay valid through the shared refcount). */
+        c->mmap = ephem->mmap;
         refcount_inc(c->refcount);
     } else {
         if (!ephem->path) { free(c); return JPL_ERROR_ARGUMENT; }

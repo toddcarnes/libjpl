@@ -927,23 +927,21 @@ static jpl_reference_frame classify_frame(int denum) {
     }
 }
 
-static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
-    unsigned char *bytes; size_t i;
-    if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
-    /* Zero-count raw reads succeed without backend access: no seek,
-     * mapping-base evaluation, malloc(0), read, or copy. Argument and
-     * handle validation above still applies. */
-    if (count == 0) return JPL_OK;
-    if (ephemeris->is_mmap) {
-        const unsigned char *base;
-        if (!ephemeris->mmap.base) return JPL_ERROR_IO;
-        if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
-        if (offset > ephemeris->mmap.size || count * 8 > ephemeris->mmap.size - offset) return JPL_ERROR_IO;
-        base = ephemeris->mmap.base + offset;
-        if (ephemeris->header.byte_order == native_order()) { memcpy(values, base, count * 8); return JPL_OK; }
-        for (i = 0; i < count; ++i) values[i] = read_f64(base + i * 8, ephemeris->header.byte_order);
-        return JPL_OK;
-    }
+static jpl_status read_doubles_mmap(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
+    const unsigned char *base;
+    size_t i;
+    if (!ephemeris->mmap.base) return JPL_ERROR_IO;
+    if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
+    if (offset > ephemeris->mmap.size || count * 8 > ephemeris->mmap.size - offset) return JPL_ERROR_IO;
+    base = ephemeris->mmap.base + offset;
+    if (ephemeris->header.byte_order == native_order()) { memcpy(values, base, count * 8); return JPL_OK; }
+    for (i = 0; i < count; ++i) values[i] = read_f64(base + i * 8, ephemeris->header.byte_order);
+    return JPL_OK;
+}
+
+static jpl_status read_doubles_file(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
+    unsigned char *bytes;
+    size_t i;
     if (count > SIZE_MAX / 8 || seek_to(ephemeris->file, offset) != 0) return JPL_ERROR_IO;
     if (ephemeris->header.byte_order == native_order())
         return fread(values, 8, count, ephemeris->file) == count ? JPL_OK : JPL_ERROR_IO;
@@ -951,6 +949,16 @@ static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, do
     if (fread(bytes, 8, count, ephemeris->file) != count) { free(bytes); return JPL_ERROR_IO; }
     for (i = 0; i < count; ++i) values[i] = read_f64(bytes + i * 8, ephemeris->header.byte_order);
     free(bytes); return JPL_OK;
+}
+
+static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
+    if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
+    /* Zero-count raw reads succeed without backend access: no seek,
+     * mapping-base evaluation, malloc(0), read, or copy. Argument and
+     * handle validation above still applies. */
+    if (count == 0) return JPL_OK;
+    if (ephemeris->is_mmap) return read_doubles_mmap(ephemeris, offset, values, count);
+    return read_doubles_file(ephemeris, offset, values, count);
 }
 
 const char *jpl_status_string(jpl_status status) { static const char *const text[] = { "success", "invalid argument", "I/O error", "invalid JPL DE format", "out of range", "out of memory", "unsupported dataset or frame", "solution did not converge", "unrepresentable numeric result" }; return status >= JPL_OK && status <= JPL_ERROR_NUMERIC ? text[status] : "unknown error"; }

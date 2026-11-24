@@ -40,7 +40,15 @@ convert at the boundary with `jpl_date_to_pair` / `jpl_pair_to_date` /
 `jpl_state_to_array` / `jpl_array_to_state`. Raw on-disk record epochs
 stay scalar, as before.
 
-## Before / after signatures (0.3.0)
+## Before / after signatures (0.3.0 only — historical record)
+
+The "After" column below is the 0.3.0 API (two-part arrays), kept for
+readers migrating from pre-0.3.0 code. It is NOT the current API: 0.7.0
+replaced arrays with `jpl_date`/`jpl_state` structs (see the supplement
+above), and later releases deleted `jpl_ecliptic_to_icrs`,
+`jpl_apply_aberration_full`, `jpl_frame_context_rotate_position`, and
+`jpl_frame_context_rotate_velocity` (see CHANGELOG). For current
+signatures, read the installed headers.
 
 | Before (scalar) | After (two-part) |
 | --- | --- |

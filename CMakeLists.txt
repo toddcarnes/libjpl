@@ -444,13 +444,10 @@ if(LIBJPL_BUILD_TESTS)
     # binary, canonical reference text (CRLF-to-LF only), and ordered
     # identity list against tests/data/MANIFEST.txt. No new library crypto
     # dependency; file(SHA256) is configure/test-time tooling only.
-    # The three hash variables below are informational only: the checker
-    # reads the authoritative values from the manifest itself, so the
-    # manifest stays the single source of truth. They are intentionally
-    # NOT referenced with ${...} anywhere, which keeps the file free of
-    # "unused variable" diagnostics while documenting the key names.
-    set(LIBJPL_FIXTURE_MANIFEST_KEYS
-        "fixture.binary.sha256;fixture.text.sha256;fixture.rows.sha256")
+    # The manifest keys below are informational only (the checker reads
+    # the authoritative values from the manifest itself, so the manifest
+    # stays the single source of truth):
+    # fixture.binary.sha256, fixture.text.sha256, fixture.rows.sha256
     add_test(NAME jpl_fixture_integrity
         COMMAND ${CMAKE_COMMAND}
             "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"

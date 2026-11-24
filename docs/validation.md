@@ -260,6 +260,15 @@ combined; `jpl_install`/`jpl_docs_paths` are excluded only from sanitizer
 sub-builds (they configure an unsanitized consumer) and run in all
 regular jobs.
 
+Each configure writes a suite data manifest to
+`<build-dir>/suite_provenance.txt` and echoes its summary to the
+configure log (example: `fetch=OFF, JPLEPH=D:/ephem/jpl/bin (present),
+JPL_TESTPO=D:/ephem/jpl/testpo (absent)`). It records the fetch-tier
+resolution (fetch ON/OFF, maintainer redirects, committed fixture
+presence/sizes, resolved downloads or UNREGISTERED) so "which data did
+this run validate" has one answer per build tree. The manifest is
+build-tree local and never installed.
+
 ### Common commands
 
 PowerShell (Windows MSVC, multi-config generator):

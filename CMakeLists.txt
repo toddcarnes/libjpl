@@ -905,6 +905,64 @@ if(LIBJPL_BUILD_TESTS)
         endforeach()
     endif()
 
+    # Suite data provenance: one manifest per configure answering "which
+    # data did this suite actually validate". Build-tree local, never
+    # installed. Read-only: records fetch-tier resolution, maintainer
+    # redirect state, and committed fixtures; no test logic changes.
+    set(JPL_PROVENANCE_FILE "${CMAKE_CURRENT_BINARY_DIR}/suite_provenance.txt")
+    if(DEFINED ENV{JPLEPH} AND NOT "$ENV{JPLEPH}" STREQUAL "")
+        if(EXISTS "$ENV{JPLEPH}")
+            set(_jpl_prov_jpleph "$ENV{JPLEPH} (present)")
+        else()
+            set(_jpl_prov_jpleph "$ENV{JPLEPH} (absent)")
+        endif()
+    else()
+        set(_jpl_prov_jpleph "UNSET")
+    endif()
+    if(EXISTS "${JPL_TESTPO_DIR}")
+        set(_jpl_prov_testpo "${JPL_TESTPO_DIR} (present)")
+    else()
+        set(_jpl_prov_testpo "${JPL_TESTPO_DIR} (absent)")
+    endif()
+    set(_jpl_prov_lines
+        "# libjpl suite data provenance (generated at configure time; build-tree local)"
+        "fetch_ephemerides=${LIBJPL_FETCH_EPHEMERIDES}"
+        "jpleph=${_jpl_prov_jpleph}"
+        "jpl_testpo_dir=${_jpl_prov_testpo}")
+    foreach(_jpl_prov_fixture IN ITEMS
+            "tests/data/de441_2000_2010.eph"
+            "tests/data/testpo_441_slice.txt"
+            "tests/data/horizons_de441.txt"
+            "tests/data/MANIFEST.txt")
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_jpl_prov_fixture}")
+            file(SIZE "${CMAKE_CURRENT_SOURCE_DIR}/${_jpl_prov_fixture}" _jpl_prov_size)
+            list(APPEND _jpl_prov_lines "committed:${_jpl_prov_fixture}=present (${_jpl_prov_size} bytes)")
+        else()
+            list(APPEND _jpl_prov_lines "committed:${_jpl_prov_fixture}=MISSING")
+        endif()
+    endforeach()
+    if(LIBJPL_FETCH_EPHEMERIDES)
+        foreach(_jpl_prov_pair IN ITEMS
+                "de440:${LIBJPL_DE440_EPH}"
+                "de440t:${LIBJPL_DE440T_EPH}"
+                "testpo.440:${LIBJPL_TESTPO_440_FILE}"
+                "testpo.440t:${LIBJPL_TESTPO_440T_FILE}")
+            # Split "name:path" on the first colon only (paths may be absolute).
+            string(REGEX MATCH "^[^:]*" _jpl_prov_name "${_jpl_prov_pair}")
+            string(REGEX REPLACE "^[^:]*:" "" _jpl_prov_path "${_jpl_prov_pair}")
+            if(EXISTS "${_jpl_prov_path}")
+                list(APPEND _jpl_prov_lines "resolved:${_jpl_prov_name}=${_jpl_prov_path}")
+            else()
+                list(APPEND _jpl_prov_lines "resolved:${_jpl_prov_name}=UNREGISTERED")
+            endif()
+        endforeach()
+    else()
+        list(APPEND _jpl_prov_lines "resolved:fetch-tier=OFF (no downloads, no redirect evaluation)")
+    endif()
+    string(REPLACE ";" "\n" _jpl_prov_text "${_jpl_prov_lines}")
+    file(WRITE "${JPL_PROVENANCE_FILE}" "${_jpl_prov_text}\n")
+    message(STATUS "libjpl: suite data: fetch=${LIBJPL_FETCH_EPHEMERIDES}, JPLEPH=${_jpl_prov_jpleph}, JPL_TESTPO=${_jpl_prov_testpo}; manifest: ${JPL_PROVENANCE_FILE}")
+
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.

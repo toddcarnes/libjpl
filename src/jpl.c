@@ -1599,6 +1599,32 @@ static void interp_publish_state(const jpl_ephemeris *e, const interp_work *w, d
     ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
+/* Entry gate (see jpl_private.h): validate → normalize → coverage, owned
+ * once so all query prefixes report the same categories in the same order.
+ * Coverage is checked on the epoch the data reads use; domain conversions
+ * (TT→TDB) happen between prepare and coverage at the one call site that
+ * needs them. */
+jpl_status jpl_entry_prepare(const jpl_ephemeris *e, const double jd[2], jpl_entry_ctx *out) {
+    jpl_status status;
+    if (!e || !jd || !out) return JPL_ERROR_ARGUMENT;
+    if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
+    status = jpl_date_normalize(jd, out->norm);
+    if (status != JPL_OK) return status;
+    status = jpl_date_normalize(e->header.start_jd, out->cov_start);
+    if (status != JPL_OK) return JPL_ERROR_FORMAT;
+    status = jpl_date_normalize(e->header.end_jd, out->cov_end);
+    if (status != JPL_OK) return JPL_ERROR_FORMAT;
+    return JPL_OK;
+}
+
+jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx, const double epoch[2]) {
+    if (!ctx || !epoch) return JPL_ERROR_ARGUMENT;
+    if (jpl_date_compare(epoch, ctx->cov_start) < 0 ||
+        jpl_date_compare(epoch, ctx->cov_end) > 0)
+        return JPL_ERROR_RANGE;
+    return JPL_OK;
+}
+
 /* Single evaluation seam: interpolate one pointer's coefficients at an
  * epoch. Owns record selection, the cached record read, bounds
  * verification, subinterval location, Chebyshev evaluation, and
@@ -1607,22 +1633,20 @@ static void interp_publish_state(const jpl_ephemeris *e, const interp_work *w, d
 static jpl_status jpl_evaluate(const jpl_ephemeris *e, const double jd[2], const jpl_pointer *pointer,
                                size_t components, double state[6]) {
     interp_work w;
+    jpl_entry_ctx entry;
     size_t nsub;
     jpl_status status;
-    if (!e || !jd || !pointer || !state) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
-    memset(&w, 0, sizeof w);
-    status = jpl_date_normalize(jd, w.norm);
+    if (!pointer || !state) return JPL_ERROR_ARGUMENT;
+    /* Single owned prefix: validate → normalize → coverage. Dataset
+     * presence (below) still reports UNSUPPORTED after RANGE. */
+    status = jpl_entry_prepare(e, jd, &entry);
     if (status != JPL_OK) return status;
-    /* Coverage precedes the missing-dataset report (TT-TDB path order):
-     * valid in-coverage queries for absent data are UNSUPPORTED, while
-     * out-of-coverage queries stay RANGE even when the dataset is absent. */
-    status = jpl_date_normalize(e->header.start_jd, w.file_start);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(e->header.end_jd, w.file_end);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(w.norm, w.file_start) < 0 || jpl_date_compare(w.norm, w.file_end) > 0)
-        return JPL_ERROR_RANGE;
+    status = jpl_entry_coverage(&entry, entry.norm);
+    if (status != JPL_OK) return status;
+    memset(&w, 0, sizeof w);
+    memcpy(w.norm, entry.norm, sizeof w.norm);
+    memcpy(w.file_start, entry.cov_start, sizeof w.file_start);
+    memcpy(w.file_end, entry.cov_end, sizeof w.file_end);
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
     if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
@@ -1648,20 +1672,15 @@ static jpl_status jpl_evaluate(const jpl_ephemeris *e, const double jd[2], const
 
 static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], int target, double state[6]) {
     double moon[6], local[6]; size_t i; jpl_status status;
-    double norm[2], cov_start[2], cov_end[2];
+    jpl_entry_ctx entry;
     double divisor;
     /* SSB-to-SSB dates validate normally: normalize and check coverage
      * before returning the zero vector. */
-    if (!e || !jd || !state) return JPL_ERROR_ARGUMENT;
-    if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
-    status = jpl_date_normalize(jd, norm);
+    if (!state) return JPL_ERROR_ARGUMENT;
+    status = jpl_entry_prepare(e, jd, &entry);
     if (status != JPL_OK) return status;
-    status = jpl_date_normalize(e->header.start_jd, cov_start);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(e->header.end_jd, cov_end);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(norm, cov_start) < 0 || jpl_date_compare(norm, cov_end) > 0)
-        return JPL_ERROR_RANGE;
+    status = jpl_entry_coverage(&entry, entry.norm);
+    if (status != JPL_OK) return status;
     if (target == JPL_SOLAR_SYSTEM_BARYCENTER || target == JPL_SSB) { memset(state, 0, 6 * sizeof *state); return JPL_OK; }
     /* Direct file slots cover Mercury..Sun except Earth (3, derived below)
      * and the Moon (10, needs the EMB leg too). */
@@ -1856,8 +1875,9 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
     double observer_km[6], rel[6], candidate[6];
     double lt = 0.0, residual = 0.0;
     jpl_status st = JPL_OK;
+    jpl_entry_ctx entry;
     int s;
-    if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    if (!state) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject.
@@ -1865,16 +1885,15 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
      * here, matching jpl_get_state. Validate before date normalization or
      * data access. */
      if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
-    st = jpl_date_normalize(jd, norm);
-    if (st != JPL_OK) return st;
     /* Coverage validates before any state read so out-of-coverage queries
      * report RANGE with outputs untouched. */
-    st = jpl_date_normalize(e->header.start_jd, cov_start);
-    if (st != JPL_OK) return JPL_ERROR_FORMAT;
-    st = jpl_date_normalize(e->header.end_jd, cov_end);
-    if (st != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(norm, cov_start) < 0 || jpl_date_compare(norm, cov_end) > 0)
-        return JPL_ERROR_RANGE;
+    st = jpl_entry_prepare(e, jd, &entry);
+    if (st != JPL_OK) return st;
+    st = jpl_entry_coverage(&entry, entry.norm);
+    if (st != JPL_OK) return st;
+    memcpy(norm, entry.norm, sizeof norm);
+    memcpy(cov_start, entry.cov_start, sizeof cov_start);
+    memcpy(cov_end, entry.cov_end, sizeof cov_end);
 /* Observer barycentric state fixed at reception (raw file units). */
     if (center == JPL_SSB) memset(observer_km, 0, sizeof observer_km);
     else { st = barycentric_state(e, norm, center, observer_km); if (st != JPL_OK) return st; }
@@ -1995,15 +2014,11 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, 
      * inputs above stay ARGUMENT, out-of-coverage below stays RANGE,
      * and only a valid in-coverage query for absent data is UNSUPPORTED. */
     {
-        double norm[2], cov_start[2], cov_end[2];
-        status = jpl_date_normalize(jd_arr, norm);
+        jpl_entry_ctx entry;
+        status = jpl_entry_prepare(e, jd_arr, &entry);
         if (status != JPL_OK) return status;
-        status = jpl_date_normalize(e->header.start_jd, cov_start);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        status = jpl_date_normalize(e->header.end_jd, cov_end);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        if (jpl_date_compare(norm, cov_start) < 0 || jpl_date_compare(norm, cov_end) > 0)
-            return JPL_ERROR_RANGE;
+        status = jpl_entry_coverage(&entry, entry.norm);
+        if (status != JPL_OK) return status;
     }
     if (!e->header.has_tt_tdb) return JPL_ERROR_UNSUPPORTED;
     /* Span end is the 1-based slot count (start-1)+coeff*sub, so equality

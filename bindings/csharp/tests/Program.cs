@@ -214,6 +214,18 @@ class Program
                 }
             }
 
+            // Contract: rotate_vector matches the state entry's position half.
+            var rv = JplEphemeris.RotateVector(new double[] { 1.0, 0.0, 0.0 }, new double[] { 2451545.0, 0.0 });
+            var icrsUnit = JplEphemeris.EclipticToIcrs(new double[] { 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 }, new double[] { 2451545.0, 0.0 });
+            for (int i = 0; i < 3; ++i)
+            {
+                if (Math.Abs(rv[i] - icrsUnit[i]) > 1e-12)
+                {
+                    Console.Error.WriteLine($"Rotate-vector mismatch at {i}");
+                    Environment.Exit(1);
+                }
+            }
+
             // Short arrays must be rejected in managed code before P/Invoke.
             try
             {

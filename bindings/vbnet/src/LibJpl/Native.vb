@@ -192,6 +192,13 @@ Friend Module Native
     End Sub
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_frame_context_rotate_vector(
+        context As IntPtr,
+        vec As Double(),
+        <Out()> out_vec As Double()) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
     Public Function jpl_frame_context_rotate_state(
         context As IntPtr,
         ByRef state As JplStateNative,

@@ -32,6 +32,8 @@ four-way diff.
 - `EclipticToIcrs` is `frame_context_create` → `rotate_state` →
   `frame_context_destroy`, with destroy guaranteed (finally/dispose
   scope) even when rotation fails.
+- The single-vector form wraps one `rotate_vector` call the same way; it
+  must equal the state entry's position half bit for bit (same computer).
 
 ## 4. Solar-term rule
 

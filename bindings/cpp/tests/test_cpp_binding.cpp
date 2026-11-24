@@ -132,6 +132,16 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Contract: rotate_vector matches the state entry's position half.
+        auto rv = jpl::Ephemeris::rotate_vector({1.0, 0.0, 0.0}, {2451545.0, 0.0});
+        auto icrs_unit = jpl::Ephemeris::ecliptic_to_icrs({1.0, 0.0, 0.0, 0.0, 0.0, 0.0}, {2451545.0, 0.0});
+        for (int i = 0; i < 3; ++i) {
+            if (std::fabs(rv[i] - icrs_unit[i]) > 1e-12) {
+                std::cerr << "Rotate-vector mismatch at " << i << "\n";
+                return 1;
+            }
+        }
+
         // Test light time
         auto lt_result = eph.get_state_lighttime({2451545.0, 0.0}, 3, 11);
         if (!std::isfinite(lt_result.light_time_days) || lt_result.light_time_days <= 0) {

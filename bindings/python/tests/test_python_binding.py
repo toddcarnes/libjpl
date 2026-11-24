@@ -94,6 +94,10 @@ def test_binding():
     back = Ephemeris.icrs_to_ecliptic(icrs, [2451545.0, 0.0])
     for got, want in zip(back, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]):
         assert abs(got - want) < 1e-9, (got, want)
+    # rotate_vector matches the state entry's position half.
+    rv = Ephemeris.rotate_vector([1.0, 0.0, 0.0], [2451545.0, 0.0])
+    for got, want in zip(rv, icrs[:3]):
+        assert abs(got - want) < 1e-12, (got, want)
 
     # Test missing path raises JplError and GC does not fail in __del__
     try:

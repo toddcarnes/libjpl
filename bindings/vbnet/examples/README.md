@@ -142,11 +142,6 @@ End Enum
 ## Structs and Classes
 
 ```vb
-Public Structure TtMinusTdbResult
-    Public Seconds As Double
-    Public RatePerDay As Double
-End Structure
-
 Public Structure ApparentEclipticResult
     Public LongitudeDeg, LatitudeDeg, RangeAu As Double
     Public LongitudeRateDegPerDay, RangeRateKmPerS As Double

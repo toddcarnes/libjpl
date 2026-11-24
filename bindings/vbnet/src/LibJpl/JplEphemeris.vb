@@ -93,10 +93,6 @@ Public NotInheritable Class JplEphemeris
         Return System.Text.Encoding.ASCII.GetString(name).TrimEnd(ControlChars.NullChar)
     End Function
 
-    Public Sub Clone(ByRef clone As JplEphemeris)
-        clone = Me.Clone()
-    End Sub
-
     Public Function GetHeader() As JplHeader
         Return WithHandle(Function(h)
             Dim headerPtr As IntPtr = Native.jpl_get_header(h)
@@ -195,11 +191,6 @@ Public NotInheritable Class JplEphemeris
             End If
             Return ({stNative.X, stNative.Y, stNative.Z, stNative.Vx, stNative.Vy, stNative.Vz}, lt)
         End Function)
-    End Function
-
-    Public Function GetTtMinusTdbResult(jdTdb As Double()) As TtMinusTdbResult
-        Dim res = GetTtMinusTdb(jdTdb)
-        Return New TtMinusTdbResult With {.Seconds = res.Seconds, .RatePerDay = res.RatePerDay}
     End Function
 
     ' Frame conversions (ecliptic-to-ICRS via a cached frame context)

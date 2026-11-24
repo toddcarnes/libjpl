@@ -19,11 +19,6 @@ Public NotInheritable Class JplException
 
 End Class
 
-Public Structure TtMinusTdbResult
-    Public Seconds As Double
-    Public RatePerDay As Double
-End Structure
-
 Public Structure ApparentEclipticResult
     Public LongitudeDeg As Double
     Public LatitudeDeg As Double

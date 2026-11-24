@@ -80,11 +80,6 @@ public sealed class JplEphemeris : SafeHandle
         }
     }
 
-    public void Clone(out JplEphemeris clone)
-    {
-        clone = Clone();
-    }
-
     public JplHeader GetHeader()
     {
         return WithHandle(h =>

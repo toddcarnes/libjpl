@@ -28,7 +28,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Doxygen and Graphviz
-        run: choco install -y doxygen.install graphviz
+        # Direct downloads, not Chocolatey: the community feed has no SLA
+        # and 504/503s were observed 2026-11-24 (choco then reports success
+        # having installed 0/0 packages, failing much later at docs_only).
+        # Fail hard here instead: $ErrorActionPreference stops on download
+        # or extraction failure, and the version probes below verify working
+        # binaries before any later step can depend on them.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $doxyZip = Join-Path $env:RUNNER_TEMP 'doxygen-1.18.0.windows.x64.bin.zip'
+          Invoke-WebRequest -Uri 'https://github.com/doxygen/doxygen/releases/download/Release_1_18_0/doxygen-1.18.0.windows.x64.bin.zip' -OutFile $doxyZip
+          $doxyDir = Join-Path $env:RUNNER_TEMP 'doxygen'
+          Expand-Archive $doxyZip -DestinationPath $doxyDir -Force
+          $gvZip = Join-Path $env:RUNNER_TEMP 'graphviz-16.1.2-win64.zip'
+          Invoke-WebRequest -Uri 'https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.2/windows_10_cmake_Release_Graphviz-16.1.2-win64.zip' -OutFile $gvZip
+          $gvBin = Join-Path (Join-Path $env:RUNNER_TEMP 'graphviz') 'Graphviz-16.1.2-win64\bin'
+          Expand-Archive $gvZip -DestinationPath (Join-Path $env:RUNNER_TEMP 'graphviz') -Force
+          Add-Content $env:GITHUB_PATH $doxyDir
+          Add-Content $env:GITHUB_PATH $gvBin
+          & (Join-Path $doxyDir 'doxygen.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'doxygen --version failed' }
+          & (Join-Path $gvBin 'dot.exe') -V
+          if ($LASTEXITCODE -ne 0) { throw 'dot -V failed' }
       - name: Configure
         run: cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
@@ -49,7 +70,28 @@ jobs:
       - name: Initialize MSVC environment
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
       - name: Install Doxygen and Graphviz
-        run: choco install -y doxygen.install graphviz
+        # Direct downloads, not Chocolatey: the community feed has no SLA
+        # and 504/503s were observed 2026-11-24 (choco then reports success
+        # having installed 0/0 packages, failing much later at docs_only).
+        # Fail hard here instead: $ErrorActionPreference stops on download
+        # or extraction failure, and the version probes below verify working
+        # binaries before any later step can depend on them.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $doxyZip = Join-Path $env:RUNNER_TEMP 'doxygen-1.18.0.windows.x64.bin.zip'
+          Invoke-WebRequest -Uri 'https://github.com/doxygen/doxygen/releases/download/Release_1_18_0/doxygen-1.18.0.windows.x64.bin.zip' -OutFile $doxyZip
+          $doxyDir = Join-Path $env:RUNNER_TEMP 'doxygen'
+          Expand-Archive $doxyZip -DestinationPath $doxyDir -Force
+          $gvZip = Join-Path $env:RUNNER_TEMP 'graphviz-16.1.2-win64.zip'
+          Invoke-WebRequest -Uri 'https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.2/windows_10_cmake_Release_Graphviz-16.1.2-win64.zip' -OutFile $gvZip
+          $gvBin = Join-Path (Join-Path $env:RUNNER_TEMP 'graphviz') 'Graphviz-16.1.2-win64\bin'
+          Expand-Archive $gvZip -DestinationPath (Join-Path $env:RUNNER_TEMP 'graphviz') -Force
+          Add-Content $env:GITHUB_PATH $doxyDir
+          Add-Content $env:GITHUB_PATH $gvBin
+          & (Join-Path $doxyDir 'doxygen.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'doxygen --version failed' }
+          & (Join-Path $gvBin 'dot.exe') -V
+          if ($LASTEXITCODE -ne 0) { throw 'dot -V failed' }
       - name: Configure (clang-cl, Ninja)
         # Both compilers are pinned to clang-cl: the jpl_install consumer
         # inherits them, and a GNU-like auto-detected clang++ mixed with
@@ -142,7 +184,28 @@ jobs:
         # interpreter that just received cffi so jpl_python_binding registers.
         run: echo "JPL_PYTHON_EXE=$((Get-Command python).Source)" >> $env:GITHUB_ENV
       - name: Install Doxygen and Graphviz
-        run: choco install -y doxygen.install graphviz
+        # Direct downloads, not Chocolatey: the community feed has no SLA
+        # and 504/503s were observed 2026-11-24 (choco then reports success
+        # having installed 0/0 packages, failing much later at docs_only).
+        # Fail hard here instead: $ErrorActionPreference stops on download
+        # or extraction failure, and the version probes below verify working
+        # binaries before any later step can depend on them.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $doxyZip = Join-Path $env:RUNNER_TEMP 'doxygen-1.18.0.windows.x64.bin.zip'
+          Invoke-WebRequest -Uri 'https://github.com/doxygen/doxygen/releases/download/Release_1_18_0/doxygen-1.18.0.windows.x64.bin.zip' -OutFile $doxyZip
+          $doxyDir = Join-Path $env:RUNNER_TEMP 'doxygen'
+          Expand-Archive $doxyZip -DestinationPath $doxyDir -Force
+          $gvZip = Join-Path $env:RUNNER_TEMP 'graphviz-16.1.2-win64.zip'
+          Invoke-WebRequest -Uri 'https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.2/windows_10_cmake_Release_Graphviz-16.1.2-win64.zip' -OutFile $gvZip
+          $gvBin = Join-Path (Join-Path $env:RUNNER_TEMP 'graphviz') 'Graphviz-16.1.2-win64\bin'
+          Expand-Archive $gvZip -DestinationPath (Join-Path $env:RUNNER_TEMP 'graphviz') -Force
+          Add-Content $env:GITHUB_PATH $doxyDir
+          Add-Content $env:GITHUB_PATH $gvBin
+          & (Join-Path $doxyDir 'doxygen.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'doxygen --version failed' }
+          & (Join-Path $gvBin 'dot.exe') -V
+          if ($LASTEXITCODE -ne 0) { throw 'dot -V failed' }
       - name: Configure (all bindings, warnings as errors)
         run: >
           cmake -S . -B build/ci -DLIBJPL_FETCH_EPHEMERIDES=OFF

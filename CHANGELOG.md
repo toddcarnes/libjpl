@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Bindings: conversion contract recorded in `bindings/CONTRACT.md` (header snapshot incl. the 400-name overflow rule, date/state bridging, context wrapping, the 0.0-omits-solar-term rule, round-trip rule, per-language error behavior); each language pins overflow-name agreement, aberration equivalence, and the ecliptic round trip. Audit found no behavioral divergences (one stale comment fixed). No behavior change.
+- Cleanup: removed the `JPL_MAX_CONSTANTS` alias (use `JPL_MAX_CONSTANT_NAMES`) and the `jpl::jpl` CMake target aliases (link `jpl::jpl_static`); deleted unused C#/VB `Clone(out)` overloads and the VB-only `GetTtMinusTdbResult` wrapper; deduplicated test byte helpers and record-width spellings; scoped the 0.3.0 migration table as history. New `rotate_vector` binding in all four languages with cross-binding equivalence pins.
 - Infra: each configure writes a suite data manifest (`<build-dir>/suite_provenance.txt`, echoed to the configure log) recording fetch-tier resolution, maintainer redirects, and committed fixtures — one answer per build tree to "which data did this run validate". Read-only addition; no test logic changes.
 
 ## [0.9.0] - 2026-11-24

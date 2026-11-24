@@ -51,7 +51,10 @@ jobs:
       - name: Install Doxygen and Graphviz
         run: choco install -y doxygen.install graphviz
       - name: Configure (clang-cl, Ninja)
-        run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+        # Both compilers are pinned to clang-cl: the jpl_install consumer
+        # inherits them, and a GNU-like auto-detected clang++ mixed with
+        # MSVC-like clang-cl is rejected by CMake's Windows-Clang module.
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
         run: cmake --build build/ci --config ${{ matrix.config }} --parallel
       - name: Test including jpl_install consumer

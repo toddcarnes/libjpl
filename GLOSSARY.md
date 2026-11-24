@@ -30,3 +30,7 @@ Domain language for libjpl. Names here are the approved terms for code comments,
 - **LayoutDescriptor**: the single record-layout description parsed from header bytes by production code and consumed by test mocks to emit bytes (implemented as shared offset constants + `jpl_tail_offset()`, not a separate struct; see C5).
 - **EpochFrame**: the cached frame transform. Implemented without a new type: the existing `jpl_frame_context` (single mean-of-date matrix plus `create`/`rotate_*`/`destroy`) already plays this role, backed by one static matrix computer; see C6 for why no separate struct was introduced.
 - **Seam sketch**: the Step-0 design notes fixing what a consumer-facing interface will look like before it is implemented.
+
+## Deepened modules (architecture followup 2026-11-24)
+
+- **EntryGate**: the module owning validate → normalize → coverage at every query entry point (implemented as `jpl_entry_prepare` + `jpl_entry_coverage` in `src/jpl.c`, declared in `src/jpl_private.h`). Every query funnels its input epoch through prepare and checks coverage on the epoch the data reads use before any dataset or frame gating, so RANGE precedes UNSUPPORTED structurally rather than by per-site convention.

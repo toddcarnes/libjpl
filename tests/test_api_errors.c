@@ -9,6 +9,7 @@
  * DBL_MAX-overflow states report FORMAT vs NUMERIC without partial output. */
 #include "jpl.h"
 #include "jpl_frames.h"
+#include "jpl_convenience.h"
 #include "jpl_private.h"
 #include "jpl_testing.h"
 #include "jpl_test_util.h"
@@ -271,6 +272,52 @@ int main(void) {
         JPL_TEST_CHECK(jpl_get_state(e, &outside, JPL_LIBRATIONS, 0, &s) == JPL_ERROR_RANGE);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &nan_hi, &sec, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &outside, &sec, NULL) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+    }
+
+    /* Entry gate: validate → normalize → coverage, owned once. Direct
+     * unit tests pin the gate contract the five query prefixes share:
+     * NULL/nonfinite/overflow inputs, normalized outputs, edge-inclusive
+     * coverage, and RANGE-before-UNSUPPORTED ordering at the entry points
+     * (invalid codes still beat everything: see above). */
+    {
+        double good[2] = {8000017.25, 0.0};
+        double bad_hi[2] = {NAN, 0.0};
+        double big[2] = {DBL_MAX, DBL_MAX};
+        double lo[2] = {8000016.5, 0.0};
+        double hi[2] = {8000018.5, 0.0};
+        double out[2] = {8000020.0, 0.0};
+        jpl_entry_ctx ctx;
+        jpl_state s, before;
+        static const jpl_date tt_out = {8000020.0, 0.0};
+        fill_state(&before, 7.0);
+
+        /* NULLs and nonfinite inputs stay ARGUMENT. */
+        JPL_TEST_CHECK(jpl_entry_prepare(NULL, good, &ctx) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_prepare(e, NULL, &ctx) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_prepare(e, good, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_prepare(e, bad_hi, &ctx) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_coverage(NULL, good) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, NULL) == JPL_ERROR_ARGUMENT);
+        /* Finite-but-unrepresentable sums stay NUMERIC. */
+        JPL_TEST_CHECK(jpl_entry_prepare(e, big, &ctx) == JPL_ERROR_NUMERIC);
+        /* Valid input normalizes once; bounds match the mock header. */
+        JPL_TEST_CHECK(jpl_entry_prepare(e, good, &ctx) == JPL_OK);
+        JPL_TEST_CHECK(jpl_date_compare(ctx.norm, good) == 0);
+        JPL_TEST_CHECK(jpl_date_compare(ctx.cov_start, lo) == 0);
+        JPL_TEST_CHECK(jpl_date_compare(ctx.cov_end, hi) == 0);
+        /* Edges are inclusive; outside is RANGE. */
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, ctx.norm) == JPL_OK);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, lo) == JPL_OK);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, hi) == JPL_OK);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, out) == JPL_ERROR_RANGE);
+        /* RANGE precedes UNSUPPORTED at every entry point, including
+         * paths the scattered cases above do not cover. */
+        s = before;
+        JPL_TEST_CHECK(jpl_get_state_lighttime(e, &tt_out, JPL_VENUS, 0, &s, NULL) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(check_unchanged(&s, &before));
+        s = before;
+        JPL_TEST_CHECK(jpl_planet_position(e, &tt_out, JPL_VENUS, 0, &s) == JPL_ERROR_RANGE);
         JPL_TEST_CHECK(check_unchanged(&s, &before));
     }
 

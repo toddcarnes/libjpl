@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Core: query entry points now funnel validate → normalize → coverage through a single owned entry gate (`jpl_entry_prepare` + `jpl_entry_coverage`); dataset and frame gating still report UNSUPPORTED after RANGE. No behavior change (precedence matrix preserved, goldens byte-identical).
+
 ## [0.8.1] - 2026-11-20
 
 ### Fixed

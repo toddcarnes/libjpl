@@ -74,26 +74,26 @@ static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *t
 static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_tt,
                                     jpl_date *tt, jpl_date *tdb) {
     const jpl_header *header;
-    double cov_start_arr[2], cov_end_arr[2];
+    jpl_entry_ctx entry;
     double jd_tt_arr[2], tdb_arr[2];
     jpl_status s;
     if (!e || !jd_tt || !tt || !tdb) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     jpl_date_to_pair(jd_tt, jd_tt_arr);
-    s = jpl_date_normalize(jd_tt_arr, jd_tt_arr);
+    s = jpl_entry_prepare(e, jd_tt_arr, &entry);
     if (s != JPL_OK) return s;
+    memcpy(jd_tt_arr, entry.norm, sizeof jd_tt_arr);
     jpl_pair_to_date(jd_tt_arr, tt);
     s = jpl_tt_to_tdb(tt, tdb);
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
-    s = jpl_date_normalize(header->start_jd, cov_start_arr);
-    if (s != JPL_OK) return JPL_ERROR_FORMAT;
-    s = jpl_date_normalize(header->end_jd, cov_end_arr);
-    if (s != JPL_OK) return JPL_ERROR_FORMAT;
     jpl_date_to_pair(tdb, tdb_arr);
-    if (jpl_date_compare(tdb_arr, cov_start_arr) < 0 ||
-        jpl_date_compare(tdb_arr, cov_end_arr) > 0) return JPL_ERROR_RANGE;
+    /* Coverage is checked on the TDB epoch the data reads use, so an
+     * out-of-coverage query stays RANGE; the frame gate below stays last
+     * (UNSUPPORTED). */
+    s = jpl_entry_coverage(&entry, tdb_arr);
+    if (s != JPL_OK) return s;
     if (header->reference_frame != JPL_FRAME_ICRF) return JPL_ERROR_UNSUPPORTED;
     return JPL_OK;
 }

@@ -227,6 +227,26 @@ static inline int jpl_date_is_normalized(const double p[2]) {
 }
 #define JPL_ASSERT_NORMALIZED(p) assert(jpl_date_is_normalized(p))
 
+/* Entry gate: validate → normalize → coverage, owned once.
+ * Every query entry point funnels its input epoch through
+ * jpl_entry_prepare (NULL/finiteness checks, input + header-bound
+ * normalization; header failure is FORMAT) and checks coverage with
+ * jpl_entry_coverage (RANGE) before any dataset or frame gating
+ * (UNSUPPORTED). Domain conversions between the two calls (e.g. TT→TDB
+ * in convenience_epoch) keep their current position: coverage is always
+ * checked on the epoch the data reads use, so RANGE still precedes
+ * UNSUPPORTED everywhere. Callers keep their own code/budget/output
+ * checks (all ARGUMENT). ctx contents are undefined unless JPL_OK. */
+typedef struct jpl_entry_ctx {
+    double norm[2];
+    double cov_start[2];
+    double cov_end[2];
+} jpl_entry_ctx;
+jpl_status jpl_entry_prepare(const jpl_ephemeris *e, const double jd[2],
+                             jpl_entry_ctx *out);
+jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx,
+                              const double epoch[2]);
+
 /* ICRS position to IAU 2006/2000A true ecliptic and equinox of TT date.
  * A pure rotation; the public mean-of-date state helpers are unchanged. */
 jpl_status jpl_icrs_to_true_ecliptic_position(const double in[3],

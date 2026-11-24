@@ -112,6 +112,21 @@ JPL_API jpl_status jpl_frame_context_create(const jpl_date *jd_tt, jpl_frame_con
 JPL_API void jpl_frame_context_destroy(jpl_frame_context *context);
 
 /**
+ * @brief Rotates a mean-ecliptic-of-date vector to ICRS using a precomputed frame context.
+ * @param context Context from jpl_frame_context_create().
+ * @param in Input vector in mean ecliptic of date (position AU or velocity AU/day). Must be non-NULL.
+ * @param out Output vector in ICRS (same units as input). Must be non-NULL; may alias in.
+ * @return JPL_OK on success, JPL_ERROR_ARGUMENT on NULL pointers or nonfinite inputs,
+ *         JPL_ERROR_NUMERIC on unrepresentable output.
+ * @note The single vector rotation behind every entry: velocities are
+ *       rotated as directions at fixed epoch (R*v); frame-rate dR/dt terms
+ *       are not included. The position/velocity-named entries forward here;
+ *       the operation never distinguished them.
+ * @since 0.9.0
+ */
+JPL_API jpl_status jpl_frame_context_rotate_vector(const jpl_frame_context *context, const double in[3], double out[3]);
+
+/**
  * @brief Rotates a mean-ecliptic-of-date position vector to ICRS using a precomputed frame context.
  * @param context Context from jpl_frame_context_create().
  * @param in Input position vector in mean ecliptic of date (AU). Must be non-NULL.

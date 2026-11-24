@@ -16,6 +16,7 @@
 #endif
 #include "jpl.h"
 #include "jpl_private.h"
+#include "jpl_test_util.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -28,9 +29,9 @@
 #include <sys/stat.h>
 #endif
 
-/* Smallest DE record width in bytes (classic header size): a shorter
- * named file cannot be a valid DE and fails as present-but-corrupt. */
-#define DE_MIN_RECORD_BYTES 2856
+/* Smallest DE record width in bytes (classic header size, shared
+ * JPL_TEST_RECORD_BYTES): a shorter named file cannot be a valid DE and
+ * fails as present-but-corrupt. */
 
 int main(int argc, char **argv) {
     static const char *const filenames[] = {
@@ -115,7 +116,7 @@ int main(int argc, char **argv) {
                 return 1;
             }
             if (st.st_size < 0 ||
-                (uintmax_t)st.st_size < (uintmax_t)DE_MIN_RECORD_BYTES) {
+                (uintmax_t)st.st_size < (uintmax_t)JPL_TEST_RECORD_BYTES) {
                 fprintf(stderr, "%s: present file too short (%lld bytes)\n",
                         filenames[i], (long long)st.st_size);
                 return 1;
@@ -128,7 +129,7 @@ int main(int argc, char **argv) {
                 return 1;
             }
             if (st.st_size < 0 ||
-                (uintmax_t)st.st_size < (uintmax_t)DE_MIN_RECORD_BYTES) {
+                (uintmax_t)st.st_size < (uintmax_t)JPL_TEST_RECORD_BYTES) {
                 fprintf(stderr, "%s: present file too short (%lld bytes)\n",
                         filenames[i], (long long)st.st_size);
                 return 1;

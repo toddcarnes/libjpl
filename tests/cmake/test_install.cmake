@@ -217,6 +217,10 @@ if(WIN32 AND BUILD_SHARED)
   # Copy jpl.dll to the test executable directory so all consumer tests can find it.
   file(COPY "${PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-default/${CONFIG}")
+  # Single-config generators (Ninja) place executables directly in the
+  # build directory, with no per-configuration subdirectory.
+  file(COPY "${PREFIX}/${BINDIR}/jpl.dll"
+    DESTINATION "${WORK}/consumer-default")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-default"
   -C "${CONFIG}" --output-on-failure)
@@ -264,6 +268,10 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-spaces"
 if(WIN32 AND BUILD_SHARED)
   file(COPY "${SPACE_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-spaces/${CONFIG}")
+  # Single-config generators (Ninja) place executables directly in the
+  # build directory, with no per-configuration subdirectory.
+  file(COPY "${SPACE_PREFIX}/${BINDIR}/jpl.dll"
+    DESTINATION "${WORK}/consumer-spaces")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-spaces"
   -C "${CONFIG}" --output-on-failure)
@@ -308,6 +316,10 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-custom"
 if(WIN32)
   file(COPY "${CUSTOM_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-custom/${CONFIG}")
+  # Single-config generators (Ninja) place executables directly in the
+  # build directory, with no per-configuration subdirectory.
+  file(COPY "${CUSTOM_PREFIX}/${BINDIR}/jpl.dll"
+    DESTINATION "${WORK}/consumer-custom")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-custom"
   -C "${CONFIG}" --output-on-failure)
@@ -329,6 +341,10 @@ run_checked("${CMAKE_COMMAND}" --build "${WORK}/consumer-nopic"
 if(WIN32)
   file(COPY "${NOPIC_PREFIX}/${BINDIR}/jpl.dll"
     DESTINATION "${WORK}/consumer-nopic/${CONFIG}")
+  # Single-config generators (Ninja) place executables directly in the
+  # build directory, with no per-configuration subdirectory.
+  file(COPY "${NOPIC_PREFIX}/${BINDIR}/jpl.dll"
+    DESTINATION "${WORK}/consumer-nopic")
 endif()
 run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${WORK}/consumer-nopic"
   -C "${CONFIG}" --output-on-failure)

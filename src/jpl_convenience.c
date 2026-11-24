@@ -36,6 +36,14 @@ jpl_status jpl_km_to_au(double km, double *au) {
     return JPL_OK;
 }
 
+/* TT→TDB policy (see jpl_private.h). Wrapper-first: model only, so the
+ * convenience call sites convert to the policy with no behavior change;
+ * the file refinement lands next. */
+jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_date *tdb) {
+    if (!e || !tt || !tdb) return JPL_ERROR_ARGUMENT;
+    return jpl_tt_to_tdb(tt, tdb);
+}
+
 /* The ordinary body-center path needs these evaluations in one order:
  * light-time solve, observer state at reception, Sun leg at reception,
  * then the emission epoch by compensated subtraction. Returns them as one
@@ -84,7 +92,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
     if (s != JPL_OK) return s;
     memcpy(jd_tt_arr, entry.norm, sizeof jd_tt_arr);
     jpl_pair_to_date(jd_tt_arr, tt);
-    s = jpl_tt_to_tdb(tt, tdb);
+    s = jpl_tt_to_tdb_policy(e, tt, tdb);
     if (s != JPL_OK) return s;
     header = jpl_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;

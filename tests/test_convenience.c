@@ -107,10 +107,13 @@ int main(void) {
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
         jpl_test_reset_get_state_call_count();
+        jpl_test_reset_entry_prepare_call_count();
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
-        /* Geometry now consumes the solver's observer state; the only
-         * public jpl_get_state call left is the Sun leg at reception. */
-        JPL_TEST_CHECK(jpl_test_get_state_call_count() == 1);
+        /* Geometry now consumes the solver's observer state and the
+         * verified Sun leg, so the convenience query makes no public
+         * jpl_get_state call and prepares the entry gate exactly once. */
+        JPL_TEST_CHECK(jpl_test_get_state_call_count() == 0);
+        JPL_TEST_CHECK(jpl_test_entry_prepare_call_count() == 1);
         JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &raw) == JPL_OK);
         { size_t k; int differ = 0; for (k = 0; k < 6; ++k) if (test_state_component(&got, (int)k) != test_state_component(&keep, (int)k)) differ = 1; JPL_TEST_CHECK(differ); }
         jpl_close(e);

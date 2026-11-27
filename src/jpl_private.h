@@ -268,10 +268,34 @@ typedef struct jpl_entry_ctx {
     double cov_start[2];
     double cov_end[2];
 } jpl_entry_ctx;
+
+/* The gate's verified data epoch: normalized, inside the header coverage,
+ * and safe to hand to every internal leg. A query prepares its caller epoch
+ * once, applies any domain conversion (TT -> TDB), and then verifies the
+ * exact epoch the data reads use. Internal legs consume this token instead
+ * of re-normalizing or re-checking coverage. */
+typedef struct jpl_verified_epoch {
+    double epoch[2];
+    double cov_start[2];
+    double cov_end[2];
+} jpl_verified_epoch;
+
 jpl_status jpl_entry_prepare(const jpl_ephemeris *e, const double jd[2],
                              jpl_entry_ctx *out);
 jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx,
-                              const double epoch[2]);
+                              const double data_epoch[2],
+                              jpl_verified_epoch *out_verified);
+
+/* Internal verified-epoch entry points used by the convenience pipeline
+ * after its TT -> TDB conversion. They validate body codes but perform no
+ * date preparation or coverage re-check. */
+jpl_status jpl_get_state_verified(const jpl_ephemeris *e,
+                                  const jpl_verified_epoch *epoch,
+                                  int target, int center, jpl_state *state);
+jpl_status jpl_get_lighttime_solution_verified(const jpl_ephemeris *e,
+                                               const jpl_verified_epoch *epoch,
+                                               int target, int center,
+                                               jpl_lighttime_solution *out);
 
 /* Byte-source seam: FILE and mmap submit raw bytes through one interface
  * so every open path and every record read shares one validation and

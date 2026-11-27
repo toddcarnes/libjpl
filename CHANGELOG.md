@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Tests: added a domain-level DE fixture builder (`tests/jpl_fixture.h` / `.c`) and migrated the threads, mmap identity probe, light-time linear, and numeric fixture setup off hand-built byte layouts. Parser, core open/format, and large-file tests stay byte-level by design; the remaining behavior-test migrations are follow-ups.
+- Core: query entry points now issue one `jpl_verified_epoch` token per query (normalized data epoch plus coverage bounds); evaluation, body composition, the light-time solver, and the convenience pipeline consume the token instead of re-preparing dates or re-checking coverage per leg. The convenience path verifies the TDB epoch after TT→TDB conversion and passes it to verified internal entry points.
 
 ## [0.11.0] - 2026-11-27
 

@@ -3,7 +3,7 @@
 # See LICENSE in the project root for the full license text.
 cmake_minimum_required(VERSION 3.20)
 
-project(libjpl VERSION 0.10.0 LANGUAGES C)
+project(libjpl VERSION 0.11.0 LANGUAGES C)
 
 # The Python packaging metadata is generated from the project version so a
 # release bump cannot leave pyproject.toml behind. This is a tracked

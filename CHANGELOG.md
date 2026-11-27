@@ -10,19 +10,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Fixed
-
-- Fixed the *t-file TT→TDB refinement sign: `jpl_tt_to_tdb_policy()` now computes `TDB = TT − (TT − TDB)`; the previous code added the correction and shifted apparent convenience results on DE430t/DE432t/DE436t/DE438t/DE440t.
-- Windows file paths are converted from UTF-8 to UTF-16 for `jpl_open`, `jpl_open_mmap`, and FILE clone reopen, so non-ASCII paths work with the bindings' UTF-8 marshaling.
-- Binding `record_count()`/`has_tt_tdb()` now raise on a closed handle, matching the documented use-after-close contract.
+## [0.11.0] - 2026-11-27
 
 ### Changed
 
-- Documentation no longer claims Graphviz is required for docs checks or call graphs.
-- Python `pyproject.toml` is generated from `pyproject.toml.in` at configure time so its version follows the CMake project version.
-- `test_all_ephemerides` scans `DE*.eph` instead of using a fixed filename list; `jpl_horizons_de441_local` requires the documented full DE441 span; a new test reproduces the numerical-reference header with `jpl_generate_reference`.
+- **Bindings contract**: `record_count()` and `has_tt_tdb()` now raise on closed handles (previously returned 0/False), matching the documented use-after-close contract.
+- **Numerical correction**: TT→TDB file refinement sign fix in `jpl_tt_to_tdb_policy()` now computes `TDB = TT − (TT − TDB)`; the previous code added the correction and shifted apparent convenience results on DE430t/DE432t/DE436t/DE438t/DE440t.
+- **Windows I/O**: File paths are converted from UTF-8 to UTF-16 for `jpl_open`, `jpl_open_mmap`, and FILE clone reopen, so non-ASCII paths work with the bindings' UTF-8 marshaling.
+
+### Removed
+
+- Documentation claims that Graphviz is required for docs checks or call graphs.
+- Six broken relative links in historical documentation.
+- Unused `JPL_DJM0` macro from `src/jpl_private.h`.
+- "Silently absent" wording for missing binding toolchains in `BUILDING.md`.
+- "Retarded-epoch velocity" wording in `include/jpl_convenience.h`.
+
+### Fixed
+
+- `jpl_horizons_de441_local` now requires the documented full DE441 span.
+- `test_all_ephemerides` scans `DE*.eph` instead of using a fixed filename list; `DE404.eph` is explicitly excluded.
+- New test `jpl_generate_reference_run` reproduces the numerical-reference header.
+- Tautological aberration test fixed; `jpl_tdb_to_tt` failure-preserves-output and exact-aliasing test added; fixture-negative cases now assert failure reason.
 
 ## [0.10.0] - 2026-11-24
 

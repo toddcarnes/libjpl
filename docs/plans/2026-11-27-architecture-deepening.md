@@ -175,7 +175,7 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ## Step 3: VerifiedEpoch (candidate 1) — THIRD
 
-**Status:** implemented on `refactor/verified-epoch`. One `jpl_verified_epoch` per public query; internal evaluation, body composition, solver legs, TT-TDB queries, and the convenience pipeline consume it. The gate-run pin is in `test_convenience`. Goldens unchanged.
+**Status:** implemented on `refactor/verified-epoch`. One `jpl_verified_epoch` per public query; internal evaluation, body composition, solver legs, TT-TDB queries, and the convenience pipeline consume it. The gate-run pin is in `test_convenience`. Verification: MSVC Debug/Release 47/47 default and 51/51 bindings, zero warnings; WSL GCC Debug 47/47 and WSL Clang 14 Debug 47/47. Goldens unchanged.
 
 **Rationale for position:** The gate landed in the previous sequence but its output never crosses an internal seam. This step makes validation structural before RecordStore and RecordSchedule change the evaluation path.
 
@@ -206,7 +206,7 @@ jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx, const double data_epoch[
 - [x] **Step 3.2: Convert `barycentric_state` and `lighttime_solve`;** remove repeated prepare/coverage calls.
 - [x] **Step 3.3: Convert `jpl_get_tt_minus_tdb` and `convenience_epoch`;** make the data epoch explicit.
 - [x] **Step 3.4: Add a gate-run call-count pin** (one gate per public query) and keep the precedence matrix green.
-- [ ] **Step 3.5: Run the matrix; CHANGELOG bullet; merge.**
+- [x] **Step 3.5: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Every public query runs the gate once, not once per leg; internal legs never normalize or re-check coverage; `convenience_epoch` checks coverage on the TDB epoch and passes that exact token onward; 46+/50+ everywhere.
 

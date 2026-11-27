@@ -12,6 +12,7 @@
 #if defined(_WIN32)
 #include <direct.h>
 #include <io.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #include <sys/stat.h>
@@ -26,6 +27,28 @@
 #define T13_MKDIR(p) mkdir(p, 0700)
 #define T13_CHDIR(p) chdir(p)
 #define T13_GETCWD(b, n) getcwd(b, n)
+#endif
+
+#if defined(_WIN32)
+/* Replace an existing path with a new file. The test's source handle is
+ * opened with fopen(), which does not share delete access, so the OS may
+ * still refuse this; the caller treats that as an explicit platform skip. */
+#define T13_REPLACE_FILE(from, to) MoveFileExA((from), (to), MOVEFILE_REPLACE_EXISTING)
+#else
+#define T13_REPLACE_FILE(from, to) rename((from), (to))
+#endif
+
+#if defined(_WIN32)
+/* Returns 0 on success, -1 when the platform refuses symlinks, 1 on a
+ * real error. */
+static int t13_make_symlink(const char *target, const char *link) {
+    if (CreateSymbolicLinkA(link, target, 0)) return 0;
+    return GetLastError() == ERROR_PRIVILEGE_NOT_HELD ? -1 : 1;
+}
+#else
+static int t13_make_symlink(const char *target, const char *link) {
+    return symlink(target, link) == 0 ? 0 : -1;
+}
 #endif
 
 enum { T13_DOUBLES = 360, T13_BYTES = T13_DOUBLES * 8 };
@@ -148,12 +171,25 @@ static int t13_replacement(void) {
     if (jpl_open(orig, &e) != JPL_OK || e == NULL) {
         fprintf(stderr, "t13 replacement: open failed\n"); rc = 1; goto done;
     }
-    if (rename(fresh, orig) != 0) {
-        /* Platform prohibits replacing the open file: portable cwd
-         * coverage above still guards identity; record the difference. */
-        fputs("t13 replacement: rename over open file prohibited on this platform (cwd test retains coverage)\n", stderr);
+#if defined(_WIN32)
+    if (T13_REPLACE_FILE(fresh, orig) != 0) {
+        DWORD err = GetLastError();
+        if (err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION) {
+            /* The source handle does not share delete access. */
+            fputs("t13 replacement: replacing an open file is prohibited on this platform (cwd test retains coverage)\n", stderr);
+            goto done;
+        }
+        fprintf(stderr, "t13 replacement: replace failed (%lu)\n", (unsigned long)err);
+        rc = 1;
         goto done;
     }
+#else
+    if (T13_REPLACE_FILE(fresh, orig) != 0) {
+        fprintf(stderr, "t13 replacement: rename failed\n");
+        rc = 1;
+        goto done;
+    }
+#endif
     c = NULL;
     st = jpl_ephemeris_clone(e, &c);
     if (st == JPL_OK) {
@@ -179,10 +215,6 @@ done:
  * the OS disallows symlinks). Same oracle as replacement: original
  * identity or clean IO, never replacement data. */
 static int t13_symlink(void) {
-#if defined(_WIN32)
-    fputs("t13 symlink: skipped on Windows (symlink privilege not assumed)\n", stderr);
-    return 0;
-#else
     const char *r1 = "jpl_t13_link1.eph";
     const char *r2 = "jpl_t13_link2.eph";
     const char *ln = "jpl_t13_link.eph";
@@ -190,18 +222,21 @@ static int t13_symlink(void) {
     jpl_status st;
     double m = 0.0;
     int rc = 0;
+    int link_status;
     if (t13_write_probe(r1, 11.0) != 0 || t13_write_probe(r2, 99.0) != 0) {
         fprintf(stderr, "t13 symlink: probe write failed\n"); rc = 1; goto done;
     }
     remove(ln);
-    if (symlink(r1, ln) != 0) {
-        fprintf(stderr, "t13 symlink: symlink() prohibited here (errno %d); cwd test retains coverage\n", errno);
+    link_status = t13_make_symlink(r1, ln);
+    if (link_status != 0) {
+        fprintf(stderr, "t13 symlink: creating a symlink is prohibited here; cwd test retains coverage\n");
+        if (link_status > 0) rc = 1;
         goto done;
     }
     if (jpl_open(ln, &e) != JPL_OK || e == NULL) {
         fprintf(stderr, "t13 symlink: open failed\n"); rc = 1; goto done;
     }
-    if (remove(ln) != 0 || symlink(r2, ln) != 0) {
+    if (remove(ln) != 0 || t13_make_symlink(r2, ln) != 0) {
         fprintf(stderr, "t13 symlink: retarget prohibited here; cwd test retains coverage\n");
         goto done;
     }
@@ -224,7 +259,6 @@ done:
     remove(r1);
     remove(r2);
     return rc;
-#endif
 }
 
 /* Cross-backend composition: the same file opened FILE and mmap must

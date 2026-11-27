@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 #include "jpl.h"
+#include "jpl_fixture.h"
 #include "jpl_frames.h"
 #include "jpl_private.h"
 #include "jpl_testing.h"
@@ -10,6 +11,7 @@
 #include "numerical_reference.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef LIBJPL_TESTING
@@ -300,58 +302,58 @@ int main(void) {
 
 static int write_linear_mock(const char *path, double start, double end,
                              double slope_au_per_day, double intercept_au) {
-    unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-    FILE *f;
-    double half_span = (end - start) / 2.0;
-    double mid = (start + end) / 2.0;
-    /* Chebyshev one-coeff-constant plus slope: x(t) = c0 + c1*T, with
-     * T in [-1,1] over the record, so c0 = x(mid), c1 = slope*half_span.
-     * Multi-record coverage needs one data record per header step day:
-     * each record carries its own [start,end] bounds plus the same linear
-     * model recentered on its midpoint. */
+    const double constants[2] = {1.0, 2.0};
     double span = end - start;
     long nrec = (long)span;
+    double step = (nrec == 1) ? span : 1.0;
+    double *coefficients;
+    jpl_fixture_series series;
+    jpl_fixture_spec spec;
     long r;
-    double c0 = intercept_au + slope_au_per_day * (mid - start);
-    double c1 = slope_au_per_day * half_span;
+    int rc;
+
     if (span <= 0.0 || span != (double)nrec || nrec < 1) return 1;
-    if (nrec == 1) {
-        test_mock_header(rec, start, end, end - start, 2);
-        test_put_ptr(rec, 3, 3, 2, 1);   /* Mars: slots 3..6, two coeffs */
-        f = fopen(path, "wb"); if (!f) return 1;
-        if (fwrite(rec, 1, sizeof rec, f) != sizeof rec) { fclose(f); return 1; }
-        { unsigned char lc[JPL_TEST_HEADER_BYTES] = {0};
-          test_put_f64(lc, 1.0); test_put_f64(lc + 8, 2.0);
-          if (fwrite(lc, 1, sizeof lc, f) != sizeof lc) { fclose(f); return 1; } }
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, start);
-        test_put_f64(rec + 1 * 8, end);
-        test_put_f64(rec + 2 * 8, c0 * JPL_TEST_AU_KM);
-        test_put_f64(rec + 3 * 8, c1 * JPL_TEST_AU_KM);
-        if (fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) != JPL_TEST_HEADER_BYTES) { fclose(f); return 1; }
-        if (fclose(f) != 0) return 1;
-        return 0;
-    }
-    test_mock_header(rec, start, end, 1.0, 2);
-    test_put_ptr(rec, 3, 3, 2, 1);   /* Mars: slots 3..6, two coeffs */
-    f = fopen(path, "wb"); if (!f) return 1;
-    if (fwrite(rec, 1, sizeof rec, f) != sizeof rec) { fclose(f); return 1; }
-    { unsigned char lc[JPL_TEST_HEADER_BYTES] = {0};
-      test_put_f64(lc, 1.0); test_put_f64(lc + 8, 2.0);
-      if (fwrite(lc, 1, sizeof lc, f) != sizeof lc) { fclose(f); return 1; } }
+    coefficients = (double *)malloc((size_t)nrec * 6 * sizeof(double));
+    if (!coefficients) return 1;
     for (r = 0; r < nrec; ++r) {
-        double rs = start + (double)r, re = rs + 1.0, rmid = rs + 0.5;
-        double rc0 = intercept_au + slope_au_per_day * (rmid - start);
-        double rc1 = slope_au_per_day * 0.5;
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, rs);
-        test_put_f64(rec + 1 * 8, re);
-        test_put_f64(rec + 2 * 8, rc0 * JPL_TEST_AU_KM);
-        test_put_f64(rec + 3 * 8, rc1 * JPL_TEST_AU_KM);
-        if (fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) != JPL_TEST_HEADER_BYTES) { fclose(f); return 1; }
+        double rs = start + (double)r * step;
+        double re = rs + step;
+        double rm = 0.5 * (rs + re);
+        double c0 = intercept_au + slope_au_per_day * (rm - start);
+        double c1 = slope_au_per_day * (step * 0.5);
+        double *row = coefficients + (size_t)r * 6;
+        row[0] = c0 * JPL_TEST_AU_KM;
+        row[1] = c1 * JPL_TEST_AU_KM;
+        row[2] = 0.0;
+        row[3] = 0.0;
+        row[4] = 0.0;
+        row[5] = 0.0;
     }
-    if (fclose(f) != 0) return 1;
-    return 0;
+
+    memset(&series, 0, sizeof series);
+    series.slot = 3; /* Mars */
+    series.components = 3;
+    series.coefficients_per_component = 2;
+    series.subintervals = 1;
+    series.coefficients = coefficients;
+
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = start;
+    spec.end[0] = end;
+    spec.step_days = step;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = (size_t)nrec;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = &series;
+    spec.series_count = 1;
+    spec.title = "linear light-time mock";
+    rc = jpl_fixture_write(path, &spec);
+    free(coefficients);
+    return rc;
 }
 
 static int lighttime_t10_cases(void) {

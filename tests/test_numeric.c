@@ -11,6 +11,7 @@
  * subtracting two pre-summed full JDs. */
 #include "jpl.h"
 #include "jpl_convenience.h"
+#include "jpl_fixture.h"
 #include "jpl_frames.h"
 #include "jpl_private.h"
 #include "jpl_testing.h"
@@ -38,87 +39,85 @@ static double poly4_deriv(double x) {
 /* One-record mock with a degree-four TT-TDB entry (start=3, ncoeff=5,
  * nsub=1) and DENUM 441, so apparent-position legs can share it. */
 static int write_poly4_mock(const char *path, double scale) {
-    enum { DBL = 360, BYTES = DBL * 8 };
-    static unsigned char hdr[BYTES];
-    static unsigned char con[BYTES];
-    static unsigned char dat[BYTES];
-    FILE *f;
-    memset(hdr, 0, sizeof hdr);
-    memset(con, 0, sizeof con);
-    memset(dat, 0, sizeof dat);
-    memcpy(hdr, "poly4 numeric", 13);
-    test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-    test_put_ptr(hdr, 14, 3, 5, 1);
-    test_put_ptr(hdr, 12, 441, 0, 0);
-    test_put_f64(con, 1.0);
-    test_put_f64(con + 8, 2.0);
-    test_put_f64(dat + 0 * 8, 2451545.0);
-    test_put_f64(dat + 1 * 8, 2451546.0);
-    test_put_f64(dat + 2 * 8, 1.0 * scale);
-    test_put_f64(dat + 3 * 8, 2.0 * scale);
-    test_put_f64(dat + 4 * 8, 3.0 * scale);
-    test_put_f64(dat + 5 * 8, 4.0 * scale);
-    test_put_f64(dat + 6 * 8, 5.0 * scale);
-    f = fopen(path, "wb");
-    if (f == NULL) return 1;
-    if (fwrite(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return 1; }
-    if (fwrite(con, 1, sizeof con, f) != sizeof con) { fclose(f); return 1; }
-    if (fwrite(dat, 1, sizeof dat, f) != sizeof dat) { fclose(f); return 1; }
-    if (fclose(f) != 0) return 1;
-    return 0;
+    const double constants[2] = {1.0, 2.0};
+    double tt_tdb[5];
+    jpl_fixture_spec spec;
+    size_t i;
+    for (i = 0; i < 5; ++i) tt_tdb[i] = (double)(i + 1) * scale;
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.tt_tdb_present = 1;
+    spec.tt_tdb_coeffs = 5;
+    spec.tt_tdb_subintervals = 1;
+    spec.tt_tdb_coefficients = tt_tdb;
+    spec.title = "poly4 numeric";
+    return jpl_fixture_write(path, &spec);
 }
 
 /* Barycentric linear mock matching the pinned apparent oracle:
  * target Mars P,V and observer EMB O,W (modern AU/day), Sun absent on
  * the no-Sun path checks but present here for the full chain. */
 static int write_oracle_mock(const char *path, int accel) {
-    enum { DBL = 360, BYTES = DBL * 8 };
-    static unsigned char hdr[BYTES];
-    static unsigned char con[BYTES];
-    static unsigned char dat[BYTES];
-    FILE *f;
-    /* Chebyshev one-subinterval coeffs for x(t) = c0 + c1*T over the
-     * 1-day record: c0 = value at mid 2451545.5, c1 = slope*0.5.
-     * Stored in km (file units). The observer quadratic leg uses a
-     * 3-coeff entry y(T) = C0 + C1*T + C2*(2T^2-1) with d = T*0.5 the
-     * day offset from mid: O + W*d + A*d^2 = (O + A/8) + (W/2)*T +
-     * (A/8)*(2T^2-1), since T^2/4 = (T2+1)/8. */
+    const double constants[2] = {1.0, 2.0};
     static const double P[3] = {1.0, 0.4, -0.2};
     static const double V[3] = {0.005, -0.003, 0.001};
     static const double O[3] = {0.1, -0.2, 0.03};
     static const double W[3] = {0.002, 0.004, -0.001};
     static const double A[3] = {0.0001, -0.00005, 0.00002};
+    double mars[6], emb[9], sun[6] = {0.0};
+    jpl_fixture_series series[3];
+    jpl_fixture_spec spec;
     size_t k;
-    memset(hdr, 0, sizeof hdr);
-    memset(con, 0, sizeof con);
-    memset(dat, 0, sizeof dat);
-    memcpy(hdr, "oracle numeric", 14);
-    test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-    test_put_ptr(hdr, 3, 3, 2, 1);   /* Mars slots 3..8 */
-    test_put_ptr(hdr, 2, 9, 3, 1);   /* EMB slots 9..17 (quadratic) */
-    test_put_ptr(hdr, 10, 18, 2, 1); /* Sun slots 18..23 (zeros) */
-    test_put_ptr(hdr, 12, 441, 0, 0);
-    test_put_f64(con, 1.0);
-    test_put_f64(con + 8, 2.0);
-    test_put_f64(dat + 0 * 8, 2451545.0);
-    test_put_f64(dat + 1 * 8, 2451546.0);
+
     for (k = 0; k < 3; ++k) {
-        double tc0 = P[k];
-        double tc1 = V[k] * 0.5;
-        double oc1 = W[k] * 0.5;
-        test_put_f64(dat + (2 + k * 2) * 8, tc0 * JPL_TEST_AU_KM);
-        test_put_f64(dat + (3 + k * 2) * 8, tc1 * JPL_TEST_AU_KM);
-        test_put_f64(dat + (8 + k * 3) * 8, (O[k] + (accel ? A[k] / 8.0 : 0.0)) * JPL_TEST_AU_KM);
-        test_put_f64(dat + (9 + k * 3) * 8, oc1 * JPL_TEST_AU_KM);
-        test_put_f64(dat + (10 + k * 3) * 8, (accel ? A[k] / 8.0 : 0.0) * JPL_TEST_AU_KM);
+        mars[k * 2 + 0] = P[k] * JPL_TEST_AU_KM;
+        mars[k * 2 + 1] = V[k] * 0.5 * JPL_TEST_AU_KM;
+        emb[k * 3 + 0] = (O[k] + (accel ? A[k] / 8.0 : 0.0)) * JPL_TEST_AU_KM;
+        emb[k * 3 + 1] = W[k] * 0.5 * JPL_TEST_AU_KM;
+        emb[k * 3 + 2] = (accel ? A[k] / 8.0 : 0.0) * JPL_TEST_AU_KM;
     }
-    f = fopen(path, "wb");
-    if (f == NULL) return 1;
-    if (fwrite(hdr, 1, sizeof hdr, f) != sizeof hdr) { fclose(f); return 1; }
-    if (fwrite(con, 1, sizeof con, f) != sizeof con) { fclose(f); return 1; }
-    if (fwrite(dat, 1, sizeof dat, f) != sizeof dat) { fclose(f); return 1; }
-    if (fclose(f) != 0) return 1;
-    return 0;
+
+    memset(series, 0, sizeof series);
+    series[0].slot = 3; /* Mars */
+    series[0].components = 3;
+    series[0].coefficients_per_component = 2;
+    series[0].subintervals = 1;
+    series[0].coefficients = mars;
+    series[1].slot = 2; /* EMB */
+    series[1].components = 3;
+    series[1].coefficients_per_component = 3;
+    series[1].subintervals = 1;
+    series[1].coefficients = emb;
+    series[2].slot = 10; /* Sun */
+    series[2].components = 3;
+    series[2].coefficients_per_component = 2;
+    series[2].subintervals = 1;
+    series[2].coefficients = sun;
+
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = series;
+    spec.series_count = 3;
+    spec.title = "oracle numeric";
+    return jpl_fixture_write(path, &spec);
 }
 
 int main(void) {

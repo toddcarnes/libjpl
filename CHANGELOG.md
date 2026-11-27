@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Light-time solution: `jpl_get_lighttime_solution()` returns the solver's relative state, observer barycentric state at reception, delay, and exact emission epoch atomically; `jpl_get_state_lighttime()` is now its wrapper. The convenience geometry path consumes the solution instead of re-reading the observer and reconstructing emission from the delay. Exposed in all four bindings.
 
+### Changed
+
+- Tests: added a domain-level DE fixture builder (`tests/jpl_fixture.h` / `.c`) and migrated the threads, mmap identity probe, light-time linear, and numeric fixture setup off hand-built byte layouts. Parser, core open/format, and large-file tests stay byte-level by design; the remaining behavior-test migrations are follow-ups.
+
 ## [0.11.0] - 2026-11-27
 
 ### Changed

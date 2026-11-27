@@ -78,8 +78,9 @@ same expectations, four homes:
 - VB.NET: `bindings/vbnet/tests/Program.vb`
 
 Each pins: overflow-name agreement (0/399/400/last), the §4
-equivalence, and the §5 round trip. If a new conversion is added to any
-adapter, add the same assertion to all four.
+equivalence, the §5 round trip, and the §10 light-time solution fields.
+If a new conversion is added to any adapter, add the same assertion to all
+four.
 
 ## 10. Light-time solution
 

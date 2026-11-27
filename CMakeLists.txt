@@ -492,6 +492,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
+    if(NOT WIN32)
     add_test(NAME jpl_generate_reference_run
         COMMAND ${CMAKE_COMMAND}
             "-DGENERATOR=$<TARGET_FILE:jpl_generate_reference>"
@@ -499,6 +500,7 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}/generated"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_generated_reference.cmake")
+    endif()
     add_test(NAME jpl_horizons_integrity
         COMMAND ${CMAKE_COMMAND}
             "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"

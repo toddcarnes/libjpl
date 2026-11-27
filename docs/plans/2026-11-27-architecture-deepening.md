@@ -142,7 +142,9 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ---
 
-## Step 2: FixtureBuilder (candidate 4) - SECOND
+## Step 2: FixtureBuilder (candidate 4) — SECOND
+
+**Status:** foundation landed on `refactor/fixture-builder`. The builder and its LE/BE self-test are in place; `test_threads`, the `test_mmap` identity probes, the `test_lighttime` linear mocks, and the `test_numeric` polynomial/oracle mocks now declare bodies and series. The remaining behavior-test migrations (`test_convenience`, normal TT-TDB cases, `test_api_errors`, `make_validator_data`) are tracked as follow-up commits and do not block Step 3; parser/core/large-file tests stay raw by design.
 
 **Rationale for position:** Test-only, behavior-neutral, and it makes the remaining six steps cheaper to test. Landing it second means the core surgery runs on the new harness instead of migrating tests later.
 
@@ -157,12 +159,12 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 - Capability set: constant / linear / polynomial series; per-record coefficients; EMB + geocentric Moon and derived Earth/Moon; nutations/librations including the libration subinterval word; TT-TDB absent / present / invalid span / overflow-name tail; zero or explicit constants; >400 names; big-endian; trailing record; raw patch hook for deliberate mutations.
 - Parser, core open/format, and large-file tests keep raw byte construction; the builder does not replace `test_parser.c`'s negative cases or `test_largefile.c`'s sparse writer.
 
-- [ ] **Step 2.1: Add the builder and a self-test** (builder -> bytes -> parser round trip; no test migration yet).
-- [ ] **Step 2.2: Migrate `test_threads.c` and `test_mmap.c`.**
-- [ ] **Step 2.3: Migrate `test_lighttime.c` and `test_numeric.c`.**
-- [ ] **Step 2.4: Migrate `test_convenience.c`.**
-- [ ] **Step 2.5: Migrate normal TT-TDB cases and `test_api_errors.c`;** keep raw layout construction for boundary-span, overflow-name, and T15 placement.
-- [ ] **Step 2.6: Migrate `make_validator_data.c`;** keep raw negative corpora (NaN, truncation, ambiguous widths).
+- [x] **Step 2.1: Add the builder and a self-test** (builder -> bytes -> parser round trip; no test migration yet).
+- [x] **Step 2.2: Migrate `test_threads.c` and `test_mmap.c`** (the mmap identity probes; the raw-record main mock stays raw).
+- [x] **Step 2.3: Migrate `test_lighttime.c` and `test_numeric.c`** (linear/polynomial/oracle mocks).
+- [ ] **Step 2.4: Migrate `test_convenience.c`.** Follow-up.
+- [ ] **Step 2.5: Migrate normal TT-TDB cases and `test_api_errors.c`;** keep raw layout construction for boundary-span, overflow-name, and T15 placement. Follow-up.
+- [ ] **Step 2.6: Migrate `make_validator_data.c`;** keep raw negative corpora (NaN, truncation, ambiguous widths). Follow-up.
 - [ ] **Step 2.7: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Migrated behavior tests declare bodies and series, not slot indices or constants-record layout; parser/core/large-file tests remain byte-level; every assertion and expected value is unchanged; the builder self-test pins the emitted header fields and record bytes; `grep` shows no new `test_put_ptr` uses in migrated tests.

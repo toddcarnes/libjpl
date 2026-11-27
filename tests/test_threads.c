@@ -7,6 +7,7 @@
  * constant-per-record nutations and TT-TDB, all analytically checkable
  * without calling the library as an oracle. */
 #include "jpl.h"
+#include "jpl_fixture.h"
 #include "jpl_test_util.h"
 
 #include <math.h>
@@ -28,54 +29,63 @@ static const double THR_SMALL_TOL = 1e-15;
 static const double THR_START = 2451545.0;
 
 static int write_threads_mock(const char *path) {
-    static unsigned char hdr[THR_DOUBLES * 8];
-    static double constants[THR_DOUBLES];
-    static double records[THR_RECORDS * THR_DOUBLES];
-    jpl_test_mock mock;
-    size_t r, i;
-    memset(hdr, 0, sizeof hdr);
-    memcpy(hdr, "threads mock", 12);
-    test_mock_header(hdr, THR_START, THR_START + 8.0, 1.0, 2);
-    test_put_ptr(hdr, 3, 3, 2, 1);
-    test_put_ptr(hdr, 11, 100, 2, 1);
-    test_put_ptr(hdr, 12, 441, 0, 0);
-    test_put_ptr(hdr, 14, 200, 2, 1);
-    for (i = 0; i < THR_DOUBLES; ++i) constants[i] = 0.0;
-    constants[0] = 1.0;
-    constants[1] = 2.0;
-    for (i = 0; i < (size_t)(THR_RECORDS * THR_DOUBLES); ++i) records[i] = 0.0;
+    const double constants[2] = {1.0, 2.0};
+    double mars[(size_t)THR_RECORDS * 3 * 2];
+    double nutations[(size_t)THR_RECORDS * 2 * 2];
+    double tt_tdb[(size_t)THR_RECORDS * 2];
+    jpl_fixture_series series[2];
+    jpl_fixture_spec spec;
+    size_t r;
+
     for (r = 0; r < THR_RECORDS; ++r) {
-        double *rec = records + r * THR_DOUBLES;
-        double c0 = 1.0 + 0.01 * ((double)r + 0.5);
-        rec[0] = THR_START + (double)r;
-        rec[1] = THR_START + (double)r + 1.0;
-        rec[2] = c0 * JPL_TEST_AU_KM;
-        rec[3] = 0.005 * JPL_TEST_AU_KM;
-        rec[4] = 0.0;
-        rec[5] = 0.0;
-        rec[6] = 0.0;
-        rec[7] = 0.0;
-        rec[99] = 0.01 + 0.001 * (double)r;
-        rec[100] = 0.0;
-        rec[101] = 0.02 + 0.001 * (double)r;
-        rec[102] = 0.0;
-        rec[199] = 0.001 + 0.0001 * (double)r;
-        rec[200] = 0.0;
+        size_t mo = r * 3 * 2;
+        size_t no = r * 2 * 2;
+        size_t to = r * 2;
+        mars[mo + 0] = (1.0 + 0.01 * ((double)r + 0.5)) * JPL_TEST_AU_KM;
+        mars[mo + 1] = 0.005 * JPL_TEST_AU_KM;
+        mars[mo + 2] = 0.0;
+        mars[mo + 3] = 0.0;
+        mars[mo + 4] = 0.0;
+        mars[mo + 5] = 0.0;
+        nutations[no + 0] = 0.01 + 0.001 * (double)r;
+        nutations[no + 1] = 0.0;
+        nutations[no + 2] = 0.02 + 0.001 * (double)r;
+        nutations[no + 3] = 0.0;
+        tt_tdb[to + 0] = 0.001 + 0.0001 * (double)r;
+        tt_tdb[to + 1] = 0.0;
     }
-    memset(&mock, 0, sizeof mock);
-    mock.record_doubles = THR_DOUBLES;
-    mock.advertised_records = THR_RECORDS;
-    mock.denum = 441;
-    mock.constant_count = 2;
-    mock.start[0] = THR_START;
-    mock.end[0] = THR_START + 8.0;
-    mock.step_days = 1.0;
-    mock.au_km = JPL_TEST_AU_KM;
-    mock.emrat = JPL_TEST_MASS_RATIO;
-    mock.header = hdr;
-    mock.constants = constants;
-    mock.records = records;
-    return test_write_mock(path, &mock);
+
+    memset(series, 0, sizeof series);
+    series[0].slot = 3; /* Mars */
+    series[0].components = 3;
+    series[0].coefficients_per_component = 2;
+    series[0].subintervals = 1;
+    series[0].coefficients = mars;
+    series[1].slot = 11; /* nutations */
+    series[1].components = 2;
+    series[1].coefficients_per_component = 2;
+    series[1].subintervals = 1;
+    series[1].coefficients = nutations;
+
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = THR_START;
+    spec.end[0] = THR_START + 8.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = THR_DOUBLES;
+    spec.records = THR_RECORDS;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = series;
+    spec.series_count = 2;
+    spec.tt_tdb_present = 1;
+    spec.tt_tdb_coeffs = 2;
+    spec.tt_tdb_subintervals = 1;
+    spec.tt_tdb_coefficients = tt_tdb;
+    spec.title = "threads mock";
+    return jpl_fixture_write(path, &spec);
 }
 
 typedef struct worker_args {

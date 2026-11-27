@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 #include "jpl.h"
+#include "jpl_fixture.h"
 #include "jpl_test_util.h"
 /* This file checks mmap and FILE clone identity, close order, and
  * sequential mmap shareability. Concurrent reads are in test_threads.c. */
@@ -57,36 +58,37 @@ enum { T13_DOUBLES = 360, T13_BYTES = T13_DOUBLES * 8 };
  * identity tests distinguish the original file (11) from a same-named
  * replacement (99) via jpl_read_record. */
 static int t13_write_probe(const char *path, double marker) {
-    static unsigned char hdr[T13_BYTES];
-    static double constants[T13_DOUBLES];
-    static double records[T13_DOUBLES];
-    jpl_test_mock mock;
-    size_t k;
-    memset(hdr, 0, sizeof hdr);
-    memcpy(hdr, "t13 probe", 9);
-    test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-    test_put_ptr(hdr, 11, 3, 1, 1);
-    for (k = 0; k < T13_DOUBLES; ++k) constants[k] = 0.0;
-    constants[0] = 1.0;
-    constants[1] = 2.0;
-    for (k = 0; k < T13_DOUBLES; ++k) records[k] = 0.0;
-    records[0] = 2451545.0;
-    records[1] = 2451546.0;
-    records[2] = marker;
-    memset(&mock, 0, sizeof mock);
-    mock.record_doubles = T13_DOUBLES;
-    mock.advertised_records = 1;
-    mock.denum = 441;
-    mock.constant_count = 2;
-    mock.start[0] = 2451545.0;
-    mock.end[0] = 2451546.0;
-    mock.step_days = 1.0;
-    mock.au_km = JPL_TEST_AU_KM;
-    mock.emrat = JPL_TEST_MASS_RATIO;
-    mock.header = hdr;
-    mock.constants = constants;
-    mock.records = records;
-    return test_write_mock(path, &mock);
+    const double constants[2] = {1.0, 2.0};
+    jpl_fixture_series series;
+    jpl_fixture_spec spec;
+    double *coefficients = (double *)malloc(2 * sizeof(double));
+    int rc;
+    if (!coefficients) return 1;
+    coefficients[0] = marker;
+    coefficients[1] = 0.0;
+    memset(&series, 0, sizeof series);
+    series.slot = 11; /* nutations; coefficient 0 is the record marker */
+    series.components = 2;
+    series.coefficients_per_component = 1;
+    series.subintervals = 1;
+    series.coefficients = coefficients;
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = T13_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = &series;
+    spec.series_count = 1;
+    spec.title = "t13 probe";
+    rc = jpl_fixture_write(path, &spec);
+    free(coefficients);
+    return rc;
 }
 
 static int t13_read_marker(jpl_ephemeris *e, double *marker) {

@@ -189,6 +189,55 @@ static char *copy_string(const char *s) {
     return d;
 }
 
+#if defined(_WIN32)
+/* UTF-8 path bridge for Windows: the C API takes UTF-8 bytes, while the
+ * Win32 file and mapping APIs take UTF-16. All three entry points
+ * (open, mmap, clone reopen) share these conversions so a non-ASCII path
+ * cannot silently fall back to the ANSI code page. */
+static wchar_t *utf8_to_wide(const char *s) {
+    int len;
+    wchar_t *out;
+    if (!s) return NULL;
+    len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0);
+    if (len <= 0) return NULL;
+    out = (wchar_t *)malloc((size_t)len * sizeof *out);
+    if (!out) return NULL;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, out, len) <= 0) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
+static char *wide_to_utf8(const wchar_t *w) {
+    int len;
+    char *out;
+    if (!w) return NULL;
+    len = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+    if (len <= 0) return NULL;
+    out = (char *)malloc((size_t)len);
+    if (!out) return NULL;
+    if (WideCharToMultiByte(CP_UTF8, 0, w, -1, out, len, NULL, NULL) <= 0) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
+static FILE *open_binary(const char *path) {
+    wchar_t *wide = utf8_to_wide(path);
+    FILE *file;
+    if (!wide) return NULL;
+    file = _wfopen(wide, L"rb");
+    free(wide);
+    return file;
+}
+#else
+static FILE *open_binary(const char *path) {
+    return fopen(path, "rb");
+}
+#endif
+
 /* Resolve a relative reopen path to an absolute path before fopen so a
  * later cwd change cannot redirect the clone to a different file. Uses
  * GetFullPathName with dynamic allocation on Windows and realpath(NULL)
@@ -199,16 +248,25 @@ static char *resolve_reopen_path(const char *path) {
     if (!path) return NULL;
 #if defined(_WIN32)
     {
-        DWORD len = GetFullPathNameA(path, 0, NULL, NULL);
-        if (len == 0) return copy_string(path);
-        char *resolved = (char *)malloc(len);
-        if (!resolved) return copy_string(path);
-        DWORD written = GetFullPathNameA(path, len, resolved, NULL);
+        wchar_t *wide = utf8_to_wide(path);
+        wchar_t *resolved_wide;
+        char *resolved;
+        DWORD len;
+        DWORD written;
+        if (!wide) return copy_string(path);
+        len = GetFullPathNameW(wide, 0, NULL, NULL);
+        if (len == 0) { free(wide); return copy_string(path); }
+        resolved_wide = (wchar_t *)malloc((size_t)len * sizeof *resolved_wide);
+        if (!resolved_wide) { free(wide); return copy_string(path); }
+        written = GetFullPathNameW(wide, len, resolved_wide, NULL);
+        free(wide);
         if (written == 0 || written >= len) {
-            free(resolved);
+            free(resolved_wide);
             return copy_string(path);
         }
-        return resolved;
+        resolved = wide_to_utf8(resolved_wide);
+        free(resolved_wide);
+        return resolved ? resolved : copy_string(path);
     }
 #else
     {
@@ -998,7 +1056,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     resolved = resolve_reopen_path(path);
     if (!resolved) { jpl_close(e); return JPL_ERROR_MEMORY; }
     e->path = resolved;
-    e->file = fopen(resolved, "rb");
+    e->file = open_binary(resolved);
     if (!e->file) { jpl_close(e); return JPL_ERROR_IO; }
     if (JPL_FSEEK(e->file, 0, SEEK_END) != 0) { jpl_close(e); return JPL_ERROR_IO; }
     { jpl_file_offset end = JPL_FTELL(e->file); if (end < 0 || (uintmax_t)end > SIZE_MAX) { jpl_close(e); return JPL_ERROR_IO; } file_size = (size_t)end; }
@@ -1049,10 +1107,15 @@ void jpl_close(jpl_ephemeris *e) {
  * mapping: the file must not change under us (truncation after mapping
  * faults on access; growth is ignored). */
 static jpl_status jpl_map_handle(jpl_ephemeris *e, const char *path, size_t *size_out) {
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    wchar_t *wide = utf8_to_wide(path);
+    HANDLE hFile;
     HANDLE hMap = NULL;
     unsigned char *base = NULL;
     LARGE_INTEGER size;
+    if (!wide) return JPL_ERROR_IO;
+    hFile = CreateFileW(wide, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wide);
     if (hFile == INVALID_HANDLE_VALUE) return JPL_ERROR_IO;
     if (!GetFileSizeEx(hFile, &size) || size.QuadPart < (LONGLONG)MIN_RECORD_BYTES ||
         (uintmax_t)size.QuadPart > (uintmax_t)SIZE_MAX) { CloseHandle(hFile); return JPL_ERROR_IO; }
@@ -1182,7 +1245,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
          * verified against the source's live stream before publishing.
          * No POSIX dup: dup shares the file offset, clone needs an
          * independent position. */
-        c->file = fopen(ephem->path, "rb");
+        c->file = open_binary(ephem->path);
         if (!c->file) { jpl_close(c); *out_clone = NULL; return JPL_ERROR_IO; }
         if (stream_identity_matches(ephem, c->file) != 0) {
             jpl_close(c);

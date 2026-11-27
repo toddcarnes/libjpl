@@ -33,6 +33,13 @@ Public Structure JplPointer
     Public Subintervals As Integer
 End Structure
 
+Public NotInheritable Class JplLightTimeSolution
+    Public Property RelState As Double() = Array.Empty(Of Double)()
+    Public Property ObserverState As Double() = Array.Empty(Of Double)()
+    Public Property LightTimeDays As Double
+    Public Property Emission As Double() = Array.Empty(Of Double)()
+End Class
+
 Public Class JplHeader
     Public Property Titles As String() = Array.Empty(Of String)()
     Public Property ConstantNames As String() = Array.Empty(Of String)()

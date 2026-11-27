@@ -59,6 +59,12 @@ ffi.cdef("""
         double vz;
     } jpl_state;
 
+    typedef struct {
+        jpl_state rel_state;
+        jpl_state observer_state;
+        double light_time_days;
+        jpl_date emission;
+    } jpl_lighttime_solution;
 
     typedef struct {
         double longitude_deg;
@@ -86,6 +92,9 @@ ffi.cdef("""
                              int target, int center, jpl_state *state);
     jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
                                        int target, int center, jpl_state *state, double *out_light_time);
+    jpl_status jpl_get_lighttime_solution(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
+                                          int target, int center,
+                                          jpl_lighttime_solution *out_solution);
     jpl_status jpl_apply_aberration(const jpl_state *state, const double observer_vel[3],
                                     double sun_distance_au, jpl_state *out_state);
     jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out_ephemeris);

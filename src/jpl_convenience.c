@@ -71,24 +71,26 @@ jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_
     return JPL_OK;
 }
 
-/* The ordinary body-center path needs these evaluations in one order:
- * light-time solve, observer state at reception, Sun leg at reception,
- * then the emission epoch by compensated subtraction. Returns them as one
- * atomic value so callers cannot mix reception and emission inputs. */
+/* The ordinary body-center path consumes one atomic light-time solution
+ * (relative state, observer state at reception, delay, exact emission
+ * epoch), then evaluates the Sun leg at reception. The solution's fields
+ * cannot mix reception and emission inputs, and the observer state is no
+ * longer re-read through jpl_get_state. */
 static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *tdb,
                                        int target, int center, jpl_geometry *out) {
     jpl_geometry g;
-    jpl_state observer_state, sun_state;
-    double tdb_arr[2], emission_arr[2];
+    jpl_lighttime_solution solution;
+    jpl_state sun_state;
     jpl_status s;
     if (!e || !tdb || !out) return JPL_ERROR_ARGUMENT;
-    s = jpl_get_state_lighttime(e, tdb, target, center, &g.rel_state, &g.light_time_days);
+    s = jpl_get_lighttime_solution(e, tdb, target, center, &solution);
     if (s != JPL_OK) return s;
-    s = jpl_get_state(e, tdb, center, JPL_SSB, &observer_state);
-    if (s != JPL_OK) return s;
-    g.observer_vel[0] = observer_state.vx;
-    g.observer_vel[1] = observer_state.vy;
-    g.observer_vel[2] = observer_state.vz;
+    g.rel_state = solution.rel_state;
+    g.light_time_days = solution.light_time_days;
+    g.observer_vel[0] = solution.observer_state.vx;
+    g.observer_vel[1] = solution.observer_state.vy;
+    g.observer_vel[2] = solution.observer_state.vz;
+    g.emission = solution.emission;
     if (center == JPL_SUN) {
         g.sun_vec[0] = g.sun_vec[1] = g.sun_vec[2] = 0.0;
     } else {
@@ -98,10 +100,6 @@ static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *t
         g.sun_vec[1] = sun_state.y;
         g.sun_vec[2] = sun_state.z;
     }
-    jpl_date_to_pair(tdb, tdb_arr);
-    s = jpl_date_add_days(tdb_arr, -g.light_time_days, emission_arr);
-    if (s != JPL_OK) return s;
-    jpl_pair_to_date(emission_arr, &g.emission);
     *out = g;
     return JPL_OK;
 }

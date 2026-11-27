@@ -33,6 +33,15 @@ def test_binding():
         for v in state:
             assert math.isfinite(v), f"Non-finite value in state: {v}"
 
+        solution = eph.lighttime_solution([2451545.0, 0.0], 3, 11)
+        assert len(solution['rel_state']) == 6, solution['rel_state']
+        assert len(solution['observer_state']) == 6, solution['observer_state']
+        assert all(math.isfinite(v) for v in solution['rel_state'])
+        assert all(math.isfinite(v) for v in solution['observer_state'])
+        assert math.isfinite(solution['light_time_days']) and solution['light_time_days'] > 0.0
+        assert len(solution['emission']) == 2, solution['emission']
+        assert all(math.isfinite(v) for v in solution['emission'])
+
     # Header metadata must come from the native struct, not defaults.
     with Ephemeris(fixture_path) as eph:
         header = eph.header

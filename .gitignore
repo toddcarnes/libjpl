@@ -44,3 +44,4 @@ __pycache__/
 Desktop.ini
 Thumbs.db
 /build-docs/
+/build_bind/

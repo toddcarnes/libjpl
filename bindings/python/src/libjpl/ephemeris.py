@@ -287,6 +287,22 @@ class Ephemeris:
         _check(_lib.jpl_get_state_lighttime(self._handle, jd, int(target), int(center), out, lt))
         return (_state_list(out), float(lt[0]))
 
+    def lighttime_solution(self, jd_tdb, target, center):
+        """Get the atomic light-time solution.
+
+        Returns a dict with rel_state, observer_state, light_time_days,
+        and emission ([hi, lo] TDB epoch used for rel_state).
+        """
+        jd = _jpl_date(jd_tdb)
+        out = _ffi.new("jpl_lighttime_solution *")
+        _check(_lib.jpl_get_lighttime_solution(self._handle, jd, int(target), int(center), out))
+        return {
+            'rel_state': _state_list(out.rel_state),
+            'observer_state': _state_list(out.observer_state),
+            'light_time_days': float(out.light_time_days),
+            'emission': [float(out.emission.hi), float(out.emission.lo)],
+        }
+
     @staticmethod
     def apply_aberration(state, observer_vel):
         """Apply stellar aberration (without solar term). Returns aberrated state."""

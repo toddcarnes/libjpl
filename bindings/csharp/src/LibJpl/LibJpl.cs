@@ -34,6 +34,14 @@ public struct JplPointer
     public int Subintervals;
 }
 
+public sealed class JplLightTimeSolution
+{
+    public double[] RelState { get; init; } = Array.Empty<double>();
+    public double[] ObserverState { get; init; } = Array.Empty<double>();
+    public double LightTimeDays { get; init; }
+    public double[] Emission { get; init; } = Array.Empty<double>();
+}
+
 public class JplHeader
 {
     public string[] Titles { get; internal set; } = Array.Empty<string>();

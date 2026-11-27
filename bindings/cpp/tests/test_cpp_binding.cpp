@@ -48,6 +48,31 @@ int main(int argc, char** argv) {
             }
         }
 
+        // The atomic light-time solution agrees with the wrapper and carries
+        // the observer state and exact emission epoch.
+        {
+            auto solution = eph.lighttime_solution(jd_tdb, 3, 11);
+            auto wrapper = eph.get_state_lighttime(jd_tdb, 3, 11);
+            if (solution.light_time_days != wrapper.light_time_days) {
+                std::cerr << "Light-time solution delay differs from wrapper\n";
+                return 1;
+            }
+            for (int i = 0; i < 6; ++i) {
+                if (solution.rel_state[i] != wrapper.state[i]) {
+                    std::cerr << "Light-time solution state[" << i << "] differs from wrapper\n";
+                    return 1;
+                }
+                if (!std::isfinite(solution.observer_state[i])) {
+                    std::cerr << "Light-time observer state[" << i << "] is not finite\n";
+                    return 1;
+                }
+            }
+            if (!std::isfinite(solution.emission[0]) || !std::isfinite(solution.emission[1])) {
+                std::cerr << "Light-time emission epoch is not finite\n";
+                return 1;
+            }
+        }
+
         // Test frame conversions
         auto icrs_state = jpl::Ephemeris::ecliptic_to_icrs(state, {2451545.0, 0.0});
         for (int i = 0; i < 6; ++i) {

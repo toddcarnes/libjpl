@@ -157,4 +157,5 @@ set(JPL_LICENSE_EXEMPT_FILES
   "tests/data/testpo_441_slice.txt"
   "tests/data/horizons_de441.txt"
   "tests/data/fixture_rows.txt"
+  "tests/data/numerical_reference.lf.h"
 )

@@ -103,7 +103,7 @@ ctest --test-dir build -C Debug --output-on-failure
 - Single-config generators default to Release (set in `CMakeLists.txt`).
 - `LIBJPL_BUILD_TESTS=ON` by default; the offline suite needs no network or
   Python. `LIBJPL_BUILD_DOCS=OFF` by default; docs checks need Doxygen.
-  Linux docs checks also need Graphviz `dot` with the tested Doxygen setup.
+  Graphviz is not required (the Doxyfile does not request call graphs).
 - `LIBJPL_FETCH_EPHEMERIDES=OFF` by default. `ON` enables the DE440/DE440t
   fetch/reference tier; `JPLEPH` and `JPL_TESTPO` only redirect sources in
   that tier. The local sweep registers only when `JPLEPH` is set. Check

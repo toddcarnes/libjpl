@@ -11,8 +11,7 @@ See LICENSE in the project root for the full license text.
   license sweep correction).
 - Work branch: `bugfix/review-followup-fixes`. This log records file-level
   fixes and observed tests, not a release claim.
-- Approved [design](../superpowers/specs/2026-09-25-review-followup-fixes-design.md)
-  and [implementation plan](../superpowers/plans/2026-09-25-review-followup-fixes.md).
+- Approved design and implementation plan archived in the review history.
 
 | ID | Change and regression | Evidence |
 | --- | --- | --- |

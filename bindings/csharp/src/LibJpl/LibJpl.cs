@@ -75,7 +75,7 @@ internal static JplHeader FromNative(IntPtr headerPtr, Func<long, string>? getOv
     }
 
     int totalNames = Math.Max(native.ConstantCount, 0);
-    int inlineCount = Math.Min(totalNames, 400);
+    int inlineCount = Math.Min(totalNames, Native.JplMaxConstantNames);
     var constantNames = new string[getOverflowName != null ? totalNames : inlineCount];
     for (int i = 0; i < inlineCount; ++i)
     {

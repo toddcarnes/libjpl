@@ -148,6 +148,7 @@ public:
     }
 
     [[nodiscard]] size_t record_count() const {
+        if (handle_ == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
         return ::jpl_record_count(handle_);
     }
 
@@ -164,6 +165,7 @@ public:
     }
 
     [[nodiscard]] bool has_tt_tdb() const {
+        if (handle_ == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
         return ::jpl_has_tt_tdb(handle_) != 0;
     }
 

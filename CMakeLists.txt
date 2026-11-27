@@ -5,6 +5,12 @@ cmake_minimum_required(VERSION 3.20)
 
 project(libjpl VERSION 0.10.0 LANGUAGES C)
 
+# The Python packaging metadata is generated from the project version so a
+# release bump cannot leave pyproject.toml behind. This is a tracked
+# generated artifact: configure rewrites it only when the content changes.
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bindings/python/pyproject.toml.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bindings/python/pyproject.toml" @ONLY)
+
 # Numeric code ships -O0 unless a build type is set; default to Release
 # for single-config generators so the library is usable out of the box.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -417,7 +423,7 @@ if(LIBJPL_BUILD_TESTS)
     # Independent reference generator (test development only): compiled
     # with upstream ERFA sources directly, never linked to libjpl. Not
     # part of ALL; invoke explicitly to write a NEW header path only.
-    add_executable(jpl_generate_reference EXCLUDE_FROM_ALL tools/generate_numerical_reference.c ${ERFA_SOURCES})
+    add_executable(jpl_generate_reference tools/generate_numerical_reference.c ${ERFA_SOURCES})
     target_compile_features(jpl_generate_reference PRIVATE c_std_17)
     target_include_directories(jpl_generate_reference PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/erfa)
     target_compile_definitions(jpl_generate_reference PRIVATE
@@ -486,6 +492,13 @@ if(LIBJPL_BUILD_TESTS)
             "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
             "-DWORK=${JPL_NUMERICAL_REF_WORK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_numerical_reference.cmake")
+    add_test(NAME jpl_generate_reference_run
+        COMMAND ${CMAKE_COMMAND}
+            "-DGENERATOR=$<TARGET_FILE:jpl_generate_reference>"
+            "-DREFERENCE=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/numerical_reference.h"
+            "-DFIXTURE_TOOL=$<TARGET_FILE:jpl_fixture_tool>"
+            "-DWORK=${JPL_NUMERICAL_REF_WORK}/generated"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/check_generated_reference.cmake")
     add_test(NAME jpl_horizons_integrity
         COMMAND ${CMAKE_COMMAND}
             "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/MANIFEST.txt"
@@ -514,7 +527,7 @@ if(LIBJPL_BUILD_TESTS)
        EXISTS "$ENV{JPLEPH}/DE441.eph")
         add_test(NAME jpl_horizons_de441_local
             COMMAND jpl_horizons_tests "$ENV{JPLEPH}/DE441.eph"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt")
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/horizons_de441.txt" full)
     else()
         message(STATUS "Full DE441 not available (JPLEPH not set or file missing); skipping jpl_horizons_de441_local")
     endif()

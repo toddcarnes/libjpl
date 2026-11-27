@@ -51,7 +51,8 @@ set(whitelist
   "cmake/jpl_export.h.in"
   "cmake/jpl_version.rc.in"
   "cmake/libjplConfig.cmake.in"
-  "cmake/LibjplTestData.cmake")
+  "cmake/LibjplTestData.cmake"
+  "bindings/python/pyproject.toml.in")
 file(GLOB erfa_sources RELATIVE "${SOURCE}" "${SOURCE}/src/erfa/*.c")
 list(APPEND whitelist ${erfa_sources})
 file(GLOB erfa_headers RELATIVE "${SOURCE}" "${SOURCE}/src/erfa/*.h")

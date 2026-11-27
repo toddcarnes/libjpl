@@ -82,6 +82,8 @@ internal struct JplApparentEclipticResultNative
 
 public static partial class Native
 {
+    // Must match JPL_MAX_CONSTANT_NAMES in include/jpl.h.
+    public const int JplMaxConstantNames = 400;
     private const string DllName = "jpl";
 
     // jpl.h - core API

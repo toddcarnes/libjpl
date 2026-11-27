@@ -114,6 +114,9 @@ ffi.cdef("""
     jpl_status jpl_km_to_au(double km, double *au);
 """)
 
+# Must match JPL_MAX_CONSTANT_NAMES in include/jpl.h.
+JPL_MAX_CONSTANT_NAMES = 400
+
 _lib = None
 _load_error = None
 try:

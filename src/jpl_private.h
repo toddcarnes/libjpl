@@ -27,9 +27,6 @@
 #define JPL_DAYSEC 86400.0
 #define JPL_C_KM_PER_SECOND 299792.458
 #define JPL_C_AU_PER_DAY (JPL_C_KM_PER_SECOND * JPL_DAYSEC / JPL_AU_KM)
-/* MJD zero-point; never use it to split an already-rounded Julian date. */
-#define JPL_DJM0 2400000.5
-
 /* File-slot index (0-based) of the EMB coefficients in header.pointers.
  * File slots follow coefficient order (Mercury..Sun, EMB third), while body
  * codes follow PLEPH (Earth 3, EMB 13): the two coincide for every body

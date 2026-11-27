@@ -20,12 +20,15 @@
 # FIXTURE_TOOL (path to jpl_fixture_tool).
 # Failure reporting: each case records exit code plus stderr; the first
 # failing expectation aborts with FATAL_ERROR naming the case.
-function(jpl_fixture_case label expect_fail)
+function(jpl_fixture_case label expect_fail expect_regex)
   execute_process(COMMAND ${ARGN}
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
   if(expect_fail)
     if(NOT "${rc}" STREQUAL "1")
       message(FATAL_ERROR "fixture negative case '${label}' did not fail with exit 1 (got ${rc}):\n${out}\n${err}")
+    endif()
+    if(NOT "${expect_regex}" STREQUAL "" AND NOT err MATCHES "${expect_regex}")
+      message(FATAL_ERROR "fixture negative case '${label}' failed for the wrong reason (expected '${expect_regex}'):\n${out}\n${err}")
     endif()
   else()
     if(NOT "${rc}" STREQUAL "0")
@@ -56,7 +59,7 @@ foreach(intact_line IN LISTS intact_lines)
     file(APPEND "${WORK}/intact_manifest.txt" "${intact_line}\n")
   endif()
 endforeach()
-jpl_fixture_case("intact copies pass" 0
+jpl_fixture_case("intact copies pass" 0 ""
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -64,7 +67,7 @@ jpl_fixture_case("intact copies pass" 0
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_intact"
   -P "${CHECKER}")
-jpl_fixture_case("intact runner passes" 0
+jpl_fixture_case("intact runner passes" 0 ""
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/case_text.txt" "${WORK}/case_rows.txt")
 
 # Case 1: flip one binary byte in a data record. The hash check must fail.
@@ -83,7 +86,7 @@ execute_process(COMMAND "${FIXTURE_TOOL}" flip "${WORK}/flip.eph"
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture flip mutation failed: ${rc}\n${out}\n${err}")
 endif()
-jpl_fixture_case("flipped binary byte fails" 1
+jpl_fixture_case("flipped binary byte fails" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/flip.eph"
@@ -91,7 +94,7 @@ jpl_fixture_case("flipped binary byte fails" 1
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_flip"
   -P "${CHECKER}")
-jpl_fixture_case("flipped binary runner fails" 1
+jpl_fixture_case("flipped binary runner fails" 1 "CHECK FAILED|MISMATCH|identity mismatch"
   "${FIXTURE_RUNNER}" "${WORK}/flip.eph" "${WORK}/case_text.txt" "${WORK}/case_rows.txt")
 
 # Case 2: duplicate 119 interior rows, preserving endpoints and count 121.
@@ -103,7 +106,7 @@ execute_process(COMMAND "${FIXTURE_TOOL}" dup "${TEXT_FIXTURE}" "${WORK}/dup.txt
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture dup mutation failed: ${rc}\n${out}\n${err}")
 endif()
-jpl_fixture_case("duplicated interior rows fail text hash" 1
+jpl_fixture_case("duplicated interior rows fail text hash" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -111,7 +114,7 @@ jpl_fixture_case("duplicated interior rows fail text hash" 1
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_dup_text"
   -P "${CHECKER}")
-jpl_fixture_case("duplicated interior rows fail rows hash" 1
+jpl_fixture_case("duplicated interior rows fail rows hash" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -126,7 +129,7 @@ execute_process(COMMAND "${FIXTURE_TOOL}" retarget "${TEXT_FIXTURE}" "${WORK}/re
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture retarget mutation failed: ${rc}\n${out}\n${err}")
 endif()
-jpl_fixture_case("altered target fails text hash" 1
+jpl_fixture_case("altered target fails text hash" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -134,7 +137,7 @@ jpl_fixture_case("altered target fails text hash" 1
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_retarget_text"
   -P "${CHECKER}")
-jpl_fixture_case("altered target fails rows hash" 1
+jpl_fixture_case("altered target fails rows hash" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -142,7 +145,7 @@ jpl_fixture_case("altered target fails rows hash" 1
   "-DROWS_FIXTURE=${WORK}/retarget_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_retarget_rows"
   -P "${CHECKER}")
-jpl_fixture_case("altered target runner fails" 1
+jpl_fixture_case("altered target runner fails" 1 "CHECK FAILED|MISMATCH|identity mismatch"
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/retarget.txt" "${WORK}/case_rows.txt")
 
 # Case 4: alter one coordinate (row 90: fractional digit 6 -> 7, +1e-9,
@@ -152,7 +155,7 @@ execute_process(COMMAND "${FIXTURE_TOOL}" recoord "${TEXT_FIXTURE}" "${WORK}/rec
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture recoord mutation failed: ${rc}\n${out}\n${err}")
 endif()
-jpl_fixture_case("altered coordinate fails text hash" 1
+jpl_fixture_case("altered coordinate fails text hash" 1 "Committed fixture integrity mismatch"
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -160,7 +163,7 @@ jpl_fixture_case("altered coordinate fails text hash" 1
   "-DROWS_FIXTURE=${WORK}/case_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_recoord"
   -P "${CHECKER}")
-jpl_fixture_case("altered coordinate runner fails" 1
+jpl_fixture_case("altered coordinate runner fails" 1 "CHECK FAILED|MISMATCH|identity mismatch"
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/recoord.txt" "${WORK}/case_rows.txt")
 
 # Case 5: CRLF line endings must still pass (canonicalization is LF-only).
@@ -169,7 +172,7 @@ execute_process(COMMAND "${FIXTURE_TOOL}" crlf "${TEXT_FIXTURE}" "${WORK}/crlf.t
 if(NOT "${rc}" STREQUAL "0")
   message(FATAL_ERROR "fixture crlf mutation failed: ${rc}\n${out}\n${err}")
 endif()
-jpl_fixture_case("CRLF text still passes" 0
+jpl_fixture_case("CRLF text still passes" 0 ""
   "${CMAKE_COMMAND}"
   "-DMANIFEST=${WORK}/intact_manifest.txt"
   "-DBINARY_FIXTURE=${WORK}/case_binary.eph"
@@ -177,7 +180,7 @@ jpl_fixture_case("CRLF text still passes" 0
   "-DROWS_FIXTURE=${WORK}/crlf_rows.txt"
   "-DFIXTURE_TOOL=${FIXTURE_TOOL}" "-DWORK=${WORK}/canonical_crlf"
   -P "${CHECKER}")
-jpl_fixture_case("CRLF runner still passes" 0
+jpl_fixture_case("CRLF runner still passes" 0 ""
   "${FIXTURE_RUNNER}" "${WORK}/case_binary.eph" "${WORK}/crlf.txt" "${WORK}/crlf_rows.txt")
 
 # Bare CR is not CRLF. The checker must reject it explicitly instead of

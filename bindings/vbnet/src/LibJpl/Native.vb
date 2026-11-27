@@ -71,6 +71,8 @@ Friend Structure JplApparentEclipticResultNative
 End Structure
 
 Friend Module Native
+    ' Must match JPL_MAX_CONSTANT_NAMES in include/jpl.h.
+    Public Const JplMaxConstantNames As Integer = 400
     Private Const DllName As String = "jpl"
 
     ' jpl.h - core API

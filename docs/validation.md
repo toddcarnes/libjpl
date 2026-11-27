@@ -294,8 +294,8 @@ ctest --test-dir build/ci-rel -C Release --output-on-failure
 ```
 
 Prerequisites: CMake 3.20+, a C17 compiler, and Doxygen 1.9+ for the docs
-job (`-DLIBJPL_BUILD_DOCS=ON`); Linux docs checks also need Graphviz `dot`
-with the tested Doxygen setup. No network access is needed for the default
+job (`-DLIBJPL_BUILD_DOCS=ON`). Graphviz is not required; the Doxyfile does
+not request call graphs. No network access is needed for the default
 offline tier. Paths with spaces must stay quoted.
 
 ### Windows MSVC (Debug and Release)

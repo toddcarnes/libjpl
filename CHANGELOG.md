@@ -12,6 +12,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the *t-file TT→TDB refinement sign: `jpl_tt_to_tdb_policy()` now computes `TDB = TT − (TT − TDB)`; the previous code added the correction and shifted apparent convenience results on DE430t/DE432t/DE436t/DE438t/DE440t.
+- Windows file paths are converted from UTF-8 to UTF-16 for `jpl_open`, `jpl_open_mmap`, and FILE clone reopen, so non-ASCII paths work with the bindings' UTF-8 marshaling.
+- Binding `record_count()`/`has_tt_tdb()` now raise on a closed handle, matching the documented use-after-close contract.
+
+### Changed
+
+- Documentation no longer claims Graphviz is required for docs checks or call graphs.
+- Python `pyproject.toml` is generated from `pyproject.toml.in` at configure time so its version follows the CMake project version.
+- `test_all_ephemerides` scans `DE*.eph` instead of using a fixed filename list; `jpl_horizons_de441_local` requires the documented full DE441 span; a new test reproduces the numerical-reference header with `jpl_generate_reference`.
+
 ## [0.10.0] - 2026-11-24
 
 ### Changed

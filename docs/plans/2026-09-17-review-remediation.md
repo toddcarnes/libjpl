@@ -8,7 +8,7 @@
 
 **Tech Stack:** C17, CMake 3.20+, CTest, MSVC/GCC/Clang/clang-cl, vendored ERFA 2.0.1, Doxygen, native Windows/POSIX test threads. No new runtime or ordinary-build dependencies.
 
-**Spec:** [Approved remediation design](../specs/2026-09-17-review-remediation-design.md). Also read the [saved review](../../reviews/2026-09-17-project-review.md).
+**Spec:** [Approved remediation design](../specs/2026-09-17-review-remediation-design.md). Also read the saved project review in `docs/reviews/`.
 
 ## Global Constraints
 

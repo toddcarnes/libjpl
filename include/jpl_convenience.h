@@ -53,8 +53,9 @@ extern "C" {
  *       Sun-observer distance; 0.0 omits it)
  *       whenever the observer is neither the SSB nor the Sun itself; the
  *       term is not gravitational light bending. SSB-observer calls apply
- *       no aberration. state.vx,vy,vz is the retarded-epoch velocity, passed
- *       through aberration unchanged.
+ *       no aberration. state.vx,vy,vz is the mixed-epoch velocity
+ *       v_target(emission) - v_center(reception), passed through aberration
+ *       unchanged.
  * @note The body-center observer is the center body's barycenter at the
  *       reception epoch (centers 0/12: the SSB with zero velocity). Only
  *       the light-time plus aberration corrections above are applied:
@@ -80,7 +81,8 @@ JPL_API jpl_status jpl_planet_position(const jpl_ephemeris *ephem, const jpl_dat
  *       no historical-frame transformation is applied.
  * @note This is one Earth-observer-to-Moon light-time leg with one
  *       aberration correction, using jpl_planet_position(). The velocity
- *       state.vx,vy,vz is retarded-epoch and unaberrated.
+ *       state.vx,vy,vz is the mixed-epoch velocity
+ *       v_target(emission) - v_center(reception) and is unaberrated.
  * @note If a caller adds this result to a separate apparent leg to
  *       construct a third-body direction, the independently corrected
  *       legs have different emission epochs; that sum is only an

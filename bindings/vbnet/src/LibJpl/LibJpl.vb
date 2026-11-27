@@ -64,7 +64,7 @@ Public Class JplHeader
         Next
 
         Dim totalNames As Integer = Math.Max(native.ConstantCount, 0)
-        Dim inlineCount As Integer = Math.Min(totalNames, 400)
+        Dim inlineCount As Integer = Math.Min(totalNames, LibJpl.Native.JplMaxConstantNames)
         Dim nameCount As Integer = If(getOverflowName IsNot Nothing, totalNames, inlineCount)
         Dim names As String() = Array.Empty(Of String)()
         If nameCount > 0 Then

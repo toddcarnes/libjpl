@@ -95,12 +95,12 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Tests for missing toolchains (dotnet, Python, cffi, C++17) are silently absent in a default build. CI jobs (e.g. `bindings-windows`) enforce toolchain presence via explicit registration checks.
+Tests for missing toolchains (dotnet, Python, cffi, C++17) are absent from a default build and the binding CMake files emit a configure-time warning. CI jobs (e.g. `bindings-windows`) enforce toolchain presence via explicit registration checks.
 
 ## Building Documentation
 
-Documentation requires Doxygen. On Linux, Graphviz `dot` is also needed for
-call graphs and the `jpl_docs_paths` path-with-spaces check.
+Documentation requires Doxygen. Graphviz is not required: the Doxyfile does
+not request call graphs, and the docs checks read Doxygen output only.
 
 ```sh
 cmake -S . -B build -DLIBJPL_BUILD_DOCS=ON
@@ -110,10 +110,9 @@ cmake --build build --config Debug --target docs
 ### Platform Notes for Docs
 
 - **Windows:** Install Doxygen via `choco install doxygen` or download from
-  doxygen.nl. Graphviz (`choco install graphviz`) is optional — call graphs are
-  omitted if `dot` is not found, but the Doxygen run itself succeeds without it.
-- **macOS:** `brew install doxygen graphviz`
-- **Linux:** `apt-get install doxygen graphviz` (or the equivalent for your distro)
+  doxygen.nl.
+- **macOS:** `brew install doxygen`
+- **Linux:** `apt-get install doxygen` (or the equivalent for your distro)
 
 Generated output:
 

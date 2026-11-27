@@ -288,6 +288,7 @@ int main(void) {
         double hi[2] = {8000018.5, 0.0};
         double out[2] = {8000020.0, 0.0};
         jpl_entry_ctx ctx;
+        jpl_verified_epoch verified;
         jpl_state s, before;
         static const jpl_date tt_out = {8000020.0, 0.0};
         fill_state(&before, 7.0);
@@ -297,8 +298,8 @@ int main(void) {
         JPL_TEST_CHECK(jpl_entry_prepare(e, NULL, &ctx) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_entry_prepare(e, good, NULL) == JPL_ERROR_ARGUMENT);
         JPL_TEST_CHECK(jpl_entry_prepare(e, bad_hi, &ctx) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_entry_coverage(NULL, good) == JPL_ERROR_ARGUMENT);
-        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, NULL) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_coverage(NULL, good, &verified) == JPL_ERROR_ARGUMENT);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, NULL, &verified) == JPL_ERROR_ARGUMENT);
         /* Finite-but-unrepresentable sums stay NUMERIC. */
         JPL_TEST_CHECK(jpl_entry_prepare(e, big, &ctx) == JPL_ERROR_NUMERIC);
         /* Valid input normalizes once; bounds match the mock header. */
@@ -307,10 +308,11 @@ int main(void) {
         JPL_TEST_CHECK(jpl_date_compare(ctx.cov_start, lo) == 0);
         JPL_TEST_CHECK(jpl_date_compare(ctx.cov_end, hi) == 0);
         /* Edges are inclusive; outside is RANGE. */
-        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, ctx.norm) == JPL_OK);
-        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, lo) == JPL_OK);
-        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, hi) == JPL_OK);
-        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, out) == JPL_ERROR_RANGE);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, ctx.norm, &verified) == JPL_OK);
+        JPL_TEST_CHECK(jpl_date_compare(verified.epoch, ctx.norm) == 0);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, lo, &verified) == JPL_OK);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, hi, &verified) == JPL_OK);
+        JPL_TEST_CHECK(jpl_entry_coverage(&ctx, out, &verified) == JPL_ERROR_RANGE);
         /* RANGE precedes UNSUPPORTED at every entry point, including
          * paths the scattered cases above do not cover. */
         s = before;

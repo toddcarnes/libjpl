@@ -86,6 +86,18 @@ unsigned long jpl_test_get_state_call_count(void);
  *  @note Only available when LIBJPL_TESTING is defined. */
 void jpl_test_reset_get_state_call_count(void);
 
+/* Entry-gate run counter for the one-gate-per-query pin.
+ *
+ * @brief Return the number of jpl_entry_prepare runs since reset.
+ * @return Gate run count.
+ * @note Only available when LIBJPL_TESTING is defined.
+ */
+unsigned long jpl_test_entry_prepare_call_count(void);
+
+/** @brief Reset the entry-gate run counter (test-only).
+ *  @note Only available when LIBJPL_TESTING is defined. */
+void jpl_test_reset_entry_prepare_call_count(void);
+
 #endif /* LIBJPL_TESTING */
 
 #ifdef __cplusplus

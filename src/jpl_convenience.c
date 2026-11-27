@@ -73,17 +73,18 @@ jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_
 
 /* The ordinary body-center path consumes one atomic light-time solution
  * (relative state, observer state at reception, delay, exact emission
- * epoch), then evaluates the Sun leg at reception. The solution's fields
- * cannot mix reception and emission inputs, and the observer state is no
- * longer re-read through jpl_get_state. */
-static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *tdb,
+ * epoch), then evaluates the Sun leg at reception. The verified TDB token
+ * comes from convenience_epoch, so no leg re-prepares the date or re-checks
+ * coverage. */
+static jpl_status jpl_compute_geometry(const jpl_ephemeris *e,
+                                       const jpl_verified_epoch *tdb_epoch,
                                        int target, int center, jpl_geometry *out) {
     jpl_geometry g;
     jpl_lighttime_solution solution;
     jpl_state sun_state;
     jpl_status s;
-    if (!e || !tdb || !out) return JPL_ERROR_ARGUMENT;
-    s = jpl_get_lighttime_solution(e, tdb, target, center, &solution);
+    if (!e || !tdb_epoch || !out) return JPL_ERROR_ARGUMENT;
+    s = jpl_get_lighttime_solution_verified(e, tdb_epoch, target, center, &solution);
     if (s != JPL_OK) return s;
     g.rel_state = solution.rel_state;
     g.light_time_days = solution.light_time_days;
@@ -94,7 +95,7 @@ static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *t
     if (center == JPL_SUN) {
         g.sun_vec[0] = g.sun_vec[1] = g.sun_vec[2] = 0.0;
     } else {
-        s = jpl_get_state(e, tdb, JPL_SUN, center, &sun_state);
+        s = jpl_get_state_verified(e, tdb_epoch, JPL_SUN, center, &sun_state);
         if (s != JPL_OK) return s;
         g.sun_vec[0] = sun_state.x;
         g.sun_vec[1] = sun_state.y;
@@ -105,12 +106,13 @@ static jpl_status jpl_compute_geometry(const jpl_ephemeris *e, const jpl_date *t
 }
 
 static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_tt,
-                                    jpl_date *tt, jpl_date *tdb) {
+                                    jpl_date *tt, jpl_date *tdb,
+                                    jpl_verified_epoch *tdb_verified) {
     const jpl_header *header;
     jpl_entry_ctx entry;
     double jd_tt_arr[2], tdb_arr[2];
     jpl_status s;
-    if (!e || !jd_tt || !tt || !tdb) return JPL_ERROR_ARGUMENT;
+    if (!e || !jd_tt || !tt || !tdb || !tdb_verified) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     jpl_date_to_pair(jd_tt, jd_tt_arr);
     s = jpl_entry_prepare(e, jd_tt_arr, &entry);
@@ -125,7 +127,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
     /* Coverage is checked on the TDB epoch the data reads use, so an
      * out-of-coverage query stays RANGE; the frame gate below stays last
      * (UNSUPPORTED). */
-    s = jpl_entry_coverage(&entry, tdb_arr);
+    s = jpl_entry_coverage(&entry, tdb_arr, tdb_verified);
     if (s != JPL_OK) return s;
     if (header->reference_frame != JPL_FRAME_ICRF) return JPL_ERROR_UNSUPPORTED;
     return JPL_OK;
@@ -133,6 +135,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
 
 jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, int planet, int center, jpl_state *st) {
     jpl_date tt, tdb;
+    jpl_verified_epoch tdb_epoch;
     jpl_state tmp;
     int eff_center;
     jpl_status s;
@@ -145,7 +148,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
     if(center<0||center>JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
     /* Coverage precedes frame gating even for identical-body calls. */
-    s = convenience_epoch(e, jd_tt, &tt, &tdb);
+    s = convenience_epoch(e, jd_tt, &tt, &tdb, &tdb_epoch);
     if (s != JPL_OK) return s;
     /* Center 0 is the SSB alias; normalize to 12 wherever a
      * target code is required because target 0 is invalid in core getters. */
@@ -153,7 +156,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     /* Identical-body shortcut: validate the required body at
      * reception, then return zero without touching unrelated Sun data. */
     if(planet==center) {
-        s = jpl_get_state(e, &tdb, planet, center, &tmp);
+        s = jpl_get_state_verified(e, &tdb_epoch, planet, center, &tmp);
         if(s!=JPL_OK) return s;
         st->x = st->y = st->z = st->vx = st->vy = st->vz = 0.0;
         return JPL_OK;
@@ -161,9 +164,10 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     /* SSB-observer shortcut: the barycentric observer velocity is
      * zero by definition, so no aberration/Sun lookup is needed. */
     if(eff_center==JPL_SOLAR_SYSTEM_BARYCENTER) {
-        s = jpl_get_state_lighttime(e, &tdb, planet, center, &tmp, NULL);
+        jpl_lighttime_solution solution;
+        s = jpl_get_lighttime_solution_verified(e, &tdb_epoch, planet, center, &solution);
         if(s!=JPL_OK) return s;
-        *st = tmp;
+        *st = solution.rel_state;
         return JPL_OK;
     }
     /* Stellar aberration uses the observer's reception velocity; Sun
@@ -172,7 +176,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     {
         jpl_geometry geo;
         double sdist = 0.0;
-        s = jpl_compute_geometry(e, &tdb, planet, center, &geo);
+        s = jpl_compute_geometry(e, &tdb_epoch, planet, center, &geo);
         if (s != JPL_OK) return s;
         tmp = geo.rel_state;
         if (eff_center != JPL_SUN) {
@@ -255,6 +259,7 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
                                           const jpl_date *jd_tt, int target,
                                           double position[3], double *radial_km_per_s) {
     jpl_date tt, tdb;
+    jpl_verified_epoch tdb_epoch;
     jpl_geometry geo;
     jpl_state state, sun_to_target;
     jpl_state aberrated;
@@ -268,9 +273,9 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
     if (target < JPL_MERCURY || target > JPL_SUN || target == JPL_EARTH)
         return JPL_ERROR_ARGUMENT;
-    s = convenience_epoch(e, jd_tt, &tt, &tdb);
+    s = convenience_epoch(e, jd_tt, &tt, &tdb, &tdb_epoch);
     if (s != JPL_OK) return s;
-    s = jpl_compute_geometry(e, &tdb, target, JPL_EARTH, &geo);
+    s = jpl_compute_geometry(e, &tdb_epoch, target, JPL_EARTH, &geo);
     if (s != JPL_OK) return s;
     state = geo.rel_state;
     pos[0] = state.x; pos[1] = state.y; pos[2] = state.z;

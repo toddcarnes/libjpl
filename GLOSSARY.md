@@ -40,4 +40,5 @@ Domain language for libjpl. Names here are the approved terms for code comments,
 ## Deepened modules (architecture deepening 2026-11-27)
 
 - **LightTimeSolution**: the atomic solver value `{rel_state, observer_state, light_time_days, emission}` returned by `jpl_get_lighttime_solution()` and consumed by `jpl_compute_geometry()`. The solver fills it from one accepted emission evaluation, so the observer state is not re-read and emission is not reconstructed from the delay.
+- **VerifiedEpoch**: the gate-issued data epoch (normalized pair plus coverage bounds) after any domain conversion. Implemented as `jpl_verified_epoch` and produced by `jpl_entry_coverage()`; internal evaluation, body composition, and light-time solver legs consume the token instead of preparing or re-checking the raw pair.
 - **FixtureBuilder**: the test-side DE fixture adapter (`tests/jpl_fixture.h` / `.c`). Behavior tests declare coverage, bodies, coefficient series, and optional TT-TDB/libration data; the builder owns slot assignment, constants-record layout, padding, and byte order. Parser-negative tests keep raw byte construction.

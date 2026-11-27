@@ -191,6 +191,26 @@ public:
         return {{state.x, state.y, state.z, state.vx, state.vy, state.vz}, lt};
     }
 
+    struct LightTimeSolution {
+        std::array<double, 6> rel_state;
+        std::array<double, 6> observer_state;
+        double light_time_days;
+        std::array<double, 2> emission;
+    };
+
+    [[nodiscard]] LightTimeSolution lighttime_solution(const std::array<double, 2>& jd_tdb,
+                                                       int target, int center) const {
+        jpl_date jd{jd_tdb[0], jd_tdb[1]};
+        jpl_lighttime_solution solution;
+        throw_if_error(::jpl_get_lighttime_solution(handle_, &jd, target, center, &solution));
+        return {{solution.rel_state.x, solution.rel_state.y, solution.rel_state.z,
+                 solution.rel_state.vx, solution.rel_state.vy, solution.rel_state.vz},
+                {solution.observer_state.x, solution.observer_state.y, solution.observer_state.z,
+                 solution.observer_state.vx, solution.observer_state.vy, solution.observer_state.vz},
+                solution.light_time_days,
+                {solution.emission.hi, solution.emission.lo}};
+    }
+
     [[nodiscard]] static std::array<double, 6> apply_aberration(const std::array<double, 6>& state,
                                                                  const std::array<double, 3>& observer_vel) {
         jpl_state in{state[0], state[1], state[2], state[3], state[4], state[5]};

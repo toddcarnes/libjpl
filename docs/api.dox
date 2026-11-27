@@ -23,6 +23,7 @@
  * ## State calculations
  * - @ref jpl_get_state "jpl_get_state()" - Interpolate a relative state.
  * - @ref jpl_get_state_lighttime "jpl_get_state_lighttime()" - Apply light-time correction.
+ * - @ref jpl_get_lighttime_solution "jpl_get_lighttime_solution()" - Get the atomic light-time solution (state, observer, delay, emission).
  * - @ref jpl_apply_aberration "jpl_apply_aberration()" - Apply stellar aberration (solar term included when Sun distance > 0).
  *
  * ## Time and frames
@@ -47,6 +48,7 @@
  * ## Core types
  * - @ref jpl_date "jpl_date" - Two-part Julian date (`{hi, lo}`).
  * - @ref jpl_state "jpl_state" - Six-component position and velocity state vector.
+ * - @ref jpl_lighttime_solution "jpl_lighttime_solution" - Atomic light-time solution value.
  * - @ref jpl_frame_context "jpl_frame_context" - Opaque cached frame conversion context.
  *
  * ## Status and errors

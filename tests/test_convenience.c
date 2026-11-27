@@ -5,6 +5,7 @@
 #include "jpl_convenience.h"
 #include "jpl_frames.h"
 #include "jpl_private.h"
+#include "jpl_testing.h"
 #include "jpl_test_util.h"
 #include "erfa.h"
 #include "numerical_reference.h"
@@ -105,7 +106,11 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
+        jpl_test_reset_get_state_call_count();
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
+        /* Geometry now consumes the solver's observer state; the only
+         * public jpl_get_state call left is the Sun leg at reception. */
+        JPL_TEST_CHECK(jpl_test_get_state_call_count() == 1);
         JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &raw) == JPL_OK);
         { size_t k; int differ = 0; for (k = 0; k < 6; ++k) if (test_state_component(&got, (int)k) != test_state_component(&keep, (int)k)) differ = 1; JPL_TEST_CHECK(differ); }
         jpl_close(e);

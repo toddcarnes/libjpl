@@ -116,6 +116,22 @@ typedef struct {
 } jpl_state;
 
 /**
+ * @brief Atomic light-time solution: relative and observer states plus the solved emission epoch.
+ * @note All four fields come from one accepted emission evaluation, so they
+ *       cannot mix reception and emission inputs. Positions and velocities
+ *       use the modern AU (149597870.7 km); light_time_days is the solved
+ *       retarded-minus-reception interval; emission is the TDB epoch used
+ *       for rel_state, not a reconstruction from the delay.
+ * @since 0.12.0
+ */
+typedef struct jpl_lighttime_solution {
+    jpl_state rel_state;      /**< @brief Target minus center at emission (AU, AU/day). */
+    jpl_state observer_state; /**< @brief Center barycentric state at reception (AU, AU/day). */
+    double light_time_days;   /**< @brief Solved retarded-minus-reception interval in days. */
+    jpl_date emission;        /**< @brief TDB epoch used for rel_state. */
+} jpl_lighttime_solution;
+
+/**
  * @brief Opaque frame conversion context for repeated transformations at one epoch.
  * @note Caches the IAU 2006 mean ecliptic-of-date to ICRS rotation matrix
  *       (bias + precession + mean obliquity) for efficient reuse. Created with
@@ -399,9 +415,44 @@ JPL_API jpl_status jpl_get_state(const jpl_ephemeris *ephemeris, const jpl_date 
  *       or 0.0 to omit it).
  * @note Computed state and optional light-time output are unchanged on
  *       failure.
+ * @note This is a convenience wrapper over jpl_get_lighttime_solution();
+ *       use that function when the observer state at reception or the
+ *       exact emission epoch is needed.
  */
 JPL_API jpl_status jpl_get_state_lighttime(const jpl_ephemeris *ephemeris, const jpl_date *jd_tdb,
                                      int target, int center, jpl_state *state, double *out_light_time);
+
+/**
+ * @brief Solves light-time and returns the relative state, observer state, delay, and emission epoch atomically.
+ * @param ephemeris Open handle from jpl_open(), jpl_open_mmap(), or a clone.
+ * @param jd_tdb TDB Julian date of observation as a jpl_date.
+ * @param target Target jpl_target (1-13).
+ * @param center Center jpl_target (1-13), or 0 for SSB.
+ * @param out_solution Receives the solution on success; unchanged on failure.
+ * @return JPL_OK; JPL_ERROR_ARGUMENT on NULL handle/solution/jd_tdb, nonfinite
+ *         jd_tdb parts, or target outside 1-13 or center outside 0-13;
+ *         JPL_ERROR_RANGE on out-of-coverage reception or when no in-coverage
+ *         emission epoch solves the delay equation; JPL_ERROR_CONVERGENCE
+ *         when a bounded in-coverage solve exhausts its budget;
+ *         JPL_ERROR_FORMAT for nonfinite file coefficients or nonphysical
+ *         (superluminal) evaluated file motion; JPL_ERROR_NUMERIC when
+ *         finite inputs produce an unrepresentable result; JPL_ERROR_UNSUPPORTED,
+ *         JPL_ERROR_IO, or JPL_ERROR_MEMORY from the underlying state reads.
+ * @note Uses the same solver and budgets as jpl_get_state_lighttime():
+ *       up to 10 fast fixed-point iterations, then a sign-checked bisection
+ *       over emission epochs in [coverage_start, reception] (at most 128
+ *       steps). rel_state and emission come from the same accepted
+ *       evaluation, so they satisfy |(reception - emission) - light_time_days|
+ *       <= 1e-12 day. The observer state is barycentric at reception.
+ * @note State velocity is the mixed-epoch difference
+ *       v_target(emission) - v_center(reception); it is not the derivative
+ *       of apparent position with respect to reception time. Aberration is
+ *       not applied.
+ */
+JPL_API jpl_status jpl_get_lighttime_solution(const jpl_ephemeris *ephemeris,
+                                              const jpl_date *jd_tdb,
+                                              int target, int center,
+                                              jpl_lighttime_solution *out_solution);
 
 /**
  * @brief Applies special-relativistic stellar aberration.

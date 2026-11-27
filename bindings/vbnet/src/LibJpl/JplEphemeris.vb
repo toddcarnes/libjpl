@@ -192,6 +192,26 @@ Public NotInheritable Class JplEphemeris
         End Function)
     End Function
 
+    Public Function GetLightTimeSolution(jdTdb As Double(), target As JplTarget, center As JplTarget) As JplLightTimeSolution
+        ValidateLength(jdTdb, 2, NameOf(jdTdb))
+        Dim jd As New JplDateNative With {.Hi = jdTdb(0), .Lo = jdTdb(1)}
+        Return WithHandle(Function(h)
+            Dim solution As JplLightTimeSolutionNative
+            Dim status As JplStatus = Native.jpl_get_lighttime_solution(h, jd, CInt(target), CInt(center), solution)
+            If status <> JplStatus.Ok Then
+                Throw New JplException(status)
+            End If
+            Return New JplLightTimeSolution With {
+                .RelState = {solution.RelState.X, solution.RelState.Y, solution.RelState.Z,
+                             solution.RelState.Vx, solution.RelState.Vy, solution.RelState.Vz},
+                .ObserverState = {solution.ObserverState.X, solution.ObserverState.Y, solution.ObserverState.Z,
+                                  solution.ObserverState.Vx, solution.ObserverState.Vy, solution.ObserverState.Vz},
+                .LightTimeDays = solution.LightTimeDays,
+                .Emission = {solution.Emission.Hi, solution.Emission.Lo}
+            }
+        End Function)
+    End Function
+
     ' Frame conversions (vector and state via a cached frame context)
     Public Shared Function RotateVector(vec As Double(), jdTt As Double()) As Double()
         ValidateLength(vec, 3, NameOf(vec))

@@ -72,6 +72,34 @@ int main(void) {
         JPL_TEST_CHECK(fabs(lt - expect_lt) < 1e-12);
         for (i = 0; i < 6; ++i) JPL_TEST_CHECK(test_state_component(&app, i) == test_state_component(&geo, i));
         for (i = 0; i < 6; ++i) JPL_TEST_CHECK(isfinite(test_state_component(&app, i)));
+        /* The full solution is atomic: rel_state/light_time match the
+         * wrapper, observer_state matches a direct barycentric read, and
+         * emission is the epoch used for rel_state (residual bounded by
+         * the solver tolerance), not tdb minus delay. */
+        {
+            jpl_lighttime_solution sol;
+            jpl_state observer;
+            double jd_arr[2], emission_arr[2], diff[2];
+            double elapsed;
+            JPL_TEST_CHECK(jpl_get_lighttime_solution(e, &jd, JPL_EARTH_MOON_BARYCENTER,
+                                                      JPL_SUN, &sol) == JPL_OK);
+            JPL_TEST_CHECK(sol.light_time_days == lt);
+            JPL_TEST_CHECK(sol.rel_state.x == app.x && sol.rel_state.y == app.y &&
+                           sol.rel_state.z == app.z && sol.rel_state.vx == app.vx &&
+                           sol.rel_state.vy == app.vy && sol.rel_state.vz == app.vz);
+            JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_SUN, JPL_SSB, &observer) == JPL_OK);
+            JPL_TEST_CHECK(fabs(sol.observer_state.x - observer.x) < 1e-15);
+            JPL_TEST_CHECK(fabs(sol.observer_state.y - observer.y) < 1e-15);
+            JPL_TEST_CHECK(fabs(sol.observer_state.z - observer.z) < 1e-15);
+            JPL_TEST_CHECK(fabs(sol.observer_state.vx - observer.vx) < 1e-15);
+            JPL_TEST_CHECK(fabs(sol.observer_state.vy - observer.vy) < 1e-15);
+            JPL_TEST_CHECK(fabs(sol.observer_state.vz - observer.vz) < 1e-15);
+            jpl_date_to_pair(&jd, jd_arr);
+            jpl_date_to_pair(&sol.emission, emission_arr);
+            JPL_TEST_CHECK(jpl_date_subtract(jd_arr, emission_arr, diff) == JPL_OK);
+            elapsed = diff[0] + diff[1];
+            JPL_TEST_CHECK(fabs(elapsed - sol.light_time_days) <= JPL_LIGHTTIME_TOL_DAYS);
+        }
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }

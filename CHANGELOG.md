@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Light-time solution: `jpl_get_lighttime_solution()` returns the solver's relative state, observer barycentric state at reception, delay, and exact emission epoch atomically; `jpl_get_state_lighttime()` is now its wrapper. The convenience geometry path consumes the solution instead of re-reading the observer and reconstructing emission from the delay. Exposed in all four bindings.
+
 ## [0.11.0] - 2026-11-27
 
 ### Changed

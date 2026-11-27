@@ -111,6 +111,36 @@ class Program
                 }
             }
 
+            var solution = eph.GetLightTimeSolution(jdTdb, JplTarget.Earth, JplTarget.Sun);
+            if (solution.RelState.Length != 6 || solution.ObserverState.Length != 6 ||
+                solution.Emission.Length != 2)
+            {
+                Console.Error.WriteLine("Light-time solution has wrong array lengths");
+                Environment.Exit(1);
+            }
+            foreach (double value in solution.RelState)
+            {
+                if (!double.IsFinite(value))
+                {
+                    Console.Error.WriteLine("Non-finite light-time relative state");
+                    Environment.Exit(1);
+                }
+            }
+            foreach (double value in solution.ObserverState)
+            {
+                if (!double.IsFinite(value))
+                {
+                    Console.Error.WriteLine("Non-finite light-time observer state");
+                    Environment.Exit(1);
+                }
+            }
+            if (!double.IsFinite(solution.LightTimeDays) || solution.LightTimeDays <= 0.0 ||
+                !double.IsFinite(solution.Emission[0]) || !double.IsFinite(solution.Emission[1]))
+            {
+                Console.Error.WriteLine("Invalid light-time delay or emission epoch");
+                Environment.Exit(1);
+            }
+
             // Test frame conversions
             var icrsState = JplEphemeris.EclipticToIcrs(state, new double[] { 2451545.0, 0.0 });
             for (int i = 0; i < 6; ++i)

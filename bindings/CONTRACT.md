@@ -78,5 +78,20 @@ same expectations, four homes:
 - VB.NET: `bindings/vbnet/tests/Program.vb`
 
 Each pins: overflow-name agreement (0/399/400/last), the §4
-equivalence, and the §5 round trip. If a new conversion is added to any
-adapter, add the same assertion to all four.
+equivalence, the §5 round trip, and the §10 light-time solution fields.
+If a new conversion is added to any adapter, add the same assertion to all
+four.
+
+## 10. Light-time solution
+
+- `lighttime_solution(jd, target, center)` exposes the atomic
+  `jpl_get_lighttime_solution()` value: `rel_state`, `observer_state`,
+  `light_time_days`, and `emission`.
+- `rel_state` and `light_time_days` equal `get_state_lighttime()`'s outputs
+  bit for bit.
+- `observer_state` is the center barycentric state at reception and equals
+  a direct `get_state(jd, center, SSB)` within 1e-15 per component.
+- `emission` is the TDB epoch used for `rel_state`;
+  `|(jd - emission) - light_time_days| <= 1e-12` day.
+- Every adapter raises/surfaces the same status mapping as its other
+  light-time calls and leaves its result untouched on failure.

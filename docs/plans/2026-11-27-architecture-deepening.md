@@ -114,6 +114,8 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ## Step 1: Light-time solution (candidate 2) — FIRST
 
+**Status:** implemented on `feat/lighttime-solution`. MSVC Debug/Release 46/46 default and 50/50 bindings, zero warnings; WSL GCC Debug 46/46 and WSL Clang 14 Debug 46/46, zero warnings. No numerical reference or Horizons golden update was required; all comparisons stayed within the existing tolerances.
+
 **Rationale for position:** Smallest high-value step; the solver already computes the observer state and accepted emission, so returning them removes a re-read and a reconstructed epoch before the larger core surgery. It also proves the sequence.
 
 **Files:**
@@ -127,11 +129,11 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 - `lighttime_solve` fills the solution from the values it already holds; `jpl_get_lighttime_solution()` publishes it; `jpl_get_state_lighttime()` maps it to the existing outputs.
 - `jpl_compute_geometry` copies `rel_state`, `observer_state`, and `emission` from the solution; deletes its second `jpl_get_state()` observer read and its `jpl_date_add_days` emission reconstruction.
 
-- [ ] **Step 1.1: Baseline** — full matrix green on `main`; record the leg results.
-- [ ] **Step 1.2: Add the public value and function; map the existing wrapper** (no behavior change; geometry still uses its old path until 1.3).
-- [ ] **Step 1.3: Fill observer state and emission inside the solver; convert units once; delete geometry's reconstruction.**
-- [ ] **Step 1.4: Add a call-count pin** (observer barycentric state evaluated once per solve) and an assertion that `solution.emission` is the epoch used for `rel_state`; measure the apparent-place delta caused by using the exact emission. If the delta exceeds the existing comparison tolerances, stop and revisit; otherwise record it and update references deliberately.
-- [ ] **Step 1.5: Expose the solution in all four bindings** with one drift assertion (emission equals the C result; observer state matches a direct barycentric read).
+- [x] **Step 1.1: Baseline** — full matrix green on `main`; record the leg results.
+- [x] **Step 1.2: Add the public value and function; map the existing wrapper** (no behavior change; geometry still uses its old path until 1.3).
+- [x] **Step 1.3: Fill observer state and emission inside the solver; convert units once; delete geometry's reconstruction.**
+- [x] **Step 1.4: Add a call-count pin** (observer barycentric state evaluated once per solve) and an assertion that `solution.emission` is the epoch used for `rel_state`; measure the apparent-place delta caused by using the exact emission. If the delta exceeds the existing comparison tolerances, stop and revisit; otherwise record it and update references deliberately.
+- [x] **Step 1.5: Expose the solution in all four bindings** with one drift assertion (emission equals the C result; observer state matches a direct barycentric read).
 - [ ] **Step 1.6: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** `jpl_compute_geometry` performs no observer re-read and no emission reconstruction; solution fields are in public units; `jpl_get_state_lighttime` outputs are byte-identical; any apparent-place delta is measured, within the existing comparison tolerances, and recorded; all four bindings expose the same value; 46+/50+ everywhere.

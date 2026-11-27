@@ -94,6 +94,26 @@ Module Program
                     End If
                 Next
 
+                Dim solution = eph.GetLightTimeSolution(jdTdb, LibJpl.JplTarget.Earth, LibJpl.JplTarget.Sun)
+                If solution.RelState.Length <> 6 OrElse solution.ObserverState.Length <> 6 OrElse
+                   solution.Emission.Length <> 2 Then
+                    Console.Error.WriteLine("Light-time solution has wrong array lengths")
+                    Environment.Exit(1)
+                End If
+                For i = 0 To 5
+                    If Not Double.IsFinite(solution.RelState(i)) OrElse
+                       Not Double.IsFinite(solution.ObserverState(i)) Then
+                        Console.Error.WriteLine("Non-finite light-time solution state")
+                        Environment.Exit(1)
+                    End If
+                Next
+                If Not Double.IsFinite(solution.LightTimeDays) OrElse solution.LightTimeDays <= 0.0 OrElse
+                   Not Double.IsFinite(solution.Emission(0)) OrElse
+                   Not Double.IsFinite(solution.Emission(1)) Then
+                    Console.Error.WriteLine("Invalid light-time delay or emission epoch")
+                    Environment.Exit(1)
+                End If
+
                 ' Test frame conversions
                 Dim icrsState = LibJpl.JplEphemeris.EclipticToIcrs(state, New Double() {2451545.0, 0.0})
                 For i = 0 To 5

@@ -80,6 +80,15 @@ internal struct JplApparentEclipticResultNative
     public double RangeRateKmPerS;
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+internal struct JplLightTimeSolutionNative
+{
+    public JplState RelState;
+    public JplState ObserverState;
+    public double LightTimeDays;
+    public JplDate Emission;
+}
+
 public static partial class Native
 {
     // Must match JPL_MAX_CONSTANT_NAMES in include/jpl.h.
@@ -146,6 +155,14 @@ public static partial class Native
         int center,
         out JplState state,
         out double out_light_time);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern JplStatus jpl_get_lighttime_solution(
+        IntPtr ephemeris,
+        in JplDate jd_tdb,
+        int target,
+        int center,
+        out JplLightTimeSolutionNative out_solution);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_apply_aberration(

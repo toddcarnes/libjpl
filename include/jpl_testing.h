@@ -72,6 +72,20 @@ void jpl_test_set_parser_read_limit(size_t max_bytes);
 jpl_status jpl_test_select_record(const jpl_ephemeris *ephemeris,
     const double jd[2], size_t *index, double start[2], double end[2]);
 
+/* Public jpl_get_state call counter for the Step-1 observer-read pin.
+ * Tests reset the counter, run one convenience query, and assert that the
+ * geometry path no longer performs the redundant observer read.
+ *
+ * @brief Return the number of public jpl_get_state calls since reset.
+ * @return Call count.
+ * @note Only available when LIBJPL_TESTING is defined.
+ */
+unsigned long jpl_test_get_state_call_count(void);
+
+/** @brief Reset the public jpl_get_state call counter (test-only).
+ *  @note Only available when LIBJPL_TESTING is defined. */
+void jpl_test_reset_get_state_call_count(void);
+
 #endif /* LIBJPL_TESTING */
 
 #ifdef __cplusplus

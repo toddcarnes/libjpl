@@ -70,6 +70,14 @@ Friend Structure JplApparentEclipticResultNative
     Public RangeRateKmPerS As Double
 End Structure
 
+<StructLayout(LayoutKind.Sequential, Pack:=8)>
+Friend Structure JplLightTimeSolutionNative
+    Public RelState As JplStateNative
+    Public ObserverState As JplStateNative
+    Public LightTimeDays As Double
+    Public Emission As JplDateNative
+End Structure
+
 Friend Module Native
     ' Must match JPL_MAX_CONSTANT_NAMES in include/jpl.h.
     Public Const JplMaxConstantNames As Integer = 400
@@ -145,6 +153,15 @@ Friend Module Native
         center As Integer,
         <Out()> ByRef state As JplStateNative,
         <Out()> ByRef out_light_time As Double) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_get_lighttime_solution(
+        ephemeris As IntPtr,
+        ByRef jd_tdb As JplDateNative,
+        target As Integer,
+        center As Integer,
+        <Out()> ByRef out_solution As JplLightTimeSolutionNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>

@@ -19,6 +19,7 @@ jpl_get_tt_minus_tdb
 jpl_has_tt_tdb
 jpl_get_state
 jpl_get_state_lighttime
+jpl_get_lighttime_solution
 jpl_apply_aberration
 jpl_open_mmap
 jpl_ephemeris_clone
@@ -74,6 +75,7 @@ JPL_FRAME_DYNAMICAL_2000
 JPL_FRAME_ICRF
 jpl_date
 jpl_state
+jpl_lighttime_solution
 jpl_frame_context
 jpl_pointer
 jpl_header

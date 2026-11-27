@@ -195,6 +195,29 @@ public sealed class JplEphemeris : SafeHandle
         });
     }
 
+    public JplLightTimeSolution GetLightTimeSolution(double[] jdTdb, JplTarget target, JplTarget center)
+    {
+        ValidateLength(jdTdb, 2, nameof(jdTdb));
+        var jd = new JplDate { Hi = jdTdb[0], Lo = jdTdb[1] };
+        return WithHandle(h =>
+        {
+            JplStatus status = Native.jpl_get_lighttime_solution(h, jd, (int)target, (int)center, out JplLightTimeSolutionNative solution);
+            if (status != JplStatus.Ok)
+            {
+                throw new JplException(status);
+            }
+            return new JplLightTimeSolution
+            {
+                RelState = new[] { solution.RelState.X, solution.RelState.Y, solution.RelState.Z,
+                                   solution.RelState.Vx, solution.RelState.Vy, solution.RelState.Vz },
+                ObserverState = new[] { solution.ObserverState.X, solution.ObserverState.Y, solution.ObserverState.Z,
+                                        solution.ObserverState.Vx, solution.ObserverState.Vy, solution.ObserverState.Vz },
+                LightTimeDays = solution.LightTimeDays,
+                Emission = new[] { solution.Emission.Hi, solution.Emission.Lo },
+            };
+        });
+    }
+
 
 
     // Frame conversions (vector and state via a cached frame context)

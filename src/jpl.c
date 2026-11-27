@@ -1790,10 +1790,20 @@ static jpl_status barycentric_state(const jpl_ephemeris *e, const double jd[2], 
     return JPL_OK;
 }
 
+#ifdef LIBJPL_TESTING
+/* Public jpl_get_state call counter for the Step-1 observer-read pin. */
+static unsigned long jpl_test_get_state_calls = 0;
+unsigned long jpl_test_get_state_call_count(void) { return jpl_test_get_state_calls; }
+void jpl_test_reset_get_state_call_count(void) { jpl_test_get_state_calls = 0; }
+#endif
+
 jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state) {
     double target_state[6], center_state[6], local[6]; size_t i; jpl_status status;
     double jd_arr[2];
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+#ifdef LIBJPL_TESTING
+    ++jpl_test_get_state_calls;
+#endif
     jpl_date_to_pair(jd, jd_arr);
     /* Target zero is invalid; center zero is the SSB alias. Validate
      * target/center combinations before date normalization or data access:
@@ -1906,7 +1916,7 @@ static jpl_status lt_initial_estimate(const jpl_ephemeris *e, int target,
 static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
                                   const double norm[2], const double observer_km[6],
                                   int fast_budget, double *delay, double *residual,
-                                  double rel[6], double state[6]) {
+                                  double rel[6], double emission_out[2]) {
     double emission[2];
     double lt = *delay;
     jpl_status st = JPL_ERROR_CONVERGENCE;
@@ -1918,7 +1928,7 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
         if (st == JPL_ERROR_RANGE) break;
         if (st != JPL_OK) return st;
         if (fabs(*residual) <= JPL_LIGHTTIME_TOL_DAYS) {
-            memcpy(state, rel, 6 * sizeof(double));
+            memcpy(emission_out, emission, sizeof emission);
             if (delay) *delay = lt;
             return JPL_OK;
         }
@@ -1932,7 +1942,43 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
     return st;
 }
 
-/* Shared light-time solver behind jpl_get_state_lighttime and the private
+/* Publish one accepted light-time evaluation as the atomic solution.
+ * The solver keeps the observer in raw file units (km, km/day); convert it
+ * to the public AU units once here. The caller's solution is untouched on
+ * failure. */
+static jpl_status lt_build_solution(const double rel[6], const double observer_km[6],
+                                    double delay, const double emission[2],
+                                    jpl_lighttime_solution *solution) {
+    jpl_state observer;
+    if (!rel || !observer_km || !emission || !solution) return JPL_ERROR_ARGUMENT;
+    if (!isfinite(delay) || !isfinite(emission[0]) || !isfinite(emission[1]))
+        return JPL_ERROR_NUMERIC;
+    observer.x = observer_km[0] / JPL_AU_KM;
+    observer.y = observer_km[1] / JPL_AU_KM;
+    observer.z = observer_km[2] / JPL_AU_KM;
+    observer.vx = observer_km[3] / JPL_AU_KM;
+    observer.vy = observer_km[4] / JPL_AU_KM;
+    observer.vz = observer_km[5] / JPL_AU_KM;
+    if (!isfinite(observer.x) || !isfinite(observer.y) || !isfinite(observer.z) ||
+        !isfinite(observer.vx) || !isfinite(observer.vy) || !isfinite(observer.vz))
+        return JPL_ERROR_NUMERIC;
+    solution->rel_state.x = rel[0];
+    solution->rel_state.y = rel[1];
+    solution->rel_state.z = rel[2];
+    solution->rel_state.vx = rel[3];
+    solution->rel_state.vy = rel[4];
+    solution->rel_state.vz = rel[5];
+    if (!isfinite(solution->rel_state.x) || !isfinite(solution->rel_state.y) ||
+        !isfinite(solution->rel_state.z) || !isfinite(solution->rel_state.vx) ||
+        !isfinite(solution->rel_state.vy) || !isfinite(solution->rel_state.vz))
+        return JPL_ERROR_NUMERIC;
+    solution->observer_state = observer;
+    solution->light_time_days = delay;
+    jpl_pair_to_date(emission, &solution->emission);
+    return JPL_OK;
+}
+
+/* Shared light-time solver behind jpl_get_lighttime_solution and the private
 * deterministic test hook. Solves tau = range(target(tau emission),
  * observer(reception))/c for the delay tau with emission = receive - tau
  * as a two-part pair. Fast fixed-point iteration handles ordinary cases;
@@ -1945,15 +1991,18 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
  * epoch is CONVERGENCE, never a silent estimate. Outputs stay unchanged
  * on every failure path. */
 static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
-                                  int target, int center, double state[6],
-                                   double *delay, int fast_budget, int safe_budget) {
+                                  int target, int center,
+                                  jpl_lighttime_solution *out,
+                                  int fast_budget, int safe_budget) {
     double norm[2], cov_start[2], cov_end[2];
-    double observer_km[6], rel[6], candidate[6];
+    double observer_km[6], rel[6], candidate[6], emission[2];
     double lt = 0.0, residual = 0.0;
+    jpl_lighttime_solution solution;
     jpl_status st = JPL_OK;
     jpl_entry_ctx entry;
     int s;
-    if (!state) return JPL_ERROR_ARGUMENT;
+    if (!out) return JPL_ERROR_ARGUMENT;
+    if (!jd) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
     /* Nutations/librations are angles with no light-time meaning; reject.
@@ -1981,8 +2030,10 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
 st = lt_initial_estimate(e, target, norm, observer_km, &lt, &residual, rel);
     if (st != JPL_OK) return st;
     if (fabs(residual) <= JPL_LIGHTTIME_TOL_DAYS) {
-        memcpy(state, rel, sizeof rel);
-        if (delay) *delay = lt;
+        memcpy(emission, norm, sizeof emission);
+        st = lt_build_solution(rel, observer_km, lt, emission, &solution);
+        if (st != JPL_OK) return st;
+        *out = solution;
         return JPL_OK;
     }
 /* Fast fixed-point iteration: emission = receive - lt via compensated
@@ -1995,9 +2046,11 @@ st = lt_initial_estimate(e, target, norm, observer_km, &lt, &residual, rel);
      * before the bracket so ordinary interior roots converge without
      * bisection. The loop seeds prev from the validated initial delay
      * so an immediate settle is detected. */
-    st = lt_fast_iterate(e, target, norm, observer_km, fast_budget, &lt, &residual, rel, state);
+    st = lt_fast_iterate(e, target, norm, observer_km, fast_budget, &lt, &residual, rel, emission);
     if (st == JPL_OK) {
-        if (delay) *delay = lt;
+        st = lt_build_solution(rel, observer_km, lt, emission, &solution);
+        if (st != JPL_OK) return st;
+        *out = solution;
         return JPL_OK;
     }
     if (st != JPL_ERROR_RANGE && st != JPL_ERROR_CONVERGENCE) return st;
@@ -2011,16 +2064,18 @@ st = lt_initial_estimate(e, target, norm, observer_km, &lt, &residual, rel);
         st = lighttime_evaluate(e, target, norm, lo, observer_km, candidate, &lo_delay, &lo_res);
         if (st != JPL_OK) return st;
         if (fabs(lo_res) <= JPL_LIGHTTIME_TOL_DAYS) {
-            memcpy(state, candidate, 6 * sizeof(double));
-            if (delay) *delay = lo_delay;
+            st = lt_build_solution(candidate, observer_km, lo_delay, lo, &solution);
+            if (st != JPL_OK) return st;
+            *out = solution;
             return JPL_OK;
         }
         if (lo_res < -JPL_LIGHTTIME_TOL_DAYS) return JPL_ERROR_RANGE;
         st = lighttime_evaluate(e, target, norm, hi, observer_km, candidate, &hi_delay, &hi_res);
         if (st != JPL_OK) return st;
         if (fabs(hi_res) <= JPL_LIGHTTIME_TOL_DAYS) {
-            memcpy(state, candidate, 6 * sizeof(double));
-            if (delay) *delay = hi_delay;
+            st = lt_build_solution(candidate, observer_km, hi_delay, hi, &solution);
+            if (st != JPL_OK) return st;
+            *out = solution;
             return JPL_OK;
         }
         /* hi_res = -delay <= 0 by construction (delay is non-negative),
@@ -2035,8 +2090,9 @@ st = lt_initial_estimate(e, target, norm, observer_km, &lt, &residual, rel);
             /* residual corresponds to the state evaluated at this candidate emission. */
             if (!isfinite(mid_res)) return JPL_ERROR_NUMERIC;
             if (fabs(mid_res) <= JPL_LIGHTTIME_TOL_DAYS) {
-                memcpy(state, candidate, 6 * sizeof(double));
-                if (delay) *delay = mid_delay;
+                st = lt_build_solution(candidate, observer_km, mid_delay, mid, &solution);
+                if (st != JPL_OK) return st;
+                *out = solution;
                 return JPL_OK;
             }
             /* Update the sign bracket; never publish candidate here. */
@@ -2057,22 +2113,41 @@ st = lt_initial_estimate(e, target, norm, observer_km, &lt, &residual, rel);
 jpl_status jpl_test_lighttime_with_budget(const jpl_ephemeris *ephemeris,
     const double jd[2], int target, int center, double state[6], double *delay,
     int fast_iterations, int safeguarded_iterations) {
-    return lighttime_solve(ephemeris, jd, target, center, state, delay,
-                           fast_iterations, safeguarded_iterations);
+    jpl_lighttime_solution solution;
+    jpl_status st;
+    if (!state) return JPL_ERROR_ARGUMENT;
+    st = lighttime_solve(ephemeris, jd, target, center, &solution,
+                         fast_iterations, safeguarded_iterations);
+    if (st != JPL_OK) return st;
+    state[0] = solution.rel_state.x;
+    state[1] = solution.rel_state.y;
+    state[2] = solution.rel_state.z;
+    state[3] = solution.rel_state.vx;
+    state[4] = solution.rel_state.vy;
+    state[5] = solution.rel_state.vz;
+    if (delay) *delay = solution.light_time_days;
+    return JPL_OK;
 }
 #endif
 
-jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state, double *out_lt) {
+jpl_status jpl_get_lighttime_solution(const jpl_ephemeris *e, const jpl_date *jd,
+                                      int target, int center,
+                                      jpl_lighttime_solution *out_solution) {
     double jd_arr[2];
-    if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    if (!e || !jd || !out_solution) return JPL_ERROR_ARGUMENT;
     jpl_date_to_pair(jd, jd_arr);
-    double local_state[6];
-    double lt;
-    jpl_status s = lighttime_solve(e, jd_arr, target, center, local_state, &lt,
-                                   JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+    return lighttime_solve(e, jd_arr, target, center, out_solution,
+                           JPL_LIGHTTIME_FAST_MAX_ITER, JPL_LIGHTTIME_SAFE_MAX_ITER);
+}
+
+jpl_status jpl_get_state_lighttime(const jpl_ephemeris *e, const jpl_date *jd, int target, int center, jpl_state *state, double *out_lt) {
+    jpl_lighttime_solution solution;
+    jpl_status s;
+    if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
+    s = jpl_get_lighttime_solution(e, jd, target, center, &solution);
     if (s != JPL_OK) return s;
-    jpl_array_to_state(local_state, state);
-    if (out_lt) *out_lt = lt;
+    *state = solution.rel_state;
+    if (out_lt) *out_lt = solution.light_time_days;
     return JPL_OK;
 }
 

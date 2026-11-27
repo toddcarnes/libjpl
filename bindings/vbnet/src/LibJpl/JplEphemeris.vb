@@ -141,7 +141,6 @@ Public NotInheritable Class JplEphemeris
 
     Public ReadOnly Property RecordCount As Long
         Get
-            If IsInvalid Then Return 0
             Return WithHandle(Function(h) Native.jpl_record_count(h))
         End Get
     End Property
@@ -162,7 +161,7 @@ Public NotInheritable Class JplEphemeris
 
     Public ReadOnly Property HasTtTdb As Boolean
         Get
-            Return Not IsInvalid AndAlso WithHandle(Function(h) Native.jpl_has_tt_tdb(h) <> 0)
+            Return WithHandle(Function(h) Native.jpl_has_tt_tdb(h) <> 0)
         End Get
     End Property
 

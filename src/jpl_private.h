@@ -27,9 +27,6 @@
 #define JPL_DAYSEC 86400.0
 #define JPL_C_KM_PER_SECOND 299792.458
 #define JPL_C_AU_PER_DAY (JPL_C_KM_PER_SECOND * JPL_DAYSEC / JPL_AU_KM)
-/* MJD zero-point; never use it to split an already-rounded Julian date. */
-#define JPL_DJM0 2400000.5
-
 /* File-slot index (0-based) of the EMB coefficients in header.pointers.
  * File slots follow coefficient order (Mercury..Sun, EMB third), while body
  * codes follow PLEPH (Earth 3, EMB 13): the two coincide for every body
@@ -299,7 +296,7 @@ typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 /* TT→TDB policy: file data when present and in coverage, else the model.
  * The model converts first (seed and guaranteed baseline); when the file
  * carries TT-TDB and the seed is in coverage, fixed-point refinements
- * TDB = TT + f(TDB)/86400 converge the millisecond-scale correction to
+ * TDB = TT - f(TDB)/86400 converge the millisecond-scale correction to
  * arithmetic noise. Any file-path failure (absent/span-invalid/corrupt
  * data, out-of-coverage seed) keeps the model result: the file is an
  * enhancement, never a new failure mode. Deterministic: fixed iteration

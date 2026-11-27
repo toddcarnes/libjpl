@@ -124,6 +124,21 @@ int main(void) {
             JPL_TEST_CHECK(jpl_tt_to_tdb(&alias, &alias) == JPL_OK);
             JPL_TEST_CHECK(alias.hi == tdb.hi && alias.lo == tdb.lo);
         }
+        /* TDB-to-TT supports exact aliasing too. */
+        {
+            jpl_date alias = tdb;
+            JPL_TEST_CHECK(jpl_tdb_to_tt(&alias, &alias) == JPL_OK);
+            JPL_TEST_CHECK(alias.hi == back_tt.hi && alias.lo == back_tt.lo);
+        }
+        /* Failures leave the output pair unchanged. */
+        {
+            jpl_date bad = {NAN, 0.0}, keep = {1.0, 2.0}, out = keep;
+            JPL_TEST_CHECK(jpl_tdb_to_tt(&bad, &out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(out.hi == keep.hi && out.lo == keep.lo);
+            JPL_TEST_CHECK(jpl_tdb_to_tt(&bad, NULL) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(jpl_tdb_to_tt(NULL, &out) == JPL_ERROR_ARGUMENT);
+            JPL_TEST_CHECK(out.hi == keep.hi && out.lo == keep.lo);
+        }
     }
     /* Off-J2000 independent composition (Pmat06 + Rx(obliquity)).
      * eraEcm06 == Rxr(Rx(eps), Pmat06) by construction, so the eraPmat06-only

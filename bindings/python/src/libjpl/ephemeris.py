@@ -102,12 +102,12 @@ class JplHeader:
         ]
         self._constant_count = int(c_header.constant_count)
         names = []
-        inline_limit = min(self._constant_count, 400)
+        inline_limit = min(self._constant_count, _libjpl.JPL_MAX_CONSTANT_NAMES)
         for i in range(inline_limit):
             names.append(_ffi.string(c_header.constant_names[i]).decode().rstrip('\x00'))
-        if self._constant_count > 400:
+        if self._constant_count > _libjpl.JPL_MAX_CONSTANT_NAMES:
             name_buf = _ffi.new("char[7]")
-            for i in range(400, self._constant_count):
+            for i in range(_libjpl.JPL_MAX_CONSTANT_NAMES, self._constant_count):
                 _check(_lib.jpl_get_constant_name(handle, i, name_buf))
                 names.append(_ffi.string(name_buf).decode())
         self._constant_names = names
@@ -255,6 +255,8 @@ class Ephemeris:
         return [float(vals[i]) for i in range(count)]
 
     def record_count(self):
+        if self._handle == _ffi.NULL:
+            raise JplError(JplStatus.ERROR_ARGUMENT)
         return _lib.jpl_record_count(self._handle)
 
     def tt_minus_tdb(self, jd_tdb):
@@ -266,6 +268,8 @@ class Ephemeris:
         return (float(sec[0]), float(rate[0]))
 
     def has_tt_tdb(self):
+        if self._handle == _ffi.NULL:
+            raise JplError(JplStatus.ERROR_ARGUMENT)
         return bool(_lib.jpl_has_tt_tdb(self._handle))
 
     def get_state(self, jd_tdb, target, center):

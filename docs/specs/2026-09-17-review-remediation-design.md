@@ -4,7 +4,7 @@ Status: the maintainer approved this written specification and authorized prepar
 
 Baseline: `1327b20`, internal version 0.2.0. The maintainer confirms there has been no public release. Historical references to a public release do not impose compatibility obligations.
 
-Source: [project review](../../reviews/2026-09-17-project-review.md). This specification supersedes conflicting recommendations in older design documents for the work covered here. Older documents remain historical records.
+Source: project review `docs/reviews/2026-09-17-project-review.md`. This specification supersedes conflicting recommendations in older design documents for the work covered here. Older documents remain historical records.
 
 ## 1. Approved decisions and scope
 

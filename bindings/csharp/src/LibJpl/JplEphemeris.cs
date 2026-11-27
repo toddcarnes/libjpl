@@ -146,7 +146,7 @@ public sealed class JplEphemeris : SafeHandle
         });
     }
 
-    public long RecordCount => IsInvalid ? 0 : WithHandle(h => Native.jpl_record_count(h));
+    public long RecordCount => WithHandle(h => Native.jpl_record_count(h));
 
     public (double Seconds, double RatePerDay) GetTtMinusTdb(double[] jdTdb)
     {
@@ -163,7 +163,7 @@ public sealed class JplEphemeris : SafeHandle
         });
     }
 
-    public bool HasTtTdb => !IsInvalid && WithHandle(h => Native.jpl_has_tt_tdb(h) != 0);
+    public bool HasTtTdb => WithHandle(h => Native.jpl_has_tt_tdb(h) != 0);
 
     public double[] GetState(double[] jdTdb, JplTarget target, JplTarget center)
     {

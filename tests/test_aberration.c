@@ -103,11 +103,9 @@ int main(void) {
         JPL_TEST_CHECK(fabs(o2.x - (-0.7631631094219556269)) < 1e-12);
         JPL_TEST_CHECK(fabs(o2.y - (-0.6087553082505590832)) < 1e-12);
         JPL_TEST_CHECK(fabs(o2.z - (-0.2167926269368471279)) < 1e-12);
-        /* Non-positive Sun distance falls back to wrapper behavior. */
-        { jpl_state ow; JPL_TEST_CHECK(jpl_apply_aberration(&s2, vo2, 0.0, &ow) == JPL_OK);
-          JPL_TEST_CHECK(jpl_apply_aberration(&s2, vo2, 0.0, &o2) == JPL_OK);
-          JPL_TEST_CHECK(memcmp(&o2, &ow, sizeof o2) == 0);
-          /* Negative finite distance omits the term identically. */
+        /* Zero and negative finite Sun distances omit the solar term. */
+        { jpl_state ow;
+          JPL_TEST_CHECK(jpl_apply_aberration(&s2, vo2, 0.0, &ow) == JPL_OK);
           JPL_TEST_CHECK(jpl_apply_aberration(&s2, vo2, -2.5, &o2) == JPL_OK);
           JPL_TEST_CHECK(memcmp(&o2, &ow, sizeof o2) == 0); }
         /* NULL-safe: ARGUMENT with unchanged outputs. */

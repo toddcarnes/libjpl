@@ -146,9 +146,14 @@ int main(int argc, char **argv) {
     horizons_sample samples[HORIZONS_ROWS];
     int counts[JPL_SUN + 1] = {0};
     int total = 0, selected = 0, failed = 0, full;
+    int require_full = 0;
     horizons_residuals residuals = {0};
     double longitude_rate_max = 0.0;
-    if (argc != 3 || jpl_open(argv[1], &e) != JPL_OK) return 2;
+    if ((argc != 3 && argc != 4) || jpl_open(argv[1], &e) != JPL_OK) return 2;
+    if (argc == 4) {
+        if (strcmp(argv[3], "full") != 0) { jpl_close(e); return 2; }
+        require_full = 1;
+    }
     header = jpl_get_header(e);
     if (!header || header->ephemeris_number != 441) {
         jpl_close(e);
@@ -156,6 +161,11 @@ int main(int argc, char **argv) {
     }
     full = header->start_jd[0] < -1894917.5 &&
            header->end_jd[0] > 5370000.5;
+    if (require_full && !full) {
+        fprintf(stderr, "DE441 local file does not cover the advertised full span\n");
+        jpl_close(e);
+        return 1;
+    }
     file = fopen(argv[2], "r");
     if (!file) { jpl_close(e); return 2; }
     while (fgets(line, sizeof line, file)) {

@@ -98,6 +98,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "tests/cmake/test_fetch_cache.cmake"
   "tests/cmake/check_workflows.cmake"
   "tests/cmake/check_numerical_reference.cmake"
+  "tests/cmake/check_generated_reference.cmake"
   "tests/cmake/check_horizons_reference.cmake"
   "tests/cmake/test_horizons_compare.cmake"
   "tests/cmake/check_archive_symbols.cmake"
@@ -110,6 +111,7 @@ set(JPL_LICENSE_FIRST_PARTY
   "bindings/cpp/tests/test_cpp_binding.cpp"
   "bindings/python/CMakeLists.txt"
   "bindings/python/pyproject.toml"
+  "bindings/python/pyproject.toml.in"
   "bindings/python/src/libjpl/__init__.py"
   "bindings/python/src/libjpl/_libjpl.py"
   "bindings/python/src/libjpl/ephemeris.py"
@@ -155,4 +157,5 @@ set(JPL_LICENSE_EXEMPT_FILES
   "tests/data/testpo_441_slice.txt"
   "tests/data/horizons_de441.txt"
   "tests/data/fixture_rows.txt"
+  "tests/data/numerical_reference.lf.h"
 )

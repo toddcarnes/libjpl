@@ -158,7 +158,8 @@ jobs:
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DLIBJPL_FETCH_EPHEMERIDES=OFF -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
       - name: Build
-        run: cmake --build build/ci --config ${{ matrix.config }} --parallel
+        # Limit parallelism on macOS to avoid "posix_spawn failed: Resource temporarily unavailable"
+        run: cmake --build build/ci --config ${{ matrix.config }} --parallel 2
       - name: Test
         run: ctest --test-dir build/ci -C ${{ matrix.config }} --output-on-failure
 

@@ -299,7 +299,7 @@ typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 /* TT→TDB policy: file data when present and in coverage, else the model.
  * The model converts first (seed and guaranteed baseline); when the file
  * carries TT-TDB and the seed is in coverage, fixed-point refinements
- * TDB = TT + f(TDB)/86400 converge the millisecond-scale correction to
+ * TDB = TT - f(TDB)/86400 converge the millisecond-scale correction to
  * arithmetic noise. Any file-path failure (absent/span-invalid/corrupt
  * data, out-of-coverage seed) keeps the model result: the file is an
  * enhancement, never a new failure mode. Deterministic: fixed iteration

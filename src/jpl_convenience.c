@@ -39,7 +39,7 @@ jpl_status jpl_km_to_au(double km, double *au) {
 /* TT→TDB policy (see jpl_private.h): file-interpolated refinement over a
  * guaranteed model baseline. The model converts first (seed and fallback);
  * when the file carries TT-TDB and the seed is in coverage, fixed-point
- * refinements TDB = TT + f(TDB)/86400 converge the millisecond-scale
+ * refinements TDB = TT - f(TDB)/86400 converge the millisecond-scale
  * correction to arithmetic noise. Any file-path failure (absent or
  * span-invalid data, corrupt coefficients, out-of-coverage seed) keeps
  * the model result: the file is an enhancement, never a new failure mode.
@@ -63,7 +63,7 @@ jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_
         s = jpl_get_tt_minus_tdb(e, &cur_date, &sec, NULL);
         if (s != JPL_OK) return JPL_OK;
         if (!isfinite(sec)) return JPL_OK;
-        s = jpl_date_add_days(tt_arr, sec / JPL_DAYSEC, next);
+        s = jpl_date_add_days(tt_arr, -(sec / JPL_DAYSEC), next);
         if (s != JPL_OK) return JPL_OK;
         cur[0] = next[0]; cur[1] = next[1];
     }

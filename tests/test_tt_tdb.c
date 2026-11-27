@@ -484,10 +484,10 @@ int main(void) {
         JPL_TEST_CHECK(test_write_mock("jpl_test_policy.bin", &qm) == 0);
         JPL_TEST_CHECK(jpl_open("jpl_test_policy.bin", &qe) == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(qe) != 0);
-        /* File leg wins: policy lands ~1 s past TT, far from the model. */
+        /* File leg wins: policy lands ~1 s before TT, far from the model. */
         JPL_TEST_CHECK(jpl_tt_to_tdb(&qtt, &mtdb) == JPL_OK);
         JPL_TEST_CHECK(jpl_tt_to_tdb_policy(qe, &qtt, &qtdb) == JPL_OK);
-        JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (2451545.5 + 1.0 / 86400.0)) < 1e-9);
+        JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (2451545.5 - 1.0 / 86400.0)) < 1e-9);
         JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (mtdb.hi + mtdb.lo)) > 1e-9);
         /* Corrupt file data keeps the model result: the file is an
          * enhancement, never a new failure mode. */

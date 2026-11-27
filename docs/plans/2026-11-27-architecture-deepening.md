@@ -114,7 +114,7 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ## Step 1: Light-time solution (candidate 2) — FIRST
 
-**Status:** implemented on `feat/lighttime-solution`. MSVC Debug/Release 46/46 default and 50/50 bindings, zero warnings; WSL GCC Debug 46/46. Clang is not installed in the WSL image; the Clang leg is deferred to CI. No numerical reference or Horizons golden update was required; all comparisons stayed within the existing tolerances.
+**Status:** implemented on `feat/lighttime-solution`. MSVC Debug/Release 46/46 default and 50/50 bindings, zero warnings; WSL GCC Debug 46/46 and WSL Clang 14 Debug 46/46, zero warnings. No numerical reference or Horizons golden update was required; all comparisons stayed within the existing tolerances.
 
 **Rationale for position:** Smallest high-value step; the solver already computes the observer state and accepted emission, so returning them removes a re-read and a reconstructed epoch before the larger core surgery. It also proves the sequence.
 

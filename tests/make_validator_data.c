@@ -8,6 +8,7 @@
  * (recognized header/EOT framing) covering every negative branch the
  * strict validators must reject. Uses the shared mock writer.
  * Exit 0 on success, 1 on any failure. */
+#include "jpl_fixture.h"
 #include "jpl_test_util.h"
 #include "jpl_private.h"
 
@@ -49,134 +50,131 @@ static int make_dir(const char *path) {
 /* Full mock: Mars {3,1,1}, nutation {6,1,1}, libration {900,1,1},
  * TT-TDB {939,11,4}; coverage 2451545.0-2451546.0 step 1.0 DENUM 441.
  * Coefficient values are documented below so row writers match them. */
-static int write_full_mock(const char *path, int denum, int with_jupiter) {    static unsigned char hdr[GOOD_DOUBLES * 8];
-    static double constants[GOOD_DOUBLES];
-    static double records[5 * GOOD_DOUBLES];
-    jpl_test_mock mock;
-    size_t i, r;
+static int write_full_mock(const char *path, int denum, int with_jupiter) {
+    const double constants[2] = {11.0, 22.0};
+    double mars[5 * 3];
+    double jupiter[5 * 3];
+    double nutations[5 * 2];
+    double libration[5 * 3];
+    double tt_tdb[5 * 4 * 11];
+    jpl_fixture_series series[3];
+    jpl_fixture_spec spec;
+    size_t r, s, k, series_count = 0;
+    int rc;
 
-    memset(hdr, 0, sizeof hdr);
-    memcpy(hdr, "validator full", 14);
-    test_mock_header(hdr, 2451545.0, 2451550.0, 1.0, 2);
-    test_put_ptr(hdr, 3, 3, 1, 1); /* Mars target 4 */
-    if (with_jupiter) {
-        test_put_ptr(hdr, 4, 20, 1, 1); /* Jupiter target 5 */
-    }
-    test_put_ptr(hdr, 11, 6, 1, 1); /* nutations */
-    test_put_ptr(hdr, 12, (uint32_t)denum, 900, 1); /* DENUM + libration start/coeff */
-    test_put_u32(hdr + JPL_HDR_LIBRATION_OFFSET + 8, 1); /* libration subintervals */
-    test_put_ptr(hdr, 13, 1u, 1000000u, 1000000u); /* T14 triple (ignored) */
-    test_put_ptr(hdr, 14, 939u, 11u, 4u); /* T15 = TT-TDB triple */
-    for (i = 0; i < GOOD_DOUBLES; ++i) {
-        constants[i] = 0.0;
-    }
-    constants[0] = 11.0;
-    constants[1] = 22.0;
-    /* Five advertised one-day records cover 2451545.0-2451550.0 so every
-     * runner row lands in coverage; file size stays tiny (7*7872).
-     * TT-TDB coefficients are identical in every record (c0 0.001, with
-     * higher coefficients zero so multi-coefficient evaluation matches the
-     * midpoint value exactly); the X1/X2 writer uses only record 0's
-     * subinterval midpoint. */
+    memset(mars, 0, sizeof mars);
+    memset(jupiter, 0, sizeof jupiter);
+    memset(nutations, 0, sizeof nutations);
+    memset(libration, 0, sizeof libration);
+    memset(tt_tdb, 0, sizeof tt_tdb);
     for (r = 0; r < 5; ++r) {
-        double *rec = records + r * GOOD_DOUBLES;
-        for (i = 0; i < GOOD_DOUBLES; ++i) {
-            rec[i] = 0.0;
+        mars[r * 3 + 0] = 5.0;
+        mars[r * 3 + 1] = 6.0;
+        mars[r * 3 + 2] = 7.0;
+        jupiter[r * 3 + 0] = 50.0;
+        jupiter[r * 3 + 1] = 60.0;
+        jupiter[r * 3 + 2] = 70.0;
+        nutations[r * 2 + 0] = 0.001;
+        nutations[r * 2 + 1] = 0.002;
+        libration[r * 3 + 0] = 0.1;
+        libration[r * 3 + 1] = 0.2;
+        libration[r * 3 + 2] = 0.3;
+        for (s = 0; s < 4; ++s) {
+            for (k = 0; k < 11; ++k)
+                tt_tdb[(r * 4 + s) * 11 + k] = 0.0;
+            tt_tdb[(r * 4 + s) * 11 + 0] = 0.001 * (double)(s + 1);
+            tt_tdb[(r * 4 + s) * 11 + 1] =
+                (s == 0) ? 0.00002 : (s == 1 ? 0.00003 : (s == 2 ? -0.00001 : 0.00005));
         }
-        rec[0] = 2451545.0 + (double)r;
-        rec[1] = 2451546.0 + (double)r;
-        rec[2] = 5.0;
-        rec[3] = 6.0;
-        rec[4] = 7.0;
-        if (with_jupiter) {
-            rec[19] = 50.0;
-            rec[20] = 60.0;
-            rec[21] = 70.0;
-        }
-        rec[5] = 0.001;
-        rec[6] = 0.002;
-        rec[899] = 0.1;
-        rec[900] = 0.2;
-        rec[901] = 0.3;
-        rec[938] = 0.001;
-        rec[939] = 0.00002;
-        rec[940] = 0.0;
-        rec[941] = 0.0;
-        rec[942] = 0.0;
-        rec[943] = 0.0;
-        rec[944] = 0.0;
-        rec[945] = 0.0;
-        rec[946] = 0.0;
-        rec[947] = 0.0;
-        rec[948] = 0.0;
-        rec[949] = 0.002;
-        rec[950] = 0.00003;
-        rec[960] = 0.003;
-        rec[961] = -0.00001;
-        rec[971] = 0.004;
-        rec[972] = 0.00005;
     }
-    if (denum == -441) {
-        records[2 * GOOD_DOUBLES + 0] = NAN; /* NaN interior start */
+
+    memset(series, 0, sizeof series);
+    series[series_count].slot = 3; /* Mars */
+    series[series_count].components = 3;
+    series[series_count].coefficients_per_component = 1;
+    series[series_count].subintervals = 1;
+    series[series_count].coefficients = mars;
+    ++series_count;
+    if (with_jupiter) {
+        series[series_count].slot = 4; /* Jupiter */
+        series[series_count].components = 3;
+        series[series_count].coefficients_per_component = 1;
+        series[series_count].subintervals = 1;
+        series[series_count].coefficients = jupiter;
+        ++series_count;
     }
-    memset(&mock, 0, sizeof mock);
-    mock.record_doubles = GOOD_DOUBLES;
-    mock.advertised_records = 5;
-    mock.denum = denum < 0 ? -denum : denum;
-    mock.constant_count = 2;
-    mock.start[0] = 2451545.0;
-    mock.end[0] = 2451550.0;
-    mock.step_days = 1.0;
-    /* Nonmodern file AU: reference rows stay file-AU while public
-     * output is modern AU, exercising the runner conversion. Angular and
-     * TT-TDB rows are never rescaled, so their values stay valid. */
-    mock.au_km = JPL_TEST_NONMODERN_AU_KM;
-    mock.emrat = JPL_TEST_MASS_RATIO;
-    mock.header = hdr;
-    mock.constants = constants;
-    mock.records = records;
-    return test_write_mock(path, &mock);
+    series[series_count].slot = 11; /* nutations */
+    series[series_count].components = 2;
+    series[series_count].coefficients_per_component = 1;
+    series[series_count].subintervals = 1;
+    series[series_count].coefficients = nutations;
+    ++series_count;
+
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451550.0;
+    spec.step_days = 1.0;
+    spec.denum = denum < 0 ? -denum : denum;
+    spec.astronomical_unit_km = JPL_TEST_NONMODERN_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = GOOD_DOUBLES;
+    spec.records = 5;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = series;
+    spec.series_count = series_count;
+    spec.libration_present = 1;
+    spec.libration_coeffs = 1;
+    spec.libration_subintervals = 1;
+    spec.libration_coefficients = libration;
+    spec.tt_tdb_present = 1;
+    spec.tt_tdb_coeffs = 11;
+    spec.tt_tdb_subintervals = 4;
+    spec.tt_tdb_coefficients = tt_tdb;
+    spec.title = "validator full";
+    rc = jpl_fixture_write(path, &spec);
+    if (rc == 0 && denum == -441) {
+        double nan_value = NAN;
+        unsigned char raw[8];
+        FILE *f = fopen(path, "r+b");
+        size_t record_bytes = (size_t)GOOD_DOUBLES * 8;
+        if (!f) return 1;
+        test_put_f64(raw, nan_value);
+        if (fseek(f, (long)((2 + 2) * record_bytes), SEEK_SET) != 0 ||
+            fwrite(raw, 1, sizeof raw, f) != sizeof raw ||
+            fclose(f) != 0) return 1;
+    }
+    return rc;
 }
 
 static int write_small_mock(const char *path, int denum) {
-    static unsigned char hdr[SMALL_DOUBLES * 8];
-    static double constants[SMALL_DOUBLES];
-    static double records[SMALL_DOUBLES];
-    jpl_test_mock mock;
-    size_t i;
+    const double constants[2] = {11.0, 22.0};
+    const double mars[3] = {5.0, 6.0, 7.0};
+    jpl_fixture_series series;
+    jpl_fixture_spec spec;
 
-    memset(hdr, 0, sizeof hdr);
-    memcpy(hdr, "validator sweep", 15);
-    test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-    test_put_ptr(hdr, 3, 3, 1, 1);
-    test_put_ptr(hdr, 12, (uint32_t)denum, 0, 0);
-    for (i = 0; i < SMALL_DOUBLES; ++i) {
-        constants[i] = 0.0;
-    }
-    constants[0] = 11.0;
-    constants[1] = 22.0;
-    for (i = 0; i < SMALL_DOUBLES; ++i) {
-        records[i] = 0.0;
-    }
-    records[0] = 2451545.0;
-    records[1] = 2451546.0;
-    records[2] = 5.0;
-    records[3] = 6.0;
-    records[4] = 7.0;
-    memset(&mock, 0, sizeof mock);
-    mock.record_doubles = SMALL_DOUBLES;
-    mock.advertised_records = 1;
-    mock.denum = denum;
-    mock.constant_count = 2;
-    mock.start[0] = 2451545.0;
-    mock.end[0] = 2451546.0;
-    mock.step_days = 1.0;
-    mock.au_km = JPL_TEST_AU_KM;
-    mock.emrat = JPL_TEST_MASS_RATIO;
-    mock.header = hdr;
-    mock.constants = constants;
-    mock.records = records;
-    return test_write_mock(path, &mock);
+    memset(&series, 0, sizeof series);
+    series.slot = 3;
+    series.components = 3;
+    series.coefficients_per_component = 1;
+    series.subintervals = 1;
+    series.coefficients = mars;
+
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = denum;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = SMALL_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = &series;
+    spec.series_count = 1;
+    spec.title = "validator sweep";
+    return jpl_fixture_write(path, &spec);
 }
 
 static int write_text(const char *path, const char *text) {

@@ -4,6 +4,7 @@
  */
 #include "jpl.h"
 #include "jpl_convenience.h"
+#include "jpl_fixture.h"
 #include "jpl_test_util.h"
 #include "jpl_private.h"
 
@@ -11,31 +12,72 @@
 #include <stdio.h>
 #include <string.h>
 
+static int write_tt_tdb_basic(const char *path, int present, int big_endian) {
+    const double constants[2] = {1.0, 2.0};
+    const double tt_tdb[2] = {0.001, 0.00002};
+    jpl_fixture_spec spec;
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.tt_tdb_present = present;
+    spec.tt_tdb_coeffs = 2;
+    spec.tt_tdb_subintervals = 1;
+    spec.tt_tdb_coefficients = tt_tdb;
+    spec.big_endian = big_endian;
+    spec.title = present ? "TT-TDB present" : "no TT-TDB here";
+    return jpl_fixture_write(path, &spec);
+}
+
+static int write_policy_fixture(const char *path, double tt_c0) {
+    const double constants[2] = {1.0, 2.0};
+    const double mars[3] = {2.0 * JPL_TEST_AU_KM, 0.0, 0.0};
+    const double tt_tdb[2] = {tt_c0, 0.0};
+    jpl_fixture_series series;
+    jpl_fixture_spec spec;
+    memset(&series, 0, sizeof series);
+    series.slot = 3;
+    series.components = 3;
+    series.coefficients_per_component = 1;
+    series.subintervals = 1;
+    series.coefficients = mars;
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = &series;
+    spec.series_count = 1;
+    spec.tt_tdb_present = 1;
+    spec.tt_tdb_coeffs = 2;
+    spec.tt_tdb_subintervals = 1;
+    spec.tt_tdb_coefficients = tt_tdb;
+    spec.title = "policy file TT-TDB";
+    return jpl_fixture_write(path, &spec);
+}
+
 int main(void) {
     const char *path = "jpl_test_tttdb.bin";
     /* Absent dataset: a valid in-coverage query reports UNSUPPORTED;
      * out-of-coverage stays RANGE. */
     {
-        unsigned char rec[2880] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         const jpl_header *h;
         double sec = 0.0, rate = 0.0;
-        size_t i;
-        memcpy(rec, "no TT-TDB here", 14);
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 11, 2, 178, 1);
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f != NULL);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0);
-        test_put_f64(rec + 1 * 8, 2451546.0);
-        for (i = 2; i < 357; ++i) test_put_f64(rec + i * 8, (double)i);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        JPL_TEST_CHECK(fclose(f) == 0);
+        JPL_TEST_CHECK(write_tt_tdb_basic(path, 0, 0) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->has_tt_tdb == 0);
@@ -57,26 +99,9 @@ int main(void) {
     /* Present dataset, NULL rate allowed; out-of-coverage is RANGE. */
     {
         static const jpl_date t16_mid = {2451545.0, 0.5};
-        unsigned char rec[2880] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         double sec = 0.0, rate = -1.0;
-        memcpy(rec, "TT-TDB present", 14);
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 11, 2, 178, 1);
-        test_put_ptr(rec, 14, 300, 2, 1);
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f != NULL);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec, 1.0); test_put_f64(rec + 8, 2.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0);
-        test_put_f64(rec + 1 * 8, 2451546.0);
-        test_put_f64(rec + 299 * 8, 0.001);
-        test_put_f64(rec + 300 * 8, 0.00002);
-        JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        JPL_TEST_CHECK(fclose(f) == 0);
+        JPL_TEST_CHECK(write_tt_tdb_basic(path, 1, 0) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e) != 0);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(e, &(const jpl_date){2451545.5, 0.0}, &sec, NULL) == JPL_OK);
@@ -97,45 +122,9 @@ int main(void) {
          * big-endian must open with the BE order detected and return
          * the same value/rate. */
         {
-            enum { BDBL = 360 };
-            static unsigned char bhdr[360 * 8];
-            static double bcons[BDBL];
-            static double bvals[BDBL];
-            jpl_test_mock bm;
             jpl_ephemeris *be = NULL;
             double bsec = 0.0, brate = 0.0;
-            size_t bi, k;
-            memset(bhdr, 0, sizeof bhdr);
-            memcpy(bhdr, "TT-TDB present", 14);
-            test_mock_header_be(bhdr, 2451545.0, 2451546.0, 1.0, 2);
-            test_put_ptr_be(bhdr, 11, 2, 178, 1);
-            test_put_ptr_be(bhdr, 14, 300, 2, 1);
-            /* test_write_mock re-encodes the prologue words (coverage,
-             * step, AU, EMRAT, DENUM) in the requested byte order;
-             * geometry pointers above are encoded BE directly. */
-            for (bi = 0; bi < BDBL; ++bi) bcons[bi] = 0.0;
-            bcons[0] = 1.0;
-            bcons[1] = 2.0;
-            for (k = 0; k < BDBL; ++k) bvals[k] = 0.0;
-            bvals[0] = 2451545.0;
-            bvals[1] = 2451546.0;
-            bvals[299] = 0.001;
-            bvals[300] = 0.00002;
-            memset(&bm, 0, sizeof bm);
-            bm.record_doubles = BDBL;
-            bm.advertised_records = 1;
-            bm.big_endian = 1;
-            bm.denum = 441;
-            bm.constant_count = 2;
-            bm.start[0] = 2451545.0;
-            bm.end[0] = 2451546.0;
-            bm.step_days = 1.0;
-            bm.au_km = JPL_TEST_AU_KM;
-            bm.emrat = JPL_TEST_MASS_RATIO;
-            bm.header = bhdr;
-            bm.constants = bcons;
-            bm.records = bvals;
-            JPL_TEST_CHECK(test_write_mock("jpl_test_tttdb_be.bin", &bm) == 0);
+            JPL_TEST_CHECK(write_tt_tdb_basic("jpl_test_tttdb_be.bin", 1, 1) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_tttdb_be.bin", &be) == JPL_OK);
             JPL_TEST_CHECK(jpl_private_get_header(be)->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
             JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, &t16_mid, &bsec, &brate) == JPL_OK);
@@ -444,44 +433,11 @@ int main(void) {
      * gives milliseconds) and the file-TT ? apparent-place combination
      * is pinned. */
     {
-        enum { QDBL = 360 };
-        static unsigned char qhdr[QDBL * 8];
-        static double qcons[QDBL];
-        static double qvals[QDBL];
         static const jpl_date qtt = {2451545.5, 0.0};
-        jpl_test_mock qm;
         jpl_ephemeris *qe = NULL;
         jpl_date qtdb, mtdb;
         jpl_state qs;
-        size_t k;
-        memset(qhdr, 0, sizeof qhdr);
-        memcpy(qhdr, "policy file TT-TDB", 19);
-        test_mock_header(qhdr, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(qhdr, 3, 3, 1, 1);
-        test_put_ptr(qhdr, 14, 300, 2, 1);
-        for (k = 0; k < QDBL; ++k) qcons[k] = 0.0;
-        qcons[0] = 1.0;
-        qcons[1] = 2.0;
-        for (k = 0; k < QDBL; ++k) qvals[k] = 0.0;
-        qvals[0] = 2451545.0;
-        qvals[1] = 2451546.0;
-        qvals[2] = 2.0 * JPL_TEST_AU_KM;
-        qvals[299] = 1.0;
-        qvals[300] = 0.0;
-        memset(&qm, 0, sizeof qm);
-        qm.record_doubles = QDBL;
-        qm.advertised_records = 1;
-        qm.denum = 441;
-        qm.constant_count = 2;
-        qm.start[0] = 2451545.0;
-        qm.end[0] = 2451546.0;
-        qm.step_days = 1.0;
-        qm.au_km = JPL_TEST_AU_KM;
-        qm.emrat = JPL_TEST_MASS_RATIO;
-        qm.header = qhdr;
-        qm.constants = qcons;
-        qm.records = qvals;
-        JPL_TEST_CHECK(test_write_mock("jpl_test_policy.bin", &qm) == 0);
+        JPL_TEST_CHECK(write_policy_fixture("jpl_test_policy.bin", 1.0) == 0);
         JPL_TEST_CHECK(jpl_open("jpl_test_policy.bin", &qe) == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(qe) != 0);
         /* File leg wins: policy lands ~1 s before TT, far from the model. */
@@ -491,8 +447,7 @@ int main(void) {
         JPL_TEST_CHECK(fabs((qtdb.hi + qtdb.lo) - (mtdb.hi + mtdb.lo)) > 1e-9);
         /* Corrupt file data keeps the model result: the file is an
          * enhancement, never a new failure mode. */
-        qvals[299] = NAN;
-        JPL_TEST_CHECK(test_write_mock("jpl_test_policy_bad.bin", &qm) == 0);
+        JPL_TEST_CHECK(write_policy_fixture("jpl_test_policy_bad.bin", NAN) == 0);
         {
             jpl_ephemeris *qb = NULL;
             jpl_date btdb;

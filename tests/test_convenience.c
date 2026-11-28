@@ -3,6 +3,7 @@
  * See LICENSE in the project root for the full license text.
  */
 #include "jpl_convenience.h"
+#include "jpl_fixture.h"
 #include "jpl_frames.h"
 #include "jpl_private.h"
 #include "jpl_testing.h"
@@ -17,6 +18,76 @@
  * linear longitude drift (base + rate*days, wrapped to [0, 360)) inside an
  * acceptance window, RANGE outside it, forced status when set. No
  * ephemeris data involved. */
+/* One-record convenience fixture. Each body array is record-major
+ * (3 components x coeffs); NULL omits the body. */
+static int write_convenience_fixture(const char *path, int denum,
+                                     const double *mars, int mars_coeffs,
+                                     const double *mercury, int mercury_coeffs,
+                                     const double *emb, int emb_coeffs,
+                                     const double *moon, int moon_coeffs,
+                                     const double *sun, int sun_coeffs) {
+    const double constants[2] = {1.0, 2.0};
+    jpl_fixture_series series[5];
+    jpl_fixture_spec spec;
+    size_t count = 0;
+    memset(series, 0, sizeof series);
+    if (mars) {
+        series[count].slot = 3;
+        series[count].components = 3;
+        series[count].coefficients_per_component = mars_coeffs;
+        series[count].subintervals = 1;
+        series[count].coefficients = mars;
+        ++count;
+    }
+    if (mercury) {
+        series[count].slot = 0;
+        series[count].components = 3;
+        series[count].coefficients_per_component = mercury_coeffs;
+        series[count].subintervals = 1;
+        series[count].coefficients = mercury;
+        ++count;
+    }
+    if (emb) {
+        series[count].slot = 2;
+        series[count].components = 3;
+        series[count].coefficients_per_component = emb_coeffs;
+        series[count].subintervals = 1;
+        series[count].coefficients = emb;
+        ++count;
+    }
+    if (moon) {
+        series[count].slot = 9;
+        series[count].components = 3;
+        series[count].coefficients_per_component = moon_coeffs;
+        series[count].subintervals = 1;
+        series[count].coefficients = moon;
+        ++count;
+    }
+    if (sun) {
+        series[count].slot = 10;
+        series[count].components = 3;
+        series[count].coefficients_per_component = sun_coeffs;
+        series[count].subintervals = 1;
+        series[count].coefficients = sun;
+        ++count;
+    }
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = 2451545.0;
+    spec.end[0] = 2451546.0;
+    spec.step_days = 1.0;
+    spec.denum = denum;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = JPL_FIXTURE_DOUBLES;
+    spec.records = 1;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = series;
+    spec.series_count = count;
+    spec.title = "convenience mock";
+    return jpl_fixture_write(path, &spec);
+}
+
 struct estimator_test_ctx {
     double base_deg;
     double rate_dpd;
@@ -84,26 +155,16 @@ int main(void) {
      * zero-DENUM mocks classify as UNKNOWN. */
     {
         const char *path = "jpl_test_convenience_frame.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         static const jpl_date jd = {2451545.5, 0.0};
         jpl_state got = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
         jpl_state keep = {7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
         jpl_state raw;
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 2, 3, 2, 1);   /* EMB */
-        test_put_ptr(rec, 9, 9, 2, 1);   /* geocentric Moon */
-        test_put_ptr(rec, 10, 15, 2, 1); /* Sun */
-        test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES] = {0}; test_put_f64(cc, 1.0); test_put_f64(cc + 8, 2.0);
-          JPL_TEST_CHECK(fwrite(cc, 1, sizeof cc, f) == sizeof cc); }
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0); test_put_f64(rec + 1 * 8, 2451546.0);
-        test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
-        test_put_f64(rec + 8 * 8, 384400.0);
-        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
+        double emb[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double moon[6] = {384400.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 emb, 2, moon, 2, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == JPL_FRAME_ICRF);
         jpl_test_reset_get_state_call_count();
@@ -123,25 +184,16 @@ int main(void) {
      * Sun=origin, zero velocities. Record of 357 doubles. */
     {
         const char *path="jpl_test_convenience.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM, MOON_KM=384400.0;
         static const jpl_date jd={2451545.5, 0.0};
         jpl_state moon_earth, earth_sun, moon_sun, sum;
         double expect_moon, expect_earth, d;
-        test_mock_header(rec,2451545.0,2451546.0,1.0,2);
-        test_put_ptr(rec,2,3,2,1);   /* EMB */
-        test_put_ptr(rec,9,9,2,1);   /* geocentric Moon */
-        test_put_ptr(rec,10,15,2,1); /* Sun */
-        test_put_ptr(rec,12,441,0,0); /* DENUM 441 -> ICRF, not zero */
-        f=fopen(path,"wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES]={0}; test_put_f64(cc,1.0); test_put_f64(cc+8,2.0);
-          JPL_TEST_CHECK(fwrite(cc,1,sizeof cc,f)==sizeof cc); }
-        memset(rec,0,sizeof rec);
-        test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
-        test_put_f64(rec+2*8,AU_KM);                       /* EMB x */
-        test_put_f64(rec+8*8,MOON_KM);                     /* Moon x */
-        /* Uniform 2880-byte records: data block padded with zeros. */
-        JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
+        double emb[6] = {AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double moon[6] = {MOON_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 emb, 2, moon, 2, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         /* Validation: invalid planet/center codes rejected. */
         JPL_TEST_CHECK(jpl_planet_position(e,&jd,0,11,&st)==JPL_ERROR_ARGUMENT);
@@ -215,41 +267,18 @@ int main(void) {
      * disk distinguishes finite-source bending from aberration alone. */
     {
         const char *path = "jpl_test_convenience_bending.bin";
-        enum { N = 360, BYTES = N * 8 };
-        static unsigned char hdr[BYTES];
-        static double rec[N];
-        jpl_test_mock mock;
         jpl_ephemeris *e = NULL;
         jpl_date jd = {2451545.5, 0.0};
         jpl_apparent_ecliptic_result out_pos;
         jpl_state old_state;
         double old_ecliptic[3], lon_old, difference;
-        memset(hdr, 0, sizeof hdr);
-        memset(rec, 0, sizeof rec);
-        memset(&mock, 0, sizeof mock);
-        test_put_ptr(hdr, 0, 3, 2, 1);   /* Mercury: x/y slopes */
-        test_put_ptr(hdr, 2, 9, 2, 1);   /* EMB = Earth: Moon is zero */
-        test_put_ptr(hdr, 9, 15, 2, 1);  /* geocentric Moon */
-        test_put_ptr(hdr, 10, 21, 2, 1); /* Sun at the origin */
-        rec[0] = 2451545.0;
-        rec[1] = 2451546.0;
-        rec[2] = -0.5 * JPL_TEST_AU_KM;
-        rec[3] = 0.005 * JPL_TEST_AU_KM;
-        rec[4] = 0.01 * JPL_TEST_AU_KM;
-        rec[5] = -0.0025 * JPL_TEST_AU_KM;
-        rec[8] = JPL_TEST_AU_KM;
-        mock.record_doubles = N;
-        mock.advertised_records = 1;
-        mock.denum = 441;
-        mock.constant_count = 2;
-        mock.start[0] = 2451545.0;
-        mock.end[0] = 2451546.0;
-        mock.step_days = 1.0;
-        mock.au_km = JPL_TEST_AU_KM;
-        mock.emrat = JPL_TEST_MASS_RATIO;
-        mock.header = hdr;
-        mock.records = rec;
-        JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+        double mercury[6] = {-0.5 * JPL_TEST_AU_KM, 0.005 * JPL_TEST_AU_KM,
+                             0.01 * JPL_TEST_AU_KM, -0.0025 * JPL_TEST_AU_KM, 0.0, 0.0};
+        double emb[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double moon[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, mercury, 2,
+                                                 emb, 2, moon, 2, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_EARTH, &old_state) == JPL_OK);
         { double old_arr[6]; jpl_state_to_array(&old_state, old_arr);
@@ -315,11 +344,12 @@ int main(void) {
         e = NULL;
         /* A positive-x target crossing y=0 tests signed longitude speed
          * across the 360-to-0 degree normalization boundary. */
-        rec[2] = 2.0 * JPL_TEST_AU_KM;
-        rec[3] = 0.0;
-        rec[4] = 0.00005 * JPL_TEST_AU_KM;
-        rec[5] = 0.005 * JPL_TEST_AU_KM;
-        JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+        mercury[0] = 2.0 * JPL_TEST_AU_KM;
+        mercury[1] = 0.0;
+        mercury[2] = 0.00005 * JPL_TEST_AU_KM;
+        mercury[3] = 0.005 * JPL_TEST_AU_KM;
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, mercury, 2,
+                                                 emb, 2, moon, 2, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_apparent_ecliptic_position(e, &jd, JPL_MERCURY, &out_pos) == JPL_OK);
         JPL_TEST_CHECK(out_pos.longitude_deg < 0.02 || out_pos.longitude_deg > 359.98);
@@ -336,7 +366,7 @@ int main(void) {
      * the stale emission-epoch composition. */
     {
         const char *path="jpl_test_convenience_epoch.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM;
         static const jpl_date jd={2451545.5, 0.0};
         jpl_date tdb = {0.0, 0.0}, emi = {0.0, 0.0};
@@ -344,33 +374,11 @@ int main(void) {
         jpl_state lt_state, vc_rec, vc_emi, expect, got, vsun;
         double sdist;
         size_t i;
-        test_mock_header(rec,2451545.0,2451546.0,1.0,2);
-        /* EMB (idx 2): start=3 (1-based), 3 coeffs/comp, 1 subinterval:
-         * x: c0,c1,c2 ; y: c0,c1,c2 ; z: c0,c1,c2  (9 doubles at idx 2..10) */
-        test_put_ptr(rec,2,3,3,1);
-        /* Sun (idx 10): zero coeffs at different slot; use start=12, 2 coeffs, 1 sub */
-        test_put_ptr(rec,10,12,2,1);
-        test_put_ptr(rec,12,441,0,0); /* DENUM 441 -> ICRF, not zero */
-        f=fopen(path,"wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
-        { unsigned char cc2[JPL_TEST_HEADER_BYTES]={0}; test_put_f64(cc2,1.0); test_put_f64(cc2+8,2.0);
-          JPL_TEST_CHECK(fwrite(cc2,1,sizeof cc2,f)==sizeof cc2); }
-        memset(rec,0,sizeof rec);
-        test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
-        /* EMB x coeffs (record doubles idx 2,3,4 -> bytes 16,24,32):
-         * constant AU_KM in x, zero slope/curve. */
-        test_put_f64(rec+2*8,AU_KM); test_put_f64(rec+3*8,0.0); test_put_f64(rec+4*8,0.0);
-        /* EMB y coeffs (idx 5,6,7): c0=0, c1 = slope, c2 = curve (both km).
-         * 3 coeffs give time-varying velocity; 2 would be constant. */
-        { double slope=0.5*AU_KM; double curve=0.25*AU_KM;
-          test_put_f64(rec+5*8,0.0); test_put_f64(rec+6*8,slope); test_put_f64(rec+7*8,curve); }
-        /* EMB z coeffs (idx 8,9,10): zeros. */
-        test_put_f64(rec+8*8,0.0); test_put_f64(rec+9*8,0.0); test_put_f64(rec+10*8,0.0);
-        /* Sun coeffs (idx 11..16 for 3 comps x 2 coeffs): zeros. */
-        test_put_f64(rec+11*8,0.0); test_put_f64(rec+12*8,0.0);
-        test_put_f64(rec+13*8,0.0); test_put_f64(rec+14*8,0.0);
-        test_put_f64(rec+15*8,0.0); test_put_f64(rec+16*8,0.0);
-        /* Uniform 2880-byte records: data block padded with zeros. */
-        JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
+        double emb[9] = {AU_KM, 0.0, 0.0, 0.0, 0.5 * AU_KM, 0.25 * AU_KM,
+                         0.0, 0.0, 0.0};
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 emb, 3, NULL, 0, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         JPL_TEST_CHECK(jpl_tt_to_tdb(&jd,&tdb)==JPL_OK);
         /* Convenience under test: Sun seen from EMB. */
@@ -414,28 +422,17 @@ int main(void) {
      * returns the aberration status with the caller output unchanged. */
     {
         const char *path="jpl_test_convenience_aberr.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES]={0}; FILE *f; jpl_ephemeris *e=NULL;
+        jpl_ephemeris *e=NULL;
         const double AU_KM=JPL_TEST_AU_KM;
         const double C_AU_DAY=JPL_TEST_C_KM_PER_SECOND*JPL_TEST_DAYSEC/JPL_TEST_AU_KM;
         static const jpl_date jd={2451545.5, 0.0};
         jpl_state keep={11.0,22.0,33.0,44.0,55.0,66.0}, got;
+        double emb[6] = {AU_KM, 0.0, 0.0, 4.0 * C_AU_DAY * AU_KM, 0.0, 0.0};
+        double moon[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
         got = keep;
-        test_mock_header(rec,2451545.0,2451546.0,1.0,2);
-        /* EMB (idx 2): x constant at 1 AU, y slope superluminal, z zero. */
-        test_put_ptr(rec,2,3,2,1);
-        test_put_ptr(rec,9,9,2,1);   /* geocentric Moon: zeros */
-        test_put_ptr(rec,10,15,2,1); /* Sun: zeros */
-        test_put_ptr(rec,12,441,0,0); /* DENUM 441 -> ICRF, not zero */
-        f=fopen(path,"wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec,1,sizeof rec,f)==sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES]={0}; test_put_f64(cc,1.0); test_put_f64(cc+8,2.0);
-          JPL_TEST_CHECK(fwrite(cc,1,sizeof cc,f)==sizeof cc); }
-        memset(rec,0,sizeof rec);
-        test_put_f64(rec+0*8,2451545.0); test_put_f64(rec+1*8,2451546.0);
-        test_put_f64(rec+2*8,AU_KM); test_put_f64(rec+3*8,0.0);       /* EMB x */
-        test_put_f64(rec+4*8,0.0); test_put_f64(rec+5*8,4.0*C_AU_DAY*AU_KM); /* EMB y slope: 4c */
-        test_put_f64(rec+6*8,0.0); test_put_f64(rec+7*8,0.0);         /* EMB z */
-        test_put_f64(rec+8*8,0.0); test_put_f64(rec+9*8,0.0);         /* Moon */
-        JPL_TEST_CHECK(fwrite(rec,1,JPL_TEST_HEADER_BYTES,f)==JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f)==0);
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 emb, 2, moon, 2, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path,&e)==JPL_OK);
         /* Sun seen from the fast EMB: observer velocity is 4c, so the
          * composed aberration reports ARGUMENT and st stays unchanged. */
@@ -458,29 +455,16 @@ int main(void) {
         size_t c;
         for (c = 0; c < sizeof cases / sizeof cases[0]; ++c) {
             const char *path = "jpl_test_convenience_denum.bin";
-            unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-            FILE *f;
             jpl_ephemeris *e = NULL;
             static const jpl_date jd = {2451545.5, 0.0};
             jpl_state core, conv = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
             jpl_state keep = {3.0, 5.0, 7.0, 9.0, 11.0, 13.0};
-            test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-            test_put_ptr(rec, 0, 3, 2, 1);   /* Mercury body coefficients */
-            test_put_ptr(rec, 2, 9, 2, 1);   /* EMB leg for Earth derivation */
-            test_put_ptr(rec, 9, 15, 2, 1);  /* geocentric Moon leg */
-            test_put_ptr(rec, 10, 21, 2, 1); /* Sun leg */
-            test_put_ptr(rec, 12, (uint32_t)cases[c].denum, 0, 0);
-            f = fopen(path, "wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-            { unsigned char cc[JPL_TEST_HEADER_BYTES] = {0}; test_put_f64(cc, 1.0); test_put_f64(cc + 8, 2.0);
-              JPL_TEST_CHECK(fwrite(cc, 1, sizeof cc, f) == sizeof cc); }
-            memset(rec, 0, sizeof rec);
-            test_put_f64(rec + 0 * 8, 2451545.0); test_put_f64(rec + 1 * 8, 2451546.0);
-            test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
-            test_put_f64(rec + 8 * 8, JPL_TEST_AU_KM);
-            test_put_f64(rec + 14 * 8, JPL_TEST_AU_KM);
-            /* A distinct Sun keeps the finite-source direction defined. */
-            test_put_f64(rec + 20 * 8, 2.0 * JPL_TEST_AU_KM);
-            JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
+            double mercury[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+            double emb[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+            double moon[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+            double sun[6] = {2.0 * JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+            JPL_TEST_CHECK(write_convenience_fixture(path, cases[c].denum, NULL, 0,
+                                                     mercury, 2, emb, 2, moon, 2, sun, 2) == 0);
             JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
             JPL_TEST_CHECK(jpl_private_get_header(e)->ephemeris_number == cases[c].denum);
             JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == cases[c].frame);
@@ -525,24 +509,13 @@ int main(void) {
      * the committed DE441 fixture behavior exercised below. */
     {
         const char *path = "jpl_test_convenience_ssb.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         static const jpl_date jd = {2451545.5, 0.0};
         jpl_state via0, via12, raw0, raw12;
         double lt0, lt12;
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 0, 3, 2, 1);   /* Mercury body coefficients */
-        test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
-        /* Sun pointer (idx 10) stays absent: the SSB shortcut must not
-         * evaluate Sun data. */
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES] = {0}; test_put_f64(cc, 1.0); test_put_f64(cc + 8, 2.0);
-          JPL_TEST_CHECK(fwrite(cc, 1, sizeof cc, f) == sizeof cc); }
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0); test_put_f64(rec + 1 * 8, 2451546.0);
-        test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
+        double mercury[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, mercury, 2,
+                                                 NULL, 0, NULL, 0, NULL, 0) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, 0, &via0) == JPL_OK);
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, &via12) == JPL_OK);
@@ -563,8 +536,6 @@ int main(void) {
      * RANGE/ARGUMENT before any dataset question. */
     {
         const char *path = "jpl_test_convenience_emb.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         static const jpl_date jd = {2451545.5, 0.0};
         static const jpl_date jd_bad = {2451540.0, 0.0};
@@ -572,16 +543,9 @@ int main(void) {
         jpl_state got = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
         jpl_state keep = {4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
         size_t k;
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 2, 3, 2, 1);   /* EMB leg only; Sun stays absent */
-        test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES] = {0}; test_put_f64(cc, 1.0); test_put_f64(cc + 8, 2.0);
-          JPL_TEST_CHECK(fwrite(cc, 1, sizeof cc, f) == sizeof cc); }
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0); test_put_f64(rec + 1 * 8, 2451546.0);
-        test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
+        double emb[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 emb, 2, NULL, 0, NULL, 0) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_EARTH_MOON_BARYCENTER, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
         for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&got, (int)k) == 0.0);
@@ -627,8 +591,6 @@ int main(void) {
     }
     {
         const char *path = "jpl_test_convenience_noemb.bin";
-        unsigned char rec[JPL_TEST_HEADER_BYTES] = {0};
-        FILE *f;
         jpl_ephemeris *e = NULL;
         static const jpl_date jd = {2451545.5, 0.0};
         static const jpl_date jd_bad = {2451540.0, 0.0};
@@ -636,16 +598,9 @@ int main(void) {
         jpl_state keep = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
         jpl_state core = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
         jpl_state core_keep = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-        test_mock_header(rec, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(rec, 10, 3, 2, 1);   /* Sun only; EMB/Moon absent */
-        test_put_ptr(rec, 12, 441, 0, 0); /* DENUM 441 -> ICRF */
-        f = fopen(path, "wb"); JPL_TEST_CHECK(f); JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
-        { unsigned char cc[JPL_TEST_HEADER_BYTES] = {0}; test_put_f64(cc, 1.0); test_put_f64(cc + 8, 2.0);
-          JPL_TEST_CHECK(fwrite(cc, 1, sizeof cc, f) == sizeof cc); }
-        memset(rec, 0, sizeof rec);
-        test_put_f64(rec + 0 * 8, 2451545.0); test_put_f64(rec + 1 * 8, 2451546.0);
-        test_put_f64(rec + 2 * 8, JPL_TEST_AU_KM);
-        JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
+        double sun[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 0.0, 0.0, 0.0};
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, NULL, 0, NULL, 0,
+                                                 NULL, 0, NULL, 0, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         /* Core: missing EMB dataset on a valid date is UNSUPPORTED. */
         JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_EARTH_MOON_BARYCENTER, 0, &core) == JPL_ERROR_UNSUPPORTED);
@@ -668,11 +623,6 @@ int main(void) {
     {
         const jpl_apparent_reference *ref = &jpl_apparent_references[0];
         const char *path = "jpl_test_convenience_oracle.bin";
-        enum { CDBL = 360, CBYTES = CDBL * 8 };
-        static unsigned char hdr[CBYTES];
-        static unsigned char con[CBYTES];
-        static unsigned char dat[CBYTES];
-        FILE *f;
         jpl_ephemeris *e = NULL;
         jpl_state conv;
         size_t k;
@@ -680,30 +630,17 @@ int main(void) {
         static const double V[3] = {0.005, -0.003, 0.001};
         static const double O[3] = {0.1, -0.2, 0.03};
         static const double W[3] = {0.002, 0.004, -0.001};
-        memset(hdr, 0, sizeof hdr);
-        memset(con, 0, sizeof con);
-        memset(dat, 0, sizeof dat);
-        test_mock_header(hdr, 2451545.0, 2451546.0, 1.0, 2);
-        test_put_ptr(hdr, 3, 3, 2, 1);
-        test_put_ptr(hdr, 2, 9, 2, 1);
-        test_put_ptr(hdr, 10, 15, 2, 1);
-        test_put_ptr(hdr, 12, 441, 0, 0);
-        test_put_f64(con, 1.0);
-        test_put_f64(con + 8, 2.0);
-        test_put_f64(dat + 0 * 8, 2451545.0);
-        test_put_f64(dat + 1 * 8, 2451546.0);
+        double mars[6];
+        double emb[6];
+        double sun[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
         for (k = 0; k < 3; ++k) {
-            test_put_f64(dat + (2 + k * 2) * 8, P[k] * JPL_TEST_AU_KM);
-            test_put_f64(dat + (3 + k * 2) * 8, (V[k] * 0.5) * JPL_TEST_AU_KM);
-            test_put_f64(dat + (8 + k * 2) * 8, O[k] * JPL_TEST_AU_KM);
-            test_put_f64(dat + (9 + k * 2) * 8, (W[k] * 0.5) * JPL_TEST_AU_KM);
+            mars[k * 2 + 0] = P[k] * JPL_TEST_AU_KM;
+            mars[k * 2 + 1] = (V[k] * 0.5) * JPL_TEST_AU_KM;
+            emb[k * 2 + 0] = O[k] * JPL_TEST_AU_KM;
+            emb[k * 2 + 1] = (W[k] * 0.5) * JPL_TEST_AU_KM;
         }
-        f = fopen(path, "wb");
-        JPL_TEST_CHECK(f != NULL);
-        JPL_TEST_CHECK(fwrite(hdr, 1, sizeof hdr, f) == sizeof hdr);
-        JPL_TEST_CHECK(fwrite(con, 1, sizeof con, f) == sizeof con);
-        JPL_TEST_CHECK(fwrite(dat, 1, sizeof dat, f) == sizeof dat);
-        JPL_TEST_CHECK(fclose(f) == 0);
+        JPL_TEST_CHECK(write_convenience_fixture(path, 441, mars, 2, NULL, 0,
+                                                 emb, 2, NULL, 0, sun, 2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_apparent_reference_count == 2);
         { jpl_date ref_tt = {ref->tt[0], ref->tt[1]};

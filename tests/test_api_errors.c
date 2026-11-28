@@ -10,6 +10,7 @@
 #include "jpl.h"
 #include "jpl_frames.h"
 #include "jpl_convenience.h"
+#include "jpl_fixture.h"
 #include "jpl_private.h"
 #include "jpl_testing.h"
 #include "jpl_test_util.h"
@@ -71,12 +72,11 @@ static jpl_status lighttime_with_budget(const jpl_ephemeris *ephemeris,
 
 int main(void) {
     const char *path = "jpl_test_api_errors.bin";
-    static unsigned char hdr[ERR_BYTES];
-    static double constants[ERR_DOUBLES];
-    static double records[2 * ERR_DOUBLES];
-    jpl_test_mock mock;
+    double constants[2] = {1.0, 2.0};
+    const double mars[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 2.0 * JPL_TEST_AU_KM, 0.0, 0.0};
+    jpl_fixture_series series;
+    jpl_fixture_spec spec;
     jpl_ephemeris *e = NULL;
-    size_t i;
     /* Linear mock near 8000016.5: record 0 holds x=1, record 1 holds x=2
      * so the low-part interval-side test distinguishes adjacent intervals. */
     static const jpl_date cov_start = {8000016.5, 0.0};
@@ -88,37 +88,29 @@ int main(void) {
     static const jpl_date inf_hi = {INFINITY, 0.0};
     static const jpl_date inf_lo = {2451545.0, -INFINITY};
 
-    memset(hdr, 0, sizeof hdr);
-    memcpy(hdr, "api errors", 10);
-    test_mock_header(hdr, 8000016.5, 8000018.5, 1.0, 2);
-    test_put_ptr(hdr, 3, 3, 1, 1); /* Mars one-coeff slots */
-    test_put_ptr(hdr, 12, 441, 0, 0);
-    for (i = 0; i < ERR_DOUBLES; ++i) constants[i] = 0.0;
-    constants[0] = 1.0;
-    constants[1] = 2.0;
-    for (i = 0; i < 2 * ERR_DOUBLES; ++i) records[i] = 0.0;
-    records[0 * ERR_DOUBLES + 0] = 8000016.5;
-    records[0 * ERR_DOUBLES + 1] = 8000017.5;
-    records[0 * ERR_DOUBLES + 2] = 1.0 * JPL_TEST_AU_KM;
-    records[1 * ERR_DOUBLES + 0] = 8000017.5;
-    records[1 * ERR_DOUBLES + 1] = 8000018.5;
-    records[1 * ERR_DOUBLES + 2] = 2.0 * JPL_TEST_AU_KM;
-    memset(&mock, 0, sizeof mock);
-    mock.record_doubles = ERR_DOUBLES;
-    mock.advertised_records = 2;
-    mock.denum = 441;
-    mock.constant_count = 2;
-    mock.start[0] = cov_start.hi;
-    mock.start[1] = cov_start.lo;
-    mock.end[0] = cov_end.hi;
-    mock.end[1] = cov_end.lo;
-    mock.step_days = 1.0;
-    mock.au_km = JPL_TEST_AU_KM;
-    mock.emrat = JPL_TEST_MASS_RATIO;
-    mock.header = hdr;
-    mock.constants = constants;
-    mock.records = records;
-    JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
+    memset(&series, 0, sizeof series);
+    series.slot = 3; /* Mars */
+    series.components = 3;
+    series.coefficients_per_component = 1;
+    series.subintervals = 1;
+    series.coefficients = mars;
+    memset(&spec, 0, sizeof spec);
+    spec.start[0] = cov_start.hi;
+    spec.start[1] = cov_start.lo;
+    spec.end[0] = cov_end.hi;
+    spec.end[1] = cov_end.lo;
+    spec.step_days = 1.0;
+    spec.denum = 441;
+    spec.astronomical_unit_km = JPL_TEST_AU_KM;
+    spec.earth_moon_mass_ratio = JPL_TEST_MASS_RATIO;
+    spec.record_doubles = ERR_DOUBLES;
+    spec.records = 2;
+    spec.constants = constants;
+    spec.constant_count = 2;
+    spec.series = &series;
+    spec.series_count = 1;
+    spec.title = "api errors";
+    JPL_TEST_CHECK(jpl_fixture_write(path, &spec) == 0);
     JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
 
     /* NULL dates and nonfinite parts report ARGUMENT. */

@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.12.1] - 2026-11-27
+
+### Fixed
+
+- Tests: the fixture builder now backs the full record-sized constants block and the optional trailing record with real allocations; migrated tests previously read past the constants allocation, which ASan/UBSan and clang-cl caught while MSVC tolerated it. The installed library is unchanged.
+
 ## [0.12.0] - 2026-11-27
 
 ### Added

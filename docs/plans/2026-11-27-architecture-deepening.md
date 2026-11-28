@@ -407,6 +407,8 @@ jpl_status jpl_schedule_subinterval(const jpl_record_span *span, size_t nsub,
 
 ## Step 8: HeaderAccess (candidate 8) - EIGHTH, GATED
 
+**Status:** implemented on `refactor/header-access`. Gate outcome: opaque accessors selected (binding public `Header` classes unchanged; C tests migrated through a private white-box hook). `jpl_header` is opaque, `jpl_get_header` is deleted, and all four bindings build from the accessor set. Verification: MSVC Debug/Release 51/51 default and 55/55 bindings, zero warnings; WSL GCC Debug 51/51 and WSL Clang 14 Debug 51/51; docs/license/install tests green. Version 0.12.0. ADR `docs/adr/0001-opaque-header-accessors.md` and migration doc recorded.
+
 **Rationale for position:** It is the only public-surface step and should not churn the core sequence. It runs after the private modules settle, with the binding drift net and docs stable.
 
 **Files:**
@@ -427,11 +429,11 @@ jpl_status jpl_schedule_subinterval(const jpl_record_span *span, size_t nsub,
 - Proceed with opaque accessors only if (1) all four bindings build their existing public `Header` classes from accessor calls without new native shims or public binding-surface changes, and (2) the C test migration is mechanical field-read replacement with no test-expectation rewrites.
 - Otherwise fall back to a versioned snapshot struct: keep `jpl_header` public, add `version`/`struct_size`, update the four mirrors, and check the version in each binding.
 
-- [ ] **Step 8.1: Add the accessors while `jpl_header` is still public;** migrate the four bindings to accessor calls; keep `jpl_get_header` temporarily.
-- [ ] **Step 8.2: Migrate the C tests to accessors;** delete the managed layout asserts once the accessor path is proven.
-- [ ] **Step 8.3: Go/no-go review;** choose opaque accessors or the versioned snapshot fallback.
-- [ ] **Step 8.4: Apply the chosen interface;** remove `jpl_get_header` and the public struct definition (or add the versioned fields); update `public_symbols.txt`, `api.dox`, docs, examples, and `bindings/CONTRACT.md`.
-- [ ] **Step 8.5: Write `docs/migration-header-access.md` and `docs/adr/0001-opaque-header-accessors.md`;** record the gate outcome and the fallback rationale.
+- [x] **Step 8.1: Add the accessors while `jpl_header` is still public;** migrate the four bindings to accessor calls; keep `jpl_get_header` temporarily.
+- [x] **Step 8.2: Migrate the C tests to accessors;** delete the managed layout asserts once the accessor path is proven.
+- [x] **Step 8.3: Go/no-go review;** choose opaque accessors or the versioned snapshot fallback.
+- [x] **Step 8.4: Apply the chosen interface;** remove `jpl_get_header` and the public struct definition (or add the versioned fields); update `public_symbols.txt`, `api.dox`, docs, examples, and `bindings/CONTRACT.md`.
+- [x] **Step 8.5: Write `docs/migration-header-access.md` and `docs/adr/0001-opaque-header-accessors.md`;** record the gate outcome and the fallback rationale.
 - [ ] **Step 8.6: Run the full matrix including bindings;** CHANGELOG bullet; version 0.12.0; merge and tag `v0.12.0`.**
 
 **Acceptance:** No binding mirrors the `jpl_header` field layout (accessor path) or the versioned snapshot is checked at runtime (fallback path); every public header field remains reachable through the documented accessors; `jpl_get_header` is gone or replaced per the gate; the C and binding test suites pin the same metadata values; 50+/50+ with bindings, docs clean, migration doc complete.

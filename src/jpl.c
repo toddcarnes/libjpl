@@ -1375,32 +1375,6 @@ jpl_status jpl_test_select_record(const jpl_ephemeris *e, const double jd[2],
 }
 #endif
 
-/* Body-code validation for state-taking APIs: target and center
- * combinations are rejected before date normalization, coverage, dataset
- * availability, record I/O, or body shortcuts. Invalid combinations return
- * JPL_ERROR_ARGUMENT regardless of date or file contents. Target 0 is
- * always invalid; center 0 is the SSB alias. */
-static int valid_state_target(int target) {
-    if (target == JPL_SSB) return 0;
-    if (target >= JPL_MERCURY && target <= JPL_EARTH_MOON_BARYCENTER) return 1;
-    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return 1;
-    return 0;
-}
-
-static int valid_state_center(int target, int center) {
-    if (center == JPL_SSB) return target != JPL_SSB;
-    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) return center == 0;
-    if (target == JPL_TT_TDB) return 0;
-    if (center < JPL_MERCURY || center > JPL_EARTH_MOON_BARYCENTER) return 0;
-    return valid_state_target(target);
-}
-
-static int valid_lighttime_body(int target, int center) {
-    if (target <= JPL_SSB || target > JPL_EARTH_MOON_BARYCENTER) return 0;
-    if (center < JPL_SSB || center > JPL_EARTH_MOON_BARYCENTER) return 0;
-    return 1;
-}
-
 /* Threaded evaluation state for one jpl_evaluate() call. Bundles what the
  * helpers used to pass as five-to-seven parameters each behind the single
  * evaluation seam: normalized epoch, verified record bounds, record index,
@@ -1575,10 +1549,10 @@ static void interp_publish_state(const interp_work *w, double state[6]) {
     memcpy(state, w->local_state, 6 * sizeof(double));
 }
 
-/* Entry gate (see jpl_private.h): validate → normalize → coverage, owned
+/* Entry gate (see jpl_private.h): validate ? normalize ? coverage, owned
  * once so all query prefixes report the same categories in the same order.
  * Coverage is checked on the epoch the data reads use; domain conversions
- * (TT→TDB) happen between prepare and coverage at the one call site that
+ * (TT?TDB) happen between prepare and coverage at the one call site that
  * needs them. */
 #ifdef LIBJPL_TESTING
 /* Entry gate run counter for the Step-3 one-gate-per-query pin. */
@@ -1669,66 +1643,75 @@ static jpl_status jpl_evaluate(const jpl_ephemeris *e, const jpl_verified_epoch 
 }
 
 static jpl_status barycentric_state(const jpl_ephemeris *e, const jpl_verified_epoch *epoch,
-                                    int target, double state[6]) {
-    double moon[6], local[6]; size_t i; jpl_status status;
+                                    const jpl_body_plan *plan, double state[6]) {
+    double moon[6], local[6];
+    size_t i;
+    jpl_status status;
     double divisor;
-    if (!e || !epoch || !state) return JPL_ERROR_ARGUMENT;
-    if (target == JPL_SOLAR_SYSTEM_BARYCENTER || target == JPL_SSB) { memset(state, 0, 6 * sizeof *state); return JPL_OK; }
-    /* Direct file slots cover Mercury..Sun except Earth (3, derived below)
-     * and the Moon (10, needs the EMB leg too). */
-    if (target >= JPL_MERCURY && target <= JPL_SUN && target != JPL_MOON && target != JPL_EARTH)
-        return jpl_evaluate(e, epoch, &e->header.pointers[target - 1], 3, state);
-    if (target != JPL_EARTH && target != JPL_MOON && target != JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
-    status = jpl_evaluate(e, epoch, &e->header.pointers[JPL_FILE_SLOT_EMB], 3, state);
-    if (status != JPL_OK) return status;
-    if (target == JPL_EARTH_MOON_BARYCENTER) return JPL_OK;
-    status = jpl_evaluate(e, epoch, &e->header.pointers[JPL_MOON - 1], 3, moon);
-    if (status != JPL_OK) return status;
-    /* Earth/Moon reconstruction in local storage: every accumulated and
-     * final state must be finite. The header EMRAT is validated at open,
-     * but re-check the divisor here so a mutated in-memory header cannot
-     * produce a silent Inf. */
-    divisor = 1.0 + e->header.earth_moon_mass_ratio;
-    if (!isfinite(divisor) || divisor == 0.0) return JPL_ERROR_FORMAT;
-    for (i = 0; i < 6; ++i) {
-        double leg = moon[i] / divisor;
-        if (!isfinite(leg)) return JPL_ERROR_NUMERIC;
-        local[i] = state[i] - leg;
-        if (!isfinite(local[i])) return JPL_ERROR_NUMERIC;
-    }
-    if (target == JPL_MOON) {
+    if (!e || !epoch || !plan || !state) return JPL_ERROR_ARGUMENT;
+    switch (plan->kind) {
+    case JPL_BODY_ZERO:
+        memset(state, 0, 6 * sizeof *state);
+        return JPL_OK;
+    case JPL_BODY_DIRECT:
+    case JPL_BODY_ANGULAR:
+        return jpl_evaluate(e, epoch, plan->primary, plan->components, state);
+    case JPL_BODY_EMB_MOON:
+        status = jpl_evaluate(e, epoch, plan->primary, plan->components, state);
+        if (status != JPL_OK) return status;
+        if (plan->target == JPL_EARTH_MOON_BARYCENTER) return JPL_OK;
+        status = jpl_evaluate(e, epoch, plan->secondary, plan->components, moon);
+        if (status != JPL_OK) return status;
+        /* Earth/Moon reconstruction in local storage: every accumulated and
+         * final state must be finite. The header EMRAT is validated at open,
+         * but re-check the divisor here so a mutated in-memory header cannot
+         * produce a silent Inf. */
+        divisor = 1.0 + e->header.earth_moon_mass_ratio;
+        if (!isfinite(divisor) || divisor == 0.0) return JPL_ERROR_FORMAT;
         for (i = 0; i < 6; ++i) {
-            local[i] += moon[i];
+            double leg = moon[i] / divisor;
+            if (!isfinite(leg)) return JPL_ERROR_NUMERIC;
+            local[i] = state[i] - leg;
             if (!isfinite(local[i])) return JPL_ERROR_NUMERIC;
         }
+        if (plan->target == JPL_MOON) {
+            for (i = 0; i < 6; ++i) {
+                local[i] += moon[i];
+                if (!isfinite(local[i])) return JPL_ERROR_NUMERIC;
+            }
+        }
+        memcpy(state, local, sizeof local);
+        return JPL_OK;
     }
-    memcpy(state, local, sizeof local);
-    return JPL_OK;
+    return JPL_ERROR_ARGUMENT;
 }
 
-/* State composition from a verified epoch. Body-code validity is checked
- * by the caller; this helper owns only the dataset/derivation order. */
+/* State composition from a verified epoch. BodyCatalog owns validity and the
+ * execution plan; this helper owns only the order of composition. */
 static jpl_status state_from_verified(const jpl_ephemeris *e, const jpl_verified_epoch *epoch,
                                       int target, int center, jpl_state *state) {
+    jpl_body_plan plan, center_plan;
     double target_state[6], center_state[6], local[6];
     size_t i;
     jpl_status status;
-    if (target == JPL_NUTATIONS || target == JPL_LIBRATIONS) {
+    if (!e || !epoch || !state) return JPL_ERROR_ARGUMENT;
+    status = jpl_body_plan_for(JPL_QUERY_STATE, &e->header, target, center, &plan);
+    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
+    if (plan.kind == JPL_BODY_ANGULAR) {
         /* Angular getters route through transactional local output too:
          * interpolate publishes atomically, so a bad second/third
          * component cannot leave partial caller output. */
-        status = jpl_evaluate(e, epoch,
-                              target == JPL_NUTATIONS ? &e->header.pointers[JPL_TARGET_COUNT - 1] : &e->header.libration_pointer,
-                              target == JPL_NUTATIONS ? 2 : 3, local);
+        status = jpl_evaluate(e, epoch, plan.primary, plan.components, local);
         if (status != JPL_OK) return status;
         jpl_array_to_state(local, state);
         return JPL_OK;
     }
-    if (target == JPL_TT_TDB) return JPL_ERROR_ARGUMENT;
-    status = barycentric_state(e, epoch, target, target_state);
+    status = barycentric_state(e, epoch, &plan, target_state);
     if (status != JPL_OK) return status;
-    if (center == 0) memset(center_state, 0, sizeof center_state);
-    else { status = barycentric_state(e, epoch, center, center_state); if (status != JPL_OK) return status; }
+    status = jpl_body_lookup(&e->header, center, &center_plan);
+    if (status != JPL_OK) return status;
+    status = barycentric_state(e, epoch, &center_plan, center_state);
+    if (status != JPL_OK) return status;
     /* Relative state plus modern-AU scaling in local storage: validate
      * every accumulated/scaled component before publishing. */
     for (i = 0; i < 6; ++i) {
@@ -1752,17 +1735,17 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target,
     double jd_arr[2];
     jpl_entry_ctx entry;
     jpl_verified_epoch epoch;
+    jpl_body_plan plan;
     jpl_status status;
     if (!e || !state || !jd) return JPL_ERROR_ARGUMENT;
 #ifdef LIBJPL_TESTING
     ++jpl_test_get_state_calls;
 #endif
     jpl_date_to_pair(jd, jd_arr);
-    /* Target zero is invalid; center zero is the SSB alias. Validate
-     * target/center combinations before date normalization or data access:
-     * invalid codes report ARGUMENT regardless of date or file contents.
-     * Do not call state_from_verified() with an invalid code. */
-    if (!valid_state_target(target) || !valid_state_center(target, center)) return JPL_ERROR_ARGUMENT;
+    /* BodyCatalog validates target/center before date normalization or data
+     * access, so invalid codes report ARGUMENT regardless of the date. */
+    status = jpl_body_plan_for(JPL_QUERY_STATE, &e->header, target, center, &plan);
+    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
     status = jpl_entry_prepare(e, jd_arr, &entry);
     if (status != JPL_OK) return status;
     status = jpl_entry_coverage(&entry, entry.norm, &epoch);
@@ -1772,8 +1755,9 @@ jpl_status jpl_get_state(const jpl_ephemeris *e, const jpl_date *jd, int target,
 
 jpl_status jpl_get_state_verified(const jpl_ephemeris *e, const jpl_verified_epoch *epoch,
                                   int target, int center, jpl_state *state) {
+    jpl_body_plan plan;
     if (!e || !epoch || !state) return JPL_ERROR_ARGUMENT;
-    if (!valid_state_target(target) || !valid_state_center(target, center))
+    if (jpl_body_plan_for(JPL_QUERY_STATE, &e->header, target, center, &plan) != JPL_OK)
         return JPL_ERROR_ARGUMENT;
     return state_from_verified(e, epoch, target, center, state);
 }
@@ -1792,7 +1776,7 @@ jpl_status jpl_get_state_verified(const jpl_ephemeris *e, const jpl_verified_epo
  * satisfy the documented subluminal-motion contract; a superluminal file
  * state is nonphysical and reported as FORMAT, never used to claim
  * bracket uniqueness. */
-static jpl_status lighttime_evaluate(const jpl_ephemeris *e, int target,
+static jpl_status lighttime_evaluate(const jpl_ephemeris *e, const jpl_body_plan *target_plan,
                                      const double receive[2], const double emission[2],
                                      const double observer_km[6],
                                      const jpl_entry_ctx *coverage,
@@ -1803,7 +1787,7 @@ static jpl_status lighttime_evaluate(const jpl_ephemeris *e, int target,
     size_t k;
     jpl_status st = jpl_entry_coverage(coverage, emission, &emission_epoch);
     if (st != JPL_OK) return st;
-    st = barycentric_state(e, &emission_epoch, target, tgt_km);
+    st = barycentric_state(e, &emission_epoch, target_plan, tgt_km);
     if (st != JPL_OK) return st;
     /* Subluminal contract on the evaluated barycentric target velocity.
      * Barycentric legs are raw file units per day (coefficients in km,
@@ -1841,11 +1825,11 @@ static jpl_status lighttime_evaluate(const jpl_ephemeris *e, int target,
  * Evaluates lighttime_evaluate at (norm, norm).
  * Returns JPL_OK with *delay and *residual set, or propagates error.
  * Caller must check residual for convergence. */
-static jpl_status lt_initial_estimate(const jpl_ephemeris *e, int target,
+static jpl_status lt_initial_estimate(const jpl_ephemeris *e, const jpl_body_plan *target_plan,
                                       const double norm[2], const double observer_km[6],
                                       const jpl_entry_ctx *coverage,
                                       double *delay, double *residual, double rel[6]) {
-    return lighttime_evaluate(e, target, norm, norm, observer_km, coverage,
+    return lighttime_evaluate(e, target_plan, norm, norm, observer_km, coverage,
                               rel, delay, residual);
 }
 
@@ -1855,7 +1839,7 @@ static jpl_status lt_initial_estimate(const jpl_ephemeris *e, int target,
  * bracket), JPL_ERROR_CONVERGENCE if budget exhausted without settling
  * (caller falls through to bracket), or propagates other errors from
  * lighttime_evaluate. */
-static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
+static jpl_status lt_fast_iterate(const jpl_ephemeris *e, const jpl_body_plan *target_plan,
                                   const double norm[2], const double observer_km[6],
                                   const jpl_entry_ctx *coverage,
                                   int fast_budget, double *delay, double *residual,
@@ -1867,7 +1851,7 @@ static jpl_status lt_fast_iterate(const jpl_ephemeris *e, int target,
     for (i = 0; i < fast_budget; ++i) {
         st = jpl_date_add_days(norm, -lt, emission);
         if (st != JPL_OK) break;
-        st = lighttime_evaluate(e, target, norm, emission, observer_km, coverage,
+        st = lighttime_evaluate(e, target_plan, norm, emission, observer_km, coverage,
                                 rel, &lt, residual);
         if (st == JPL_ERROR_RANGE) break;
         if (st != JPL_OK) return st;
@@ -1943,29 +1927,33 @@ static jpl_status lighttime_solve_verified(const jpl_ephemeris *e,
     double observer_km[6], rel[6], candidate[6], emission[2];
     double lt = 0.0, residual = 0.0;
     jpl_lighttime_solution solution;
+    jpl_body_plan target_plan, center_plan;
     jpl_status st = JPL_OK;
     jpl_entry_ctx coverage;
     int s;
     if (!e || !epoch || !out) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
-    /* Nutations/librations are angles with no light-time meaning; reject.
-     * Bodies 1-13 plus center 0-13 only; target 0 is consistently invalid
-     * here, matching jpl_get_state. */
-    if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
+    /* BodyCatalog validates the pair; nutations/librations are angles with
+     * no light-time meaning and are rejected there. */
+    if (jpl_body_plan_for(JPL_QUERY_LIGHTTIME, &e->header, target, center,
+                          &target_plan) != JPL_OK)
+        return JPL_ERROR_ARGUMENT;
+    if (jpl_body_lookup(&e->header, center, &center_plan) != JPL_OK)
+        return JPL_ERROR_ARGUMENT;
     memcpy(norm, epoch->epoch, sizeof norm);
     memcpy(cov_start, epoch->cov_start, sizeof cov_start);
     memset(&coverage, 0, sizeof coverage);
     memcpy(coverage.cov_start, epoch->cov_start, sizeof coverage.cov_start);
     memcpy(coverage.cov_end, epoch->cov_end, sizeof coverage.cov_end);
 /* Observer barycentric state fixed at reception (raw file units). */
-    if (center == JPL_SSB) memset(observer_km, 0, sizeof observer_km);
-    else { st = barycentric_state(e, epoch, center, observer_km); if (st != JPL_OK) return st; }
+    st = barycentric_state(e, epoch, &center_plan, observer_km);
+    if (st != JPL_OK) return st;
     /* Initial estimate: geometric delay at reception. A zero residual
      * here is an exact root (e.g. zero range); accept it regardless of
      * remaining budget. FORMAT/NUMERIC at the reception epoch propagates
      * immediately: the equation residual is undefined without a validated
      * target state, and falling through would invent a bracket. */
-st = lt_initial_estimate(e, target, norm, observer_km, &coverage, &lt, &residual, rel);
+st = lt_initial_estimate(e, &target_plan, norm, observer_km, &coverage, &lt, &residual, rel);
     if (st != JPL_OK) return st;
     if (fabs(residual) <= JPL_LIGHTTIME_TOL_DAYS) {
         memcpy(emission, norm, sizeof emission);
@@ -1984,7 +1972,7 @@ st = lt_initial_estimate(e, target, norm, observer_km, &coverage, &lt, &residual
      * before the bracket so ordinary interior roots converge without
      * bisection. The loop seeds prev from the validated initial delay
      * so an immediate settle is detected. */
-    st = lt_fast_iterate(e, target, norm, observer_km, &coverage, fast_budget, &lt, &residual, rel, emission);
+    st = lt_fast_iterate(e, &target_plan, norm, observer_km, &coverage, fast_budget, &lt, &residual, rel, emission);
     if (st == JPL_OK) {
         st = lt_build_solution(rel, observer_km, lt, emission, &solution);
         if (st != JPL_OK) return st;
@@ -1999,7 +1987,7 @@ st = lt_initial_estimate(e, target, norm, observer_km, &coverage, &lt, &residual
         double lo_delay, hi_delay, mid_delay, lo_res, hi_res, mid_res;
         lo[0] = cov_start[0]; lo[1] = cov_start[1];
         hi[0] = norm[0]; hi[1] = norm[1];
-        st = lighttime_evaluate(e, target, norm, lo, observer_km, &coverage, candidate, &lo_delay, &lo_res);
+        st = lighttime_evaluate(e, &target_plan, norm, lo, observer_km, &coverage, candidate, &lo_delay, &lo_res);
         if (st != JPL_OK) return st;
         if (fabs(lo_res) <= JPL_LIGHTTIME_TOL_DAYS) {
             st = lt_build_solution(candidate, observer_km, lo_delay, lo, &solution);
@@ -2008,7 +1996,7 @@ st = lt_initial_estimate(e, target, norm, observer_km, &coverage, &lt, &residual
             return JPL_OK;
         }
         if (lo_res < -JPL_LIGHTTIME_TOL_DAYS) return JPL_ERROR_RANGE;
-        st = lighttime_evaluate(e, target, norm, hi, observer_km, &coverage, candidate, &hi_delay, &hi_res);
+        st = lighttime_evaluate(e, &target_plan, norm, hi, observer_km, &coverage, candidate, &hi_delay, &hi_res);
         if (st != JPL_OK) return st;
         if (fabs(hi_res) <= JPL_LIGHTTIME_TOL_DAYS) {
             st = lt_build_solution(candidate, observer_km, hi_delay, hi, &solution);
@@ -2023,7 +2011,7 @@ st = lt_initial_estimate(e, target, norm, observer_km, &coverage, &lt, &residual
             if (st != JPL_OK) return st;
             if (jpl_date_compare(mid, lo) == 0 || jpl_date_compare(mid, hi) == 0)
                 return JPL_ERROR_CONVERGENCE;
-            st = lighttime_evaluate(e, target, norm, mid, observer_km, &coverage, candidate, &mid_delay, &mid_res);
+            st = lighttime_evaluate(e, &target_plan, norm, mid, observer_km, &coverage, candidate, &mid_delay, &mid_res);
             if (st != JPL_OK) return st;
             /* residual corresponds to the state evaluated at this candidate emission. */
             if (!isfinite(mid_res)) return JPL_ERROR_NUMERIC;
@@ -2059,7 +2047,6 @@ static jpl_status lighttime_solve(const jpl_ephemeris *e, const double jd[2],
     if (!e || !jd || !out) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd[0]) || !isfinite(jd[1])) return JPL_ERROR_ARGUMENT;
     if (fast_budget < 0 || safe_budget < 0) return JPL_ERROR_ARGUMENT;
-    if (!valid_lighttime_body(target, center)) return JPL_ERROR_ARGUMENT;
     st = jpl_entry_prepare(e, jd, &entry);
     if (st != JPL_OK) return st;
     st = jpl_entry_coverage(&entry, entry.norm, &epoch);

@@ -137,16 +137,16 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     jpl_date tt, tdb;
     jpl_verified_epoch tdb_epoch;
     jpl_state tmp;
+    jpl_body_plan plan;
+    const jpl_header *header;
     int eff_center;
     jpl_status s;
     if(!e||!st||!jd_tt) return JPL_ERROR_ARGUMENT;
     if(!isfinite(jd_tt->hi)||!isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
-    /* Targets 1-11 (Mercury..Sun, incl. Earth 3) or EMB 13. Target zero
-     * is invalid; SSB 12 and the nutation (14) /
-     * libration (15) sensitivities plus out-of-range codes are rejected. */
-    if(!((planet>=1&&planet<=11)||planet==JPL_EARTH_MOON_BARYCENTER)) return JPL_ERROR_ARGUMENT;
-    /* Centers: 0 (SSB) or bodies 1-13. Reject negatives and anything above 13. */
-    if(center<0||center>JPL_EARTH_MOON_BARYCENTER) return JPL_ERROR_ARGUMENT;
+    header = jpl_get_header(e);
+    if (!header) return JPL_ERROR_ARGUMENT;
+    if (jpl_body_plan_for(JPL_QUERY_PLANET, header, planet, center, &plan) != JPL_OK)
+        return JPL_ERROR_ARGUMENT;
     /* Coverage precedes frame gating even for identical-body calls. */
     s = convenience_epoch(e, jd_tt, &tt, &tdb, &tdb_epoch);
     if (s != JPL_OK) return s;
@@ -264,6 +264,8 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     jpl_state state, sun_to_target;
     jpl_state aberrated;
     jpl_direction to_sun, bent;
+    jpl_body_plan plan;
+    const jpl_header *header;
     double pos[3];
     double distance, sun_distance, longitude, latitude;
     double projected_radial = 0.0;
@@ -271,7 +273,9 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     jpl_status s;
     if (!e || !jd_tt || !position) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
-    if (target < JPL_MERCURY || target > JPL_SUN || target == JPL_EARTH)
+    header = jpl_get_header(e);
+    if (!header) return JPL_ERROR_ARGUMENT;
+    if (jpl_body_plan_for(JPL_QUERY_APPARENT, header, target, JPL_EARTH, &plan) != JPL_OK)
         return JPL_ERROR_ARGUMENT;
     s = convenience_epoch(e, jd_tt, &tt, &tdb, &tdb_epoch);
     if (s != JPL_OK) return s;

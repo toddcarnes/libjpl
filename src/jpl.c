@@ -71,7 +71,6 @@ _Static_assert((size_t)JPL_TT_TDB_TAIL_BASE + 24 > (size_t)CLASSIC_HEADER_BYTES,
  * here to keep one definition each (sole forward-declaration block). */
 static uint32_t read_u32(const unsigned char *p, jpl_byte_order order);
 static double read_f64(const unsigned char *p, jpl_byte_order order);
-static int seek_to(FILE *file, size_t offset);
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out);
 static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, size_t size,
                                 jpl_byte_order order);
@@ -113,15 +112,9 @@ struct jpl_ephemeris {
 #endif
     } mmap;
 
-    /* Single-record cache: last record_index + its decoded doubles. Used by
-     * FILE-path reads only (mmap reads bypass it to stay lock-free); valid
-     * only when cache_valid != 0. Clones always start cold (calloc) so no
-     * cross-handle state is shared. */
-    struct {
-        double *record;
-        size_t index;
-        int valid;
-    } cache;
+    /* RecordStore: source selection, decoded record access, and the
+     * per-handle single-record cache. Clones start cold (calloc). */
+    jpl_record_store store;
 
     /* Copy of path for plain FILE handles so clones can fopen independently.
      * NULL for mmap handles (clones share the mapping instead). */
@@ -366,24 +359,6 @@ static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset
     return source->read(source->context, offset, out, count);
 }
 #endif
-
-static jpl_status mmap_read_bytes(void *context, size_t offset,
-                                  unsigned char *out, size_t count) {
-    const jpl_mmap_source *source = (const jpl_mmap_source *)context;
-    if (!source || !source->base || !out) return JPL_ERROR_ARGUMENT;
-    if (offset > source->size || count > source->size - offset) return JPL_ERROR_IO;
-    memcpy(out, source->base + offset, count);
-    return JPL_OK;
-}
-
-static jpl_status file_read_bytes(void *context, size_t offset,
-                                  unsigned char *out, size_t count) {
-    const jpl_file_source *source = (const jpl_file_source *)context;
-    if (!source || !source->file || !out) return JPL_ERROR_ARGUMENT;
-    if (offset > source->size || count > source->size - offset) return JPL_ERROR_IO;
-    if (seek_to(source->file, offset) != 0) return JPL_ERROR_IO;
-    return fread(out, 1, count, source->file) == count ? JPL_OK : JPL_ERROR_IO;
-}
 
 /* Scheduled data-record endpoint as a normalized two-part date: the
  * advertised coverage start pair plus index*step, computed with the private
@@ -840,16 +815,6 @@ static double read_f64(const unsigned char *p, jpl_byte_order order) {
  * side of the present, so do not restrict a Julian date to modern eras. */
 static int plausible_date(double value) { return value > JPL_PLAUSIBLE_JD_MIN && value < JPL_PLAUSIBLE_JD_MAX; }
 
-static int seek_to(FILE *file, size_t offset) {
-    /* On 64-bit size_t the offset can exceed the file-offset range;
-     * on 32-bit size_t every value fits, so no comparison is needed
-     * (and comparing would be vacuous). */
-#if SIZE_MAX > INT64_MAX
-    if ((uintmax_t)offset > (uintmax_t)INT64_MAX) return -1;
-#endif
-    return JPL_FSEEK(file, (jpl_file_offset)offset, SEEK_SET);
-}
-
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out) {
     size_t width;
     if (record_doubles == 0 || record_doubles > SIZE_MAX / 8) return -1;
@@ -972,47 +937,12 @@ static jpl_reference_frame classify_frame(int denum) {
     }
 }
 
-/* Read doubles through the handle's byte source: the backend is a
- * construction-time choice, so no caller names a source kind. The
- * adapters perform the same bounds-checked transport the split readers
- * did; byte order stays a read_doubles concern. */
-static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset, double *values, size_t count) {
-    jpl_byte_source source;
-    union { jpl_file_source file; jpl_mmap_source mmap; } storage;
-    unsigned char *bytes;
-    size_t check, i;
-    jpl_status status;
+/* Raw double reads through RecordStore: source selection, bounds checking,
+ * byte order, and the single-record cache are construction-time concerns. */
+static jpl_status read_doubles(const jpl_ephemeris *ephemeris, size_t offset,
+                               double *values, size_t count) {
     if (!ephemeris || !values) return JPL_ERROR_ARGUMENT;
-    /* Zero-count raw reads succeed without backend access: no seek,
-     * mapping-base evaluation, malloc(0), read, or copy. Argument and
-     * handle validation above still applies. */
-    if (count == 0) return JPL_OK;
-    if (count > SIZE_MAX / 8) return JPL_ERROR_IO;
-    if (ephemeris->is_mmap) {
-        if (!ephemeris->mmap.base) return JPL_ERROR_IO;
-        storage.mmap.base = ephemeris->mmap.base;
-        storage.mmap.size = ephemeris->mmap.size;
-        source.context = &storage.mmap;
-        source.size = ephemeris->mmap.size;
-        source.read = mmap_read_bytes;
-    } else {
-        if (!ephemeris->file) return JPL_ERROR_IO;
-        storage.file.file = ephemeris->file;
-        storage.file.size = ephemeris->file_size;
-        source.context = &storage.file;
-        source.size = ephemeris->file_size;
-        source.read = file_read_bytes;
-    }
-    check = count * 8;
-    if (ephemeris->header.byte_order == native_order()) {
-        status = source.read(source.context, offset, (unsigned char *)values, check);
-        return status;
-    }
-    bytes = malloc(check); if (!bytes) return JPL_ERROR_MEMORY;
-    status = source.read(source.context, offset, bytes, check);
-    if (status != JPL_OK) { free(bytes); return status; }
-    for (i = 0; i < count; ++i) values[i] = read_f64(bytes + i * 8, ephemeris->header.byte_order);
-    free(bytes); return JPL_OK;
+    return jpl_store_read_doubles(&ephemeris->store, offset, values, count);
 }
 
 const char *jpl_status_string(jpl_status status) { static const char *const text[] = { "success", "invalid argument", "I/O error", "invalid JPL DE format", "out of range", "out of memory", "unsupported dataset or frame", "solution did not converge", "unrepresentable numeric result" }; return status >= JPL_OK && status <= JPL_ERROR_NUMERIC ? text[status] : "unknown error"; }
@@ -1069,7 +999,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     fsource.size = file_size;
     source.context = &fsource;
     source.size = file_size;
-    source.read = file_read_bytes;
+    source.read = jpl_file_read_bytes;
     status = validate_open_layout(&source, &header, &record_count, &covered_record_count);
     if (status != JPL_OK) { jpl_close(e); return status; }
     e->is_mmap = 0;
@@ -1077,6 +1007,8 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e->file_size = file_size;
     e->record_count = record_count;
     e->covered_record_count = covered_record_count;
+    status = jpl_store_init_file(&e->store, e->file, file_size, header.byte_order);
+    if (status != JPL_OK) { jpl_close(e); return status; }
     *out = e; return JPL_OK;
 }
 
@@ -1085,19 +1017,19 @@ void jpl_close(jpl_ephemeris *e) {
     if (!e->refcount) { /* Partially constructed handle: best-effort release. */
         if (e->file) fclose(e->file);
         free(e->path);
-        free(e->cache.record);
+        free(e->store.cache.record);
         free(e);
         return;
     }
     /* refcount_dec returns the remaining count; siblings keep the mapping.
      * Each handle frees its own cache_record: the cache is per-handle, so
      * a closing sibling must not orphan its record buffer. */
-    if (refcount_dec(e->refcount) > 0) { free(e->cache.record); free(e); return; }
+    if (refcount_dec(e->refcount) > 0) { free(e->store.cache.record); free(e); return; }
     if (e->is_mmap) jpl_unmap_handle(e);
     else if (e->file) fclose(e->file);
     free(e->refcount);
     free(e->path);
-    free(e->cache.record);
+    free(e->store.cache.record);
     free(e);
 }
 
@@ -1204,13 +1136,15 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
     msource.size = file_size;
     source.context = &msource;
     source.size = file_size;
-    source.read = mmap_read_bytes;
+    source.read = jpl_mmap_read_bytes;
     status = validate_open_layout(&source, &header, &record_count, &covered_record_count);
     if (status != JPL_OK) { jpl_close(e); return status; }
     e->header = header;
     e->file_size = file_size;
     e->record_count = record_count;
     e->covered_record_count = covered_record_count;
+    status = jpl_store_init_mmap(&e->store, e->mmap.base, file_size, header.byte_order);
+    if (status != JPL_OK) { jpl_close(e); return status; }
     *out = e;
     return JPL_OK;
 }
@@ -1234,6 +1168,12 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
          * which stay valid through the shared refcount). */
         c->mmap = ephem->mmap;
         refcount_inc(c->refcount);
+        if (jpl_store_init_mmap(&c->store, c->mmap.base, c->mmap.size,
+                                ephem->header.byte_order) != JPL_OK) {
+            refcount_dec(c->refcount);
+            free(c);
+            return JPL_ERROR_ARGUMENT;
+        }
     } else {
         if (!ephem->path) { free(c); return JPL_ERROR_ARGUMENT; }
         c->refcount = malloc(sizeof *c->refcount);
@@ -1255,7 +1195,13 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
         c->file_size = ephem->file_size;
         c->record_count = ephem->record_count;
         c->covered_record_count = ephem->covered_record_count;
-        /* Cold start: calloc zeroed cache_valid, so this clone never reads
+        if (jpl_store_init_file(&c->store, c->file, c->file_size,
+                                ephem->header.byte_order) != JPL_OK) {
+            jpl_close(c);
+            *out_clone = NULL;
+            return JPL_ERROR_ARGUMENT;
+        }
+        /* Cold start: the store cache is zeroed, so this clone never reads
          * the source handle's cached record. */
     }
     *out_clone = c;
@@ -1287,13 +1233,7 @@ jpl_status jpl_get_constant_name(const jpl_ephemeris *e, size_t index,
         e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_IO;
     record_bytes = e->header.record_double_count * 8;
     if (offset > record_bytes || JPL_CONSTANT_NAME_LENGTH > record_bytes - offset) return JPL_ERROR_IO;
-    if (e->is_mmap) {
-        jpl_mmap_source source = {e->mmap.base, e->mmap.size};
-        status = mmap_read_bytes(&source, offset, raw, sizeof raw);
-    } else {
-        jpl_file_source source = {e->file, e->file_size};
-        status = file_read_bytes(&source, offset, raw, sizeof raw);
-    }
+    status = jpl_store_read_raw(&e->store, offset, raw, sizeof raw);
     if (status != JPL_OK) return status;
     copy_text(name, raw, sizeof raw);
     return JPL_OK;
@@ -1487,8 +1427,8 @@ typedef struct interp_work {
     double file_start[2];
     double file_end[2];
     size_t record_index;
-    double *record;
-    int cached;
+    const double *record;
+    jpl_record_view view;
     size_t subinterval;
     double sub_origin[2];
     double normalized;
@@ -1496,27 +1436,16 @@ typedef struct interp_work {
     double local_state[6];
 } interp_work;
 
-/* Read a data record with the single-record cache (FILE path only).
- * Allocates w->record (jpl_evaluate frees it); sets w->cached to indicate
- * whether the caller hit the cache (so the cache should be refreshed on
- * success). The cache is consulted and refreshed here, matching the original
- * jpl_evaluate() cache semantics. */
+/* Borrow the record through RecordStore. The view is valid until the next
+ * store call on the handle; jpl_evaluate releases it after publishing. */
 static jpl_status interp_read_record_cached(const jpl_ephemeris *e, interp_work *w) {
-    int use_cache, was_cached;
+    jpl_status status;
     if (!e || !w) return JPL_ERROR_ARGUMENT;
-    if (e->header.record_double_count > SIZE_MAX / 8) return JPL_ERROR_MEMORY;
-    w->record = malloc(e->header.record_double_count * sizeof *w->record);
-    if (!w->record) return JPL_ERROR_MEMORY;
-    use_cache = !e->is_mmap;
-    was_cached = use_cache && e->cache.valid && e->cache.record && e->cache.index == w->record_index;
-    if (was_cached) {
-        memcpy(w->record, e->cache.record, e->header.record_double_count * sizeof *w->record);
-        w->cached = 1;
-    } else {
-        jpl_status status = jpl_read_record(e, w->record_index, w->record, e->header.record_double_count);
-        if (status != JPL_OK) { free(w->record); w->record = NULL; return status; }
-        w->cached = 0;
-    }
+    status = jpl_store_record((jpl_record_store *)&e->store,
+                              e->header.record_double_count,
+                              w->record_index, &w->view);
+    if (status != JPL_OK) return status;
+    w->record = w->view.values;
     return JPL_OK;
 }
 
@@ -1654,25 +1583,10 @@ static jpl_status interp_chebyshev_evaluate(const jpl_ephemeris *e, const jpl_po
     return JPL_OK;
 }
 
-/* Copy computed locals to the caller's output and refresh the single-record
- * cache on the FILE path only. Best-effort cache refresh: a failed cache
- * malloc does not discard good state. Caller frees w->record after this. */
-static void interp_publish_state(const jpl_ephemeris *e, const interp_work *w, double state[6]) {
-    int use_cache;
+/* Copy computed locals to the caller's output. The store already owns the
+ * record cache; publishing is a pure copy of the transactional locals. */
+static void interp_publish_state(const interp_work *w, double state[6]) {
     memcpy(state, w->local_state, 6 * sizeof(double));
-    /* Refresh the single-record cache only on the FILE path, and only now
-     * that interpolation succeeded. Best-effort: a failed cache malloc
-     * must not discard good state. On failure paths above the function
-     * returns early, so the prior entry is never invalidated by a miss. */
-    use_cache = !e->is_mmap;
-    if (!use_cache || w->cached) return;
-    if (!((jpl_ephemeris *)e)->cache.record) {
-        ((jpl_ephemeris *)e)->cache.record = malloc(e->header.record_double_count * sizeof *w->record);
-        if (!((jpl_ephemeris *)e)->cache.record) return;
-    }
-    memcpy(((jpl_ephemeris *)e)->cache.record, w->record, e->header.record_double_count * sizeof *w->record);
-    ((jpl_ephemeris *)e)->cache.index = w->record_index;
-    ((jpl_ephemeris *)e)->cache.valid = 1;
 }
 
 /* Entry gate (see jpl_private.h): validate → normalize → coverage, owned
@@ -1753,18 +1667,18 @@ static jpl_status jpl_evaluate(const jpl_ephemeris *e, const jpl_verified_epoch 
     status = interp_read_record_cached(e, &w);
     if (status != JPL_OK) return status;
     status = interp_verify_record_bounds(&w);
-    if (status != JPL_OK) { free(w.record); return status; }
+    if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
     /* The scalar span, subinterval rate, and Chebyshev argument are nearby
      * durations obtained after compensated date subtraction, not full
      * Julian epochs. The candidate subinterval is verified against
      * two-part boundaries below; invalid record spans report FORMAT. */
     nsub = (size_t)pointer->subintervals;
     status = interp_find_subinterval(&w, nsub);
-    if (status != JPL_OK) { free(w.record); return status; }
+    if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
     status = interp_chebyshev_evaluate(e, pointer, &w, components);
-    if (status != JPL_OK) { free(w.record); return status; }
-    interp_publish_state(e, &w, state);
-    free(w.record);
+    if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
+    interp_publish_state(&w, state);
+    jpl_record_view_release(&w.view);
     return JPL_OK;
 }
 

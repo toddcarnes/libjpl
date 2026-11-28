@@ -144,7 +144,7 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ## Step 2: FixtureBuilder (candidate 4) — SECOND
 
-**Status:** foundation landed on `refactor/fixture-builder`. The builder and its LE/BE self-test are in place; `test_threads`, the `test_mmap` identity probes, the `test_lighttime` linear mocks, and the `test_numeric` polynomial/oracle mocks now declare bodies and series. The remaining behavior-test migrations (`test_convenience`, normal TT-TDB cases, `test_api_errors`, `make_validator_data`) are tracked as follow-up commits and do not block Step 3; parser/core/large-file tests stay raw by design.
+**Status:** completed on `refactor/fixture-migrations`. The builder and its LE/BE self-test are in place; `test_threads`, the `test_mmap` identity probes, `test_lighttime` linear mocks, `test_numeric` polynomial/oracle mocks, all `test_convenience` behavior mocks, the normal and policy TT-TDB mocks, the `test_api_errors` valid baseline, and `make_validator_data` now declare bodies and series. Raw construction remains only where the bytes are the subject: parser/layout negatives, large-file geometry, fault-injection corruption, boundary/overflow T15 cases, and deliberate NaN/truncation corpora.
 
 **Rationale for position:** Test-only, behavior-neutral, and it makes the remaining six steps cheaper to test. Landing it second means the core surgery runs on the new harness instead of migrating tests later.
 
@@ -162,9 +162,9 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 - [x] **Step 2.1: Add the builder and a self-test** (builder -> bytes -> parser round trip; no test migration yet).
 - [x] **Step 2.2: Migrate `test_threads.c` and `test_mmap.c`** (the mmap identity probes; the raw-record main mock stays raw).
 - [x] **Step 2.3: Migrate `test_lighttime.c` and `test_numeric.c`** (linear/polynomial/oracle mocks).
-- [ ] **Step 2.4: Migrate `test_convenience.c`.** Follow-up.
-- [ ] **Step 2.5: Migrate normal TT-TDB cases and `test_api_errors.c`;** keep raw layout construction for boundary-span, overflow-name, and T15 placement. Follow-up.
-- [ ] **Step 2.6: Migrate `make_validator_data.c`;** keep raw negative corpora (NaN, truncation, ambiguous widths). Follow-up.
+- [x] **Step 2.4: Migrate `test_convenience.c`.**
+- [x] **Step 2.5: Migrate normal TT-TDB cases and `test_api_errors.c`;** keep raw layout construction for boundary-span, overflow-name, T15 placement, and fault injection.
+- [x] **Step 2.6: Migrate `make_validator_data.c`;** keep raw negative corpora (NaN, truncation, ambiguous widths).
 - [ ] **Step 2.7: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Migrated behavior tests declare bodies and series, not slot indices or constants-record layout; parser/core/large-file tests remain byte-level; every assertion and expected value is unchanged; the builder self-test pins the emitted header fields and record bytes; `grep` shows no new `test_put_ptr` uses in migrated tests.
@@ -434,7 +434,7 @@ jpl_status jpl_schedule_subinterval(const jpl_record_span *span, size_t nsub,
 - [x] **Step 8.3: Go/no-go review;** choose opaque accessors or the versioned snapshot fallback.
 - [x] **Step 8.4: Apply the chosen interface;** remove `jpl_get_header` and the public struct definition (or add the versioned fields); update `public_symbols.txt`, `api.dox`, docs, examples, and `bindings/CONTRACT.md`.
 - [x] **Step 8.5: Write `docs/migration-header-access.md` and `docs/adr/0001-opaque-header-accessors.md`;** record the gate outcome and the fallback rationale.
-- [ ] **Step 8.6: Run the full matrix including bindings;** CHANGELOG bullet; version 0.12.0; merge and tag `v0.12.0`.**
+- [x] **Step 8.6: Run the full matrix including bindings;** CHANGELOG bullet; version 0.12.0; merge and tag `v0.12.0`.**
 
 **Acceptance:** No binding mirrors the `jpl_header` field layout (accessor path) or the versioned snapshot is checked at runtime (fallback path); every public header field remains reachable through the documented accessors; `jpl_get_header` is gone or replaced per the gate; the C and binding test suites pin the same metadata values; 50+/50+ with bindings, docs clean, migration doc complete.
 

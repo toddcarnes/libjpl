@@ -25,7 +25,7 @@ if(DEFINED CMAKE_COMPILE_WARNING_AS_ERROR AND CMAKE_VERSION VERSION_LESS "3.24")
         "CMAKE_COMPILE_WARNING_AS_ERROR needs CMake 3.24 or newer; this is CMake ${CMAKE_VERSION}")
 endif()
 
-set(JPL_CORE_SOURCES src/jpl.c src/jpl_record_store.c src/jpl_tt_tdb_table.c src/jpl_body_catalog.c src/jpl_frames.c src/jpl_convenience.c src/jpl_date.c)
+set(JPL_CORE_SOURCES src/jpl.c src/jpl_record_store.c src/jpl_tt_tdb_table.c src/jpl_body_catalog.c src/jpl_schedule.c src/jpl_frames.c src/jpl_convenience.c src/jpl_date.c)
 option(LIBJPL_BUILD_SHARED "Build the shared libjpl library" ON)
 
 # Generate export header before defining targets
@@ -351,6 +351,11 @@ if(LIBJPL_BUILD_TESTS)
     target_compile_features(jpl_body_catalog_tests PRIVATE c_std_17)
     target_include_directories(jpl_body_catalog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     add_test(NAME jpl_body_catalog COMMAND jpl_body_catalog_tests)
+    add_executable(jpl_schedule_tests tests/test_schedule.c)
+    target_link_libraries(jpl_schedule_tests PRIVATE jpl_static)
+    target_compile_features(jpl_schedule_tests PRIVATE c_std_17)
+    target_include_directories(jpl_schedule_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    add_test(NAME jpl_schedule COMMAND jpl_schedule_tests)
     add_executable(jpl_aberration_tests tests/test_aberration.c)
     target_link_libraries(jpl_aberration_tests PRIVATE jpl_testing)
     target_compile_features(jpl_aberration_tests PRIVATE c_std_17)
@@ -997,7 +1002,7 @@ if(LIBJPL_BUILD_TESTS)
     # Warning flags for all unit-test executables (incl. integration ones
     # registered above). The NOT TARGET guard keeps this safe if a target
     # is ever removed.
-    foreach(tgt IN ITEMS jpl_fixture_tool jpl_tests jpl_lighttime_tests jpl_fixture_builder_tests jpl_record_store_tests jpl_tt_tdb_table_tests jpl_body_catalog_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_horizons_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
+    foreach(tgt IN ITEMS jpl_fixture_tool jpl_tests jpl_lighttime_tests jpl_fixture_builder_tests jpl_record_store_tests jpl_tt_tdb_table_tests jpl_body_catalog_tests jpl_schedule_tests jpl_aberration_tests jpl_frames_tests jpl_convenience_tests jpl_mmap_tests jpl_threads_tests jpl_tt_tdb_tests jpl_parser_tests jpl_api_errors_tests jpl_dates_tests jpl_largefile jpl_testpo_parser_tests jpl_numeric_tests jpl_examples jpl_generate_reference jpl_fixture_tests jpl_fixture_fault_tests jpl_testpo_tests jpl_testpo_fault_tests jpl_horizons_tests jpl_validator_data jpl_real_ephemeris_tests jpl_all_ephemerides_tests)
         if(NOT TARGET ${tgt})
             continue()
         endif()

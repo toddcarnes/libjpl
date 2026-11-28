@@ -347,19 +347,6 @@ static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset
  * advertised coverage start pair plus index*step, computed with the private
  * compensated helpers. parse_header already promoted the scalar header
  * epochs to {encoded_value, 0.0}; query comparisons keep both parts. */
-static jpl_status scheduled_endpoint(const double start[2], double step, size_t index,
-                                     double out[2]) {
-    double coverage[2];
-    jpl_status status;
-    if (!start || !out) return JPL_ERROR_FORMAT;
-    if (!isfinite(start[0]) || !isfinite(start[1]) || !isfinite(step) || step <= 0.0)
-        return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(start, coverage);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_add_scaled(coverage, step, index, out);
-    return status == JPL_OK ? JPL_OK : JPL_ERROR_FORMAT;
-}
-
 /* Reconstructed endpoints are compared to encoded file endpoints with a
  * magnitude-aware binary64 allowance: derive it from the ULPs
  * adjacent to the encoded endpoint and the scheduled high part, not from a
@@ -549,17 +536,17 @@ static jpl_status validate_layout(const jpl_byte_source *source,
             }
             /* Open checks boundary records only; interior corruption is
              * detected on read or by the full-record validation sweep. */
-            if (scheduled_endpoint(candidate.start_jd, candidate.step_days, 0, sched_first) != JPL_OK) continue;
-            if (scheduled_endpoint(candidate.start_jd, candidate.step_days, 1, sched_last) != JPL_OK) continue;
+            if (jpl_schedule_endpoint(candidate.start_jd, candidate.step_days, 0, sched_first) != JPL_OK) continue;
+            if (jpl_schedule_endpoint(candidate.start_jd, candidate.step_days, 1, sched_last) != JPL_OK) continue;
             if (endpoints_match(sched_first, first[0]) != JPL_OK) continue;
             if (endpoints_match(sched_last, second[0]) != JPL_OK) continue;
             ep_status = header_record_endpoints(source, off_last, width, order,
                                                 first, second);
             if (ep_status == JPL_ERROR_MEMORY || ep_status == JPL_ERROR_IO) return ep_status;
             if (ep_status != JPL_OK) continue;
-            if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
+            if (jpl_schedule_endpoint(candidate.start_jd, candidate.step_days,
                                    expected_records - 1, sched_first) != JPL_OK) continue;
-            if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
+            if (jpl_schedule_endpoint(candidate.start_jd, candidate.step_days,
                                    expected_records, sched_last) != JPL_OK) continue;
             if (endpoints_match(sched_first, first[0]) != JPL_OK) continue;
             if (endpoints_match(sched_last, second[0]) != JPL_OK) continue;
@@ -568,7 +555,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                                                     tfirst, tsecond);
                 if (ep_status == JPL_ERROR_MEMORY || ep_status == JPL_ERROR_IO) return ep_status;
                 if (ep_status != JPL_OK) continue;
-                if (scheduled_endpoint(candidate.start_jd, candidate.step_days,
+                if (jpl_schedule_endpoint(candidate.start_jd, candidate.step_days,
                                        expected_records, sched_trail) != JPL_OK) continue;
                 if (endpoints_match(sched_trail, tfirst[0]) != JPL_OK) continue;
                 /* Trailing record is physical only; its end need not tie
@@ -1232,146 +1219,24 @@ jpl_status jpl_read_record(const jpl_ephemeris *e, size_t index, double *values,
     return read_doubles(e, offset, values, e->header.record_double_count);
 }
 
-/* Locate the data record holding a normalized query date.
- * A bounded candidate quotient from the compensated coverage difference
- * estimates the index; the candidate's reconstructed boundaries (via
- * add_scaled/partition) verify it against the full pair, with at most a
- * one-neighbor adjustment, then a bounded binary search fallback over the
- * verified intervals (never an unbounded walk on malformed data). Interior
- * boundaries select the following interval; the final advertised coverage
- * endpoint explicitly selects the last covered interval. Date selection
- * uses the advertised covered count only; the physical trailing record
- * stays reachable through jpl_read_record but never through a date. */
-static jpl_status select_record(const jpl_ephemeris *e, const double jd[2],
-                                size_t *index_out,
-                                double record_start[2], double record_end[2]) {
-    double cov_start[2], norm[2], diff[2], boundary[2], next[2];
-    double quotient_d;
-    size_t candidate = 0, lo, hi;
-    jpl_status status;
-    if (!e || !jd || !index_out || !record_start || !record_end) return JPL_ERROR_ARGUMENT;
-    if (e->covered_record_count == 0) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(e->header.start_jd, cov_start);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (!isfinite(e->header.step_days) || e->header.step_days <= 0.0) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(jd, norm);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
-    /* Final advertised endpoint maps to the last covered interval. */
-    status = jpl_date_normalize(e->header.end_jd, boundary);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(norm, cov_start) < 0 || jpl_date_compare(norm, boundary) > 0)
-        return JPL_ERROR_RANGE;
-    if (jpl_date_compare(norm, boundary) == 0) {
-        candidate = e->covered_record_count - 1;
-        status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, record_start);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        *index_out = candidate;
-        record_end[0] = boundary[0];
-        record_end[1] = boundary[1];
-        return JPL_OK;
-    }
-    status = jpl_date_subtract(norm, cov_start, diff);
-    if (status != JPL_OK) return JPL_ERROR_ARGUMENT;
-    /* Subtract the coverage start as a two-part date before reducing the
-     * nearby duration to a scalar candidate quotient. Bound the quotient
-     * before casting, then validate the candidate against the two-part
-     * scheduled endpoints below. */
-    quotient_d = (diff[0] + diff[1]) / e->header.step_days;
-    if (!isfinite(quotient_d) || quotient_d < 0.0) return JPL_ERROR_RANGE;
-    /* A rounded quotient can reach the covered count at a valid endpoint;
-     * clamp before converting, including for extreme finite quotients. */
-    candidate = quotient_d >= (double)e->covered_record_count ?
-        e->covered_record_count - 1 : (size_t)quotient_d;
-    for (;;) {
-        int below = 0, above = 0;
-        status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, boundary);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        if (candidate + 1 < e->covered_record_count) {
-            status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate + 1, next);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        } else {
-            status = jpl_date_normalize(e->header.end_jd, next);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        }
-        below = jpl_date_compare(norm, boundary) < 0;
-        above = jpl_date_compare(norm, next) >= 0 && candidate + 1 < e->covered_record_count;
-        if (!below && !above) {
-            record_start[0] = boundary[0];
-            record_start[1] = boundary[1];
-            record_end[0] = next[0];
-            record_end[1] = next[1];
-            *index_out = candidate;
-            return JPL_OK;
-        }
-        /* One-neighbor correction covers rounding at the estimate; larger
-         * drift falls through to the bounded binary search below. */
-        if (below && candidate > 0) {
-            size_t probe = candidate - 1;
-            status = jpl_date_add_scaled(cov_start, e->header.step_days, probe, boundary);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            status = jpl_date_add_scaled(cov_start, e->header.step_days, candidate, next);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (jpl_date_compare(norm, boundary) >= 0 && jpl_date_compare(norm, next) < 0) {
-                candidate = probe;
-                continue;
-            }
-            break;
-        }
-        if (above && candidate + 1 < e->covered_record_count) {
-            size_t probe = candidate + 1;
-            status = jpl_date_add_scaled(cov_start, e->header.step_days, probe, boundary);
-            if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            if (candidate + 2 < e->covered_record_count) {
-                status = jpl_date_add_scaled(cov_start, e->header.step_days, probe + 1, next);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            } else {
-                status = jpl_date_normalize(e->header.end_jd, next);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            }
-            if (jpl_date_compare(norm, boundary) >= 0 &&
-                (jpl_date_compare(norm, next) < 0 || probe + 1 >= e->covered_record_count)) {
-                candidate = probe;
-                continue;
-            }
-            break;
-        }
-        break;
-    }
-    /* Bounded binary search over verified intervals. */
-    lo = 0;
-    hi = e->covered_record_count;
-    while (lo < hi) {
-        size_t mid = lo + (hi - lo) / 2;
-        status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, boundary);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        if (jpl_date_compare(norm, boundary) < 0) {
-            hi = mid;
-        } else {
-            if (mid + 1 < e->covered_record_count) {
-                status = jpl_date_add_scaled(cov_start, e->header.step_days, mid + 1, next);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            } else {
-                status = jpl_date_normalize(e->header.end_jd, next);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-            }
-            if (jpl_date_compare(norm, next) < 0 || mid + 1 >= e->covered_record_count) {
-                status = jpl_date_add_scaled(cov_start, e->header.step_days, mid, record_start);
-                if (status != JPL_OK) return JPL_ERROR_FORMAT;
-                record_end[0] = next[0];
-                record_end[1] = next[1];
-                *index_out = mid;
-                return JPL_OK;
-            }
-            lo = mid + 1;
-        }
-    }
-    return JPL_ERROR_RANGE;
-}
-
 #ifdef LIBJPL_TESTING
 jpl_status jpl_test_select_record(const jpl_ephemeris *e, const double jd[2],
                                   size_t *index, double start[2], double end[2]) {
-    return select_record(e, jd, index, start, end);
+    jpl_entry_ctx entry;
+    jpl_verified_epoch epoch;
+    jpl_record_span span;
+    jpl_status status;
+    if (!e || !jd || !index || !start || !end) return JPL_ERROR_ARGUMENT;
+    status = jpl_entry_prepare(e, jd, &entry);
+    if (status != JPL_OK) return status;
+    status = jpl_entry_coverage(&entry, entry.norm, &epoch);
+    if (status != JPL_OK) return status;
+    status = jpl_schedule_record(&e->header, e->covered_record_count, &epoch, &span);
+    if (status != JPL_OK) return status;
+    *index = span.index;
+    memcpy(start, span.start, sizeof span.start);
+    memcpy(end, span.end, sizeof span.end);
+    return JPL_OK;
 }
 #endif
 
@@ -1383,14 +1248,10 @@ jpl_status jpl_test_select_record(const jpl_ephemeris *e, const double jd[2],
  * jpl_evaluate on every path that got past the read; `local_state` is
  * published to the caller atomically by the publish step. */
 typedef struct interp_work {
-    double norm[2];
-    double file_start[2];
-    double file_end[2];
     size_t record_index;
     const double *record;
     jpl_record_view view;
     size_t subinterval;
-    double sub_origin[2];
     double normalized;
     double substep;
     double local_state[6];
@@ -1406,72 +1267,6 @@ static jpl_status interp_read_record_cached(const jpl_ephemeris *e, interp_work 
                               w->record_index, &w->view);
     if (status != JPL_OK) return status;
     w->record = w->view.values;
-    return JPL_OK;
-}
-
-/* Promote encoded record bounds to pairs and verify the scheduled query
- * falls within them. Fills w->file_start/w->file_end (both normalized) and
- * reads w->norm/w->record; returns JPL_OK, or JPL_ERROR_FORMAT on bad
- * endpoints or out-of-record bounds. */
-static jpl_status interp_verify_record_bounds(interp_work *w) {
-    jpl_status status;
-    if (!w || !w->record) return JPL_ERROR_ARGUMENT;
-    w->file_start[0] = w->record[0]; w->file_start[1] = 0.0;
-    w->file_end[0] = w->record[1]; w->file_end[1] = 0.0;
-    status = jpl_date_normalize(w->file_start, w->file_start);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(w->file_end, w->file_end);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(w->file_end, w->file_start) <= 0) return JPL_ERROR_FORMAT;
-    if (jpl_date_compare(w->norm, w->file_start) < 0 || jpl_date_compare(w->norm, w->file_end) > 0)
-        return JPL_ERROR_FORMAT;
-    return JPL_OK;
-}
-
-/* Locate the subinterval containing the normalized epoch within the
- * verified record bounds. Computes substep, quotient, and the normalized
- * Chebyshev argument into the work struct. Returns JPL_OK, or
- * JPL_ERROR_FORMAT / JPL_ERROR_UNSUPPORTED on invalid spans. */
-static jpl_status interp_find_subinterval(interp_work *w, size_t nsub) {
-    double span, rec_span[2], from_start[2], local[2];
-    double qd, lo[2], hi[2];
-    int below, above;
-    jpl_status status;
-    if (!w) return JPL_ERROR_ARGUMENT;
-    if (nsub == 0) return JPL_ERROR_UNSUPPORTED;
-    status = jpl_date_subtract(w->file_end, w->file_start, rec_span);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    span = rec_span[0] + rec_span[1];
-    if (!isfinite(span) || span <= 0.0) return JPL_ERROR_FORMAT;
-    w->substep = span / (double)nsub;
-    if (!isfinite(w->substep) || w->substep <= 0.0) return JPL_ERROR_FORMAT;
-    status = jpl_date_subtract(w->norm, w->file_start, from_start);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    qd = (from_start[0] + from_start[1]) / w->substep;
-    if (!isfinite(qd) || qd < 0.0) return JPL_ERROR_FORMAT;
-    /* The last boundary can round to nsub: clamp before integer conversion. */
-    w->subinterval = qd >= (double)nsub ? nsub - 1 : (size_t)qd;
-    for (;;) {
-        below = 0; above = 0;
-        status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval, lo);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval + 1, hi);
-        if (status != JPL_OK) return JPL_ERROR_FORMAT;
-        below = jpl_date_compare(w->norm, lo) < 0;
-        above = w->subinterval + 1 < nsub ? jpl_date_compare(w->norm, hi) >= 0 : 0;
-        if (!below && !above) break;
-        if (below && w->subinterval > 0) { --(w->subinterval); continue; }
-        if (above && w->subinterval + 1 < nsub) { ++(w->subinterval); continue; }
-        return JPL_ERROR_FORMAT;
-    }
-    status = jpl_date_partition(w->file_start, w->file_end, nsub, w->subinterval, w->sub_origin);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_subtract(w->norm, w->sub_origin, local);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    /* Local Chebyshev argument only after compensated subtraction of the
-     * selected nearby boundary. */
-    w->normalized = 2.0 * ((local[0] + local[1]) / w->substep) - 1.0;
-    if (!isfinite(w->normalized)) return JPL_ERROR_FORMAT;
     return JPL_OK;
 }
 
@@ -1612,29 +1407,27 @@ jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx, const double epoch[2],
 static jpl_status jpl_evaluate(const jpl_ephemeris *e, const jpl_verified_epoch *epoch,
                                const jpl_pointer *pointer, size_t components, double state[6]) {
     interp_work w;
-    size_t nsub;
+    jpl_record_span record_span;
+    jpl_subinterval_span sub_span;
     jpl_status status;
     if (!e || !epoch || !pointer || !state) return JPL_ERROR_ARGUMENT;
     memset(&w, 0, sizeof w);
-    memcpy(w.norm, epoch->epoch, sizeof w.norm);
-    memcpy(w.file_start, epoch->cov_start, sizeof w.file_start);
-    memcpy(w.file_end, epoch->cov_end, sizeof w.file_end);
     if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
         pointer->subintervals <= 0) return JPL_ERROR_UNSUPPORTED;
     if (e->record_count == 0 || e->covered_record_count == 0) return JPL_ERROR_FORMAT;
-    status = select_record(e, w.norm, &w.record_index, w.file_start, w.file_end);
+    status = jpl_schedule_record(&e->header, e->covered_record_count, epoch, &record_span);
     if (status != JPL_OK) return status;
+    w.record_index = record_span.index;
     status = interp_read_record_cached(e, &w);
     if (status != JPL_OK) return status;
-    status = interp_verify_record_bounds(&w);
+    status = jpl_schedule_verify_record(w.record_index, w.record, epoch, &record_span);
     if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
-    /* The scalar span, subinterval rate, and Chebyshev argument are nearby
-     * durations obtained after compensated date subtraction, not full
-     * Julian epochs. The candidate subinterval is verified against
-     * two-part boundaries below; invalid record spans report FORMAT. */
-    nsub = (size_t)pointer->subintervals;
-    status = interp_find_subinterval(&w, nsub);
+    status = jpl_schedule_subinterval(&record_span, (size_t)pointer->subintervals,
+                                      epoch, &sub_span);
     if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
+    w.subinterval = sub_span.index;
+    w.normalized = sub_span.argument;
+    w.substep = sub_span.substep;
     status = interp_chebyshev_evaluate(e, pointer, &w, components);
     if (status != JPL_OK) { jpl_record_view_release(&w.view); return status; }
     interp_publish_state(&w, state);

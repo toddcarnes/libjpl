@@ -302,7 +302,7 @@ jpl_status jpl_tt_tdb_table_build(const jpl_header *header, jpl_tt_tdb_table *ou
 
 ## Step 6: BodyCatalog (candidate 7) - SIXTH
 
-**Status:** implemented on `refactor/body-catalog`. One validity/execution table serves state, light-time, planet, and apparent queries; core and convenience no longer duplicate raw body ranges. Direct catalog tests pin the mode matrix. Goldens unchanged.
+**Status:** implemented on `refactor/body-catalog`. One validity/execution table serves state, light-time, planet, and apparent queries; core and convenience no longer duplicate raw body ranges. Direct catalog tests pin the mode matrix. Verification: MSVC Debug/Release 50/50 default and 54/54 bindings, zero warnings; WSL GCC Debug 50/50 and WSL Clang 14 Debug 50/50. Goldens unchanged.
 
 **Rationale for position:** It touches the same query paths as VerifiedEpoch but is independent of storage. It goes after the storage/table steps so the catalog's plan can name the final record/pointer accessors.
 
@@ -342,7 +342,7 @@ jpl_status jpl_body_plan_for(jpl_query_mode mode, const jpl_header *header,
 - [x] **Step 6.2: Convert `barycentric_state` and the core state/light-time paths.**
 - [x] **Step 6.3: Convert the convenience target/center checks;** delete the raw range blocks and the unreachable `JPL_TT_TDB` branch.
 - [x] **Step 6.4: Pin the validity and precedence matrix in `test_body_catalog.c`;** run the existing API-error matrix unchanged.
-- [ ] **Step 6.5: Run the matrix; CHANGELOG bullet; merge.**
+- [x] **Step 6.5: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** One body validity/execution table; convenience performs no raw range checks; error precedence and every existing result unchanged; 46+/50+ everywhere.
 

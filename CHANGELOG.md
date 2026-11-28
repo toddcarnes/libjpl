@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - I/O: source selection, decoded record access, and the per-handle record cache now live in RecordStore (`src/jpl_record_store.c`); the evaluator consumes borrowed record views instead of allocating a full record per evaluation, and no caller outside the store names the FILE/mmap source kind. Public raw reads keep their copy semantics.
 - TT-TDB: availability is validated once at open (`TtTdbTable`); `jpl_has_tt_tdb()` now means the dataset is usable (the coefficient span fits the record), and the query/policy consume that fact without recomputing the span per call.
 - Core: body validity and execution plans now come from BodyCatalog (`src/jpl_body_catalog.c`). `jpl_get_state`, light-time, and the convenience helpers share one target/center table and no longer duplicate raw body ranges or the dead TT-TDB state branch.
+- Core: scheduled endpoint, record lookup, record-bounds verification, and subinterval selection now live in RecordSchedule (`src/jpl_schedule.c`); the evaluator and layout validator compose the same value-span interface instead of re-deriving boundary arithmetic.
 
 ## [0.11.0] - 2026-11-27
 

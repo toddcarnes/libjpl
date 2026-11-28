@@ -46,6 +46,7 @@ set(whitelist
   "src/jpl_record_store.c"
   "src/jpl_tt_tdb_table.c"
   "src/jpl_body_catalog.c"
+  "src/jpl_schedule.c"
   "src/jpl_date.c"
   "src/jpl_frames.c"
   "src/jpl_convenience.c"

@@ -361,6 +361,33 @@ jpl_status jpl_store_record(jpl_record_store *store, size_t record_doubles,
                             size_t index, jpl_record_view *out);
 void jpl_record_view_release(jpl_record_view *view);
 
+/* RecordSchedule: scheduled endpoints and the epoch -> record ->
+ * subinterval mapping. */
+typedef struct jpl_record_span {
+    size_t index;
+    double start[2];
+    double end[2];
+} jpl_record_span;
+
+typedef struct jpl_subinterval_span {
+    size_t index;
+    double origin[2];
+    double substep;
+    double argument;
+} jpl_subinterval_span;
+
+jpl_status jpl_schedule_endpoint(const double start[2], double step,
+                                 size_t index, double out[2]);
+jpl_status jpl_schedule_record(const jpl_header *header, size_t covered_count,
+                               const jpl_verified_epoch *epoch,
+                               jpl_record_span *out);
+jpl_status jpl_schedule_verify_record(size_t index, const double record_dates[2],
+                                      const jpl_verified_epoch *epoch,
+                                      jpl_record_span *out);
+jpl_status jpl_schedule_subinterval(const jpl_record_span *span, size_t nsub,
+                                    const jpl_verified_epoch *epoch,
+                                    jpl_subinterval_span *out);
+
 /* BodyCatalog: one validity/execution table per query mode. */
 typedef enum jpl_query_mode {
     JPL_QUERY_STATE,

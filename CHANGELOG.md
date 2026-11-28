@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Core: query entry points now issue one `jpl_verified_epoch` token per query (normalized data epoch plus coverage bounds); evaluation, body composition, the light-time solver, and the convenience pipeline consume the token instead of re-preparing dates or re-checking coverage per leg. The convenience path verifies the TDB epoch after TT→TDB conversion and passes it to verified internal entry points.
 - I/O: source selection, decoded record access, and the per-handle record cache now live in RecordStore (`src/jpl_record_store.c`); the evaluator consumes borrowed record views instead of allocating a full record per evaluation, and no caller outside the store names the FILE/mmap source kind. Public raw reads keep their copy semantics.
 - TT-TDB: availability is validated once at open (`TtTdbTable`); `jpl_has_tt_tdb()` now means the dataset is usable (the coefficient span fits the record), and the query/policy consume that fact without recomputing the span per call.
+- Core: body validity and execution plans now come from BodyCatalog (`src/jpl_body_catalog.c`). `jpl_get_state`, light-time, and the convenience helpers share one target/center table and no longer duplicate raw body ranges or the dead TT-TDB state branch.
 
 ## [0.11.0] - 2026-11-27
 

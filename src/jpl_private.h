@@ -361,6 +361,34 @@ jpl_status jpl_store_record(jpl_record_store *store, size_t record_doubles,
                             size_t index, jpl_record_view *out);
 void jpl_record_view_release(jpl_record_view *view);
 
+/* BodyCatalog: one validity/execution table per query mode. */
+typedef enum jpl_query_mode {
+    JPL_QUERY_STATE,
+    JPL_QUERY_LIGHTTIME,
+    JPL_QUERY_PLANET,
+    JPL_QUERY_APPARENT
+} jpl_query_mode;
+
+typedef enum jpl_body_kind {
+    JPL_BODY_DIRECT,      /* one file slot */
+    JPL_BODY_EMB_MOON,    /* EMB plus geocentric Moon derivation */
+    JPL_BODY_ANGULAR,     /* nutations or librations */
+    JPL_BODY_ZERO         /* SSB / zero vector */
+} jpl_body_kind;
+
+typedef struct jpl_body_plan {
+    jpl_body_kind kind;
+    const jpl_pointer *primary;
+    const jpl_pointer *secondary;
+    size_t components;
+    int target;
+} jpl_body_plan;
+
+jpl_status jpl_body_lookup(const jpl_header *header, int body,
+                           jpl_body_plan *out);
+jpl_status jpl_body_plan_for(jpl_query_mode mode, const jpl_header *header,
+                             int target, int center, jpl_body_plan *out);
+
 /* Validated TT-TDB availability: present means the coefficient span fits the
  * record. Built once at open; the public flag, query, and refinement policy
  * consume this single fact. */

@@ -43,6 +43,7 @@ set(whitelist
   "include/jpl_frames.h"
   "include/jpl_convenience.h"
   "src/jpl.c"
+  "src/jpl_record_store.c"
   "src/jpl_date.c"
   "src/jpl_frames.c"
   "src/jpl_convenience.c"

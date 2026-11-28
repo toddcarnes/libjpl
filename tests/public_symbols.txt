@@ -10,7 +10,14 @@
 jpl_status_string
 jpl_open
 jpl_close
-jpl_get_header
+jpl_header_titles
+jpl_header_coverage
+jpl_header_shape
+jpl_header_identity
+jpl_header_scalars
+jpl_header_pointer
+jpl_header_libration_pointer
+jpl_header_tt_tdb_pointer
 jpl_read_constants
 jpl_get_constant_name
 jpl_read_record

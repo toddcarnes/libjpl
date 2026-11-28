@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     JPL_TEST_CHECK(jpl_open(argv[1], &ephemeris) == JPL_OK && ephemeris != NULL);
-    header = jpl_get_header(ephemeris);
+    header = jpl_private_get_header(ephemeris);
     FIXTURE_CHECK(header != NULL);
     FIXTURE_CHECK(header->ephemeris_number == 441);
     /* Coverage fields are normalized pairs now; compare via the helper. */

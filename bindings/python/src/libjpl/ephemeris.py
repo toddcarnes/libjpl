@@ -94,43 +94,64 @@ class JplPointer:
 
 
 class JplHeader:
-    """Parsed DE header (snapshot copied from the native struct; safe after close)."""
-    def __init__(self, c_header, handle):
-        self._titles = [
-            _ffi.string(c_header.titles[i]).decode().rstrip('\x00')
-            for i in range(3)
-        ]
-        self._constant_count = int(c_header.constant_count)
+    """Parsed DE header snapshot built from the native accessors (safe after close)."""
+    def __init__(self, handle):
+        titles = _ffi.new("char[3][85]")
+        _check(_lib.jpl_header_titles(handle, titles))
+        self._titles = [_ffi.string(titles[i]).decode().rstrip('\x00') for i in range(3)]
+
+        start = _ffi.new("jpl_date *")
+        end = _ffi.new("jpl_date *")
+        step = _ffi.new("double *")
+        _check(_lib.jpl_header_coverage(handle, start, end, step))
+        self._start_jd = [float(start.hi), float(start.lo)]
+        self._end_jd = [float(end.hi), float(end.lo)]
+        self._step_days = float(step[0])
+
+        constant_count = _ffi.new("int *")
+        record_double_count = _ffi.new("size_t *")
+        byte_order = _ffi.new("jpl_byte_order *")
+        _check(_lib.jpl_header_shape(handle, constant_count, record_double_count, byte_order))
+        self._constant_count = int(constant_count[0])
+        self._record_double_count = int(record_double_count[0])
+        self._byte_order = int(byte_order[0])
+
+        ephemeris_number = _ffi.new("int *")
+        reference_frame = _ffi.new("jpl_reference_frame *")
+        _check(_lib.jpl_header_identity(handle, ephemeris_number, reference_frame))
+        self._ephemeris_number = int(ephemeris_number[0])
+        self._reference_frame = int(reference_frame[0])
+
+        au = _ffi.new("double *")
+        emrat = _ffi.new("double *")
+        has_tt_tdb = _ffi.new("int *")
+        _check(_lib.jpl_header_scalars(handle, au, emrat, has_tt_tdb))
+        self._astronomical_unit_km = float(au[0])
+        self._earth_moon_mass_ratio = float(emrat[0])
+        self._has_tt_tdb = bool(has_tt_tdb[0])
+
+        self._pointers = []
+        for i in range(12):
+            p = _ffi.new("jpl_pointer *")
+            _check(_lib.jpl_header_pointer(handle, i, p))
+            self._pointers.append(JplPointer(p.start_index,
+                                             p.coefficients_per_component,
+                                             p.subintervals))
+        p = _ffi.new("jpl_pointer *")
+        _check(_lib.jpl_header_libration_pointer(handle, p))
+        self._libration_pointer = JplPointer(p.start_index, p.coefficients_per_component,
+                                             p.subintervals)
+        p = _ffi.new("jpl_pointer *")
+        _check(_lib.jpl_header_tt_tdb_pointer(handle, p))
+        self._tt_tdb_pointer = JplPointer(p.start_index, p.coefficients_per_component,
+                                          p.subintervals)
+
         names = []
-        inline_limit = min(self._constant_count, _libjpl.JPL_MAX_CONSTANT_NAMES)
-        for i in range(inline_limit):
-            names.append(_ffi.string(c_header.constant_names[i]).decode().rstrip('\x00'))
-        if self._constant_count > _libjpl.JPL_MAX_CONSTANT_NAMES:
-            name_buf = _ffi.new("char[7]")
-            for i in range(_libjpl.JPL_MAX_CONSTANT_NAMES, self._constant_count):
-                _check(_lib.jpl_get_constant_name(handle, i, name_buf))
-                names.append(_ffi.string(name_buf).decode())
+        name_buf = _ffi.new("char[7]")
+        for i in range(self._constant_count):
+            _check(_lib.jpl_get_constant_name(handle, i, name_buf))
+            names.append(_ffi.string(name_buf).decode())
         self._constant_names = names
-        self._start_jd = [float(c_header.start_jd[0]), float(c_header.start_jd[1])]
-        self._end_jd = [float(c_header.end_jd[0]), float(c_header.end_jd[1])]
-        self._step_days = float(c_header.step_days)
-        self._astronomical_unit_km = float(c_header.astronomical_unit_km)
-        self._earth_moon_mass_ratio = float(c_header.earth_moon_mass_ratio)
-        self._pointers = [
-            JplPointer(c_header.pointers[i].start_index,
-                       c_header.pointers[i].coefficients_per_component,
-                       c_header.pointers[i].subintervals)
-            for i in range(12)
-        ]
-        self._ephemeris_number = int(c_header.ephemeris_number)
-        self._reference_frame = int(c_header.reference_frame)
-        lp = c_header.libration_pointer
-        self._libration_pointer = JplPointer(lp.start_index, lp.coefficients_per_component, lp.subintervals)
-        tp = c_header.tt_tdb_pointer
-        self._tt_tdb_pointer = JplPointer(tp.start_index, tp.coefficients_per_component, tp.subintervals)
-        self._has_tt_tdb = bool(c_header.has_tt_tdb)
-        self._record_double_count = int(c_header.record_double_count)
-        self._byte_order = int(c_header.byte_order)
 
     @property
     def titles(self):
@@ -223,17 +244,16 @@ class Ephemeris:
 
     @property
     def header(self):
-        c_header = _lib.jpl_get_header(self._handle)
-        if c_header == _ffi.NULL:
-            raise JplError(JplStatus.ERROR_ARGUMENT)
-        return JplHeader(c_header, self._handle)
+        return JplHeader(self._handle)
 
     def constants(self):
         """Read all constants."""
-        c_header = _lib.jpl_get_header(self._handle)
-        if c_header == _ffi.NULL:
-            raise JplError(JplStatus.ERROR_ARGUMENT)
-        count = int(c_header.constant_count)
+        constant_count = _ffi.new("int *")
+        record_double_count = _ffi.new("size_t *")
+        byte_order = _ffi.new("jpl_byte_order *")
+        _check(_lib.jpl_header_shape(self._handle, constant_count,
+                                     record_double_count, byte_order))
+        count = int(constant_count[0])
         vals = _ffi.new(f"double[{count}]")
         _check(_lib.jpl_read_constants(self._handle, vals, count))
         return [float(vals[i]) for i in range(count)]
@@ -246,10 +266,12 @@ class Ephemeris:
 
     def read_record(self, record_index):
         """Read a complete coefficient record."""
-        c_header = _lib.jpl_get_header(self._handle)
-        if c_header == _ffi.NULL:
-            raise JplError(JplStatus.ERROR_ARGUMENT)
-        count = int(c_header.record_double_count)
+        constant_count = _ffi.new("int *")
+        record_double_count = _ffi.new("size_t *")
+        byte_order = _ffi.new("jpl_byte_order *")
+        _check(_lib.jpl_header_shape(self._handle, constant_count,
+                                     record_double_count, byte_order))
+        count = int(record_double_count[0])
         vals = _ffi.new(f"double[{count}]")
         _check(_lib.jpl_read_record(self._handle, record_index, vals, count))
         return [float(vals[i]) for i in range(count)]

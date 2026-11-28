@@ -15,43 +15,6 @@ internal struct JplPointerNative
     public int Subintervals;
 }
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 8)]
-internal struct JplHeaderNative
-{
-    // titles[3][85]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3 * 85)]
-    public byte[] TitlesFlat;
-
-    // constant_names[400][7]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 400 * 7)]
-    public byte[] ConstantNamesFlat;
-
-    // start_jd[2]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-    public double[] StartJd;
-
-    // end_jd[2]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)]
-    public double[] EndJd;
-
-    public double StepDays;
-    public int ConstantCount;
-    public double AstronomicalUnitKm;
-    public double EarthMoonMassRatio;
-
-    // pointers[12]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
-    public JplPointerNative[] Pointers;
-
-    public int EphemerisNumber;
-    public int ReferenceFrame;
-    public JplPointerNative LibrationPointer;
-    public JplPointerNative TtTdbPointer;
-    public int HasTtTdb;
-    public ulong RecordDoubleCount;
-    public int ByteOrder;
-}
-
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct JplDate
 {
@@ -105,7 +68,52 @@ public static partial class Native
     public static extern void jpl_close(IntPtr ephemeris);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern IntPtr jpl_get_header(IntPtr ephemeris);
+    public static extern JplStatus jpl_header_titles(
+        IntPtr ephemeris,
+        [Out, MarshalAs(UnmanagedType.LPArray, SizeConst = 3 * 85)] byte[] titles);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_header_coverage(
+        IntPtr ephemeris,
+        out JplDate start,
+        out JplDate end,
+        out double step_days);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_header_shape(
+        IntPtr ephemeris,
+        out int constant_count,
+        out ulong record_double_count,
+        out int byte_order);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_header_identity(
+        IntPtr ephemeris,
+        out int ephemeris_number,
+        out int reference_frame);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern JplStatus jpl_header_scalars(
+        IntPtr ephemeris,
+        out double astronomical_unit_km,
+        out double earth_moon_mass_ratio,
+        out int has_tt_tdb);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern JplStatus jpl_header_pointer(
+        IntPtr ephemeris,
+        int slot,
+        out JplPointerNative out_pointer);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern JplStatus jpl_header_libration_pointer(
+        IntPtr ephemeris,
+        out JplPointerNative out_pointer);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern JplStatus jpl_header_tt_tdb_pointer(
+        IntPtr ephemeris,
+        out JplPointerNative out_pointer);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern JplStatus jpl_read_constants(

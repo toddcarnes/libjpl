@@ -171,24 +171,12 @@ typedef struct jpl_pointer {
 /**
  * @brief Parsed DE header: coverage, constants metadata, and coefficient layout.
  */
-typedef struct jpl_header {
-    char titles[3][JPL_TITLE_LINE_LENGTH + 1]; /**< @brief Three 84-character title lines (NUL-terminated). */
-    char constant_names[JPL_MAX_CONSTANT_NAMES][JPL_CONSTANT_NAME_LENGTH + 1]; /**< @brief First up to 400 six-character constant names (NUL-terminated); valid entries are limited by constant_count. Use jpl_get_constant_name() for all indices. */
-    double start_jd[2]; /**< @brief Start of ephemeris coverage as a two-part Julian date (sum of both parts). */
-    double end_jd[2]; /**< @brief End of ephemeris coverage as a two-part Julian date (sum of both parts). */
-    double step_days; /**< @brief Span in days covered by one data record. */
-    int constant_count; /**< @brief Number of numeric constants in the constants record. */
-    double astronomical_unit_km; /**< @brief Original header AU in km (metadata only; public body states use the modern AU 149597870.7 km, not this field). */
-    double earth_moon_mass_ratio; /**< @brief Earth-Moon mass ratio (used to derive Earth and Moon states). */
-    jpl_pointer pointers[JPL_TARGET_COUNT]; /**< @brief File slots Mercury through Sun (including EMB in slot 3) followed by nutations in slot 12; these are not the public body-code indices. */
-    int ephemeris_number; /**< @brief DE ephemeris number (e.g. 441 for DE441). */
-    jpl_reference_frame reference_frame; /**< @brief Orientation family derived from ephemeris_number via an explicit cited allowlist (ICRF, dynamical 1950/2000, or unknown). Core readers accept every frame natively; ICRS convenience requires ICRF. */
-    jpl_pointer libration_pointer; /**< @brief Coefficient layout for librations (target 15). */
-    jpl_pointer tt_tdb_pointer; /**< @brief Coefficient layout for TT-TDB (target 17, *t files only). */
-    int has_tt_tdb; /**< @brief Nonzero iff the file carries the TT-TDB dataset. */
-    size_t record_double_count; /**< @brief Doubles per data record, including the two Julian-date bounds. */
-    jpl_byte_order byte_order; /**< @brief Detected byte order of the open file. */
-} jpl_header;
+/** @brief Parsed DE header metadata; opaque, accessed through the jpl_header_*() functions.
+ *  @note The field layout is private. Use jpl_header_titles(), jpl_header_coverage(),
+ *        jpl_header_shape(), jpl_header_identity(), jpl_header_scalars(), the pointer
+ *        accessors, and jpl_get_constant_name(). This keeps the binding adapters
+ *        independent of the on-disk header layout. */
+typedef struct jpl_header jpl_header;
 
 /** @brief Opaque ephemeris handle. Obtain via jpl_open()/jpl_open_mmap(), release with jpl_close(). */
 typedef struct jpl_ephemeris jpl_ephemeris;
@@ -231,12 +219,91 @@ JPL_API jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
 JPL_API void jpl_close(jpl_ephemeris *ephemeris);
 
 /**
- * @brief Returns the parsed header of an open ephemeris.
- * @param ephemeris Open handle, or NULL.
- * @return Pointer to the header, valid while the handle is open; NULL if ephemeris is NULL.
- * @note Each clone has its own header copy; do not use after closing that handle.
+ * @brief Copies the three header title lines.
+ * @param ephemeris Open handle.
+ * @param titles Output array of 3 lines, each JPL_TITLE_LINE_LENGTH + 1 bytes.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if ephemeris/titles is NULL.
+ * @note The copied strings are NUL-terminated.
  */
-JPL_API const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
+JPL_API jpl_status jpl_header_titles(const jpl_ephemeris *ephemeris,
+                                     char titles[3][JPL_TITLE_LINE_LENGTH + 1]);
+
+/**
+ * @brief Copies the header coverage interval and record step.
+ * @param ephemeris Open handle.
+ * @param start Receives the coverage start.
+ * @param end Receives the coverage end.
+ * @param step_days Receives the per-record step in days.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if any pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_coverage(const jpl_ephemeris *ephemeris,
+                                       jpl_date *start, jpl_date *end,
+                                       double *step_days);
+
+/**
+ * @brief Copies the header record/constant shape and byte order.
+ * @param ephemeris Open handle.
+ * @param constant_count Receives the constants-record entry count.
+ * @param record_double_count Receives the doubles per data record.
+ * @param byte_order Receives the detected file byte order.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if any pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_shape(const jpl_ephemeris *ephemeris,
+                                    int *constant_count,
+                                    size_t *record_double_count,
+                                    jpl_byte_order *byte_order);
+
+/**
+ * @brief Copies the DE number and reference-frame classification.
+ * @param ephemeris Open handle.
+ * @param ephemeris_number Receives the DE number.
+ * @param reference_frame Receives the classified reference frame.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if any pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_identity(const jpl_ephemeris *ephemeris,
+                                       int *ephemeris_number,
+                                       jpl_reference_frame *reference_frame);
+
+/**
+ * @brief Copies the header metadata scalars.
+ * @param ephemeris Open handle.
+ * @param astronomical_unit_km Receives the original file AU in km.
+ * @param earth_moon_mass_ratio Receives the Earth-Moon mass ratio.
+ * @param has_tt_tdb Receives nonzero when the file carries a usable TT-TDB dataset.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if any pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_scalars(const jpl_ephemeris *ephemeris,
+                                      double *astronomical_unit_km,
+                                      double *earth_moon_mass_ratio,
+                                      int *has_tt_tdb);
+
+/**
+ * @brief Copies one coefficient-layout slot from the header.
+ * @param ephemeris Open handle.
+ * @param slot 0-based file slot (0..JPL_TARGET_COUNT-1).
+ * @param out_pointer Receives the slot layout.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT for NULL pointers or an invalid slot.
+ */
+JPL_API jpl_status jpl_header_pointer(const jpl_ephemeris *ephemeris,
+                                      int slot, jpl_pointer *out_pointer);
+
+/**
+ * @brief Copies the libration coefficient layout.
+ * @param ephemeris Open handle.
+ * @param out_pointer Receives the layout.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if a pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_libration_pointer(const jpl_ephemeris *ephemeris,
+                                                jpl_pointer *out_pointer);
+
+/**
+ * @brief Copies the TT-TDB coefficient layout.
+ * @param ephemeris Open handle.
+ * @param out_pointer Receives the layout.
+ * @return JPL_OK, or JPL_ERROR_ARGUMENT if a pointer is NULL.
+ */
+JPL_API jpl_status jpl_header_tt_tdb_pointer(const jpl_ephemeris *ephemeris,
+                                             jpl_pointer *out_pointer);
 
 /**
  * @brief Reads the constants record of an open ephemeris.

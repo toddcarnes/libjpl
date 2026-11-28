@@ -135,7 +135,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->astronomical_unit_km == JPL_TEST_NONMODERN_AU_KM);
         JPL_TEST_CHECK(h->record_double_count <= 360);
         JPL_TEST_CHECK(jpl_read_record(e, 0, raw, h->record_double_count) == JPL_OK);

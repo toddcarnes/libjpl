@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
                     names[i], jpl_status_string(status));
             return 1;
         }
-        header = jpl_get_header(ephemeris);
+        header = jpl_private_get_header(ephemeris);
         if (header == NULL || header->record_double_count < 3 || jpl_record_count(ephemeris) == 0) {
             fprintf(stderr, "%s: invalid header\n", names[i]);
             jpl_close(ephemeris);

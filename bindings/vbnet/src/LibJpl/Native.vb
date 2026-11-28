@@ -14,37 +14,6 @@ Friend Structure JplPointerNative
     Public Subintervals As Integer
 End Structure
 
-<StructLayout(LayoutKind.Sequential, CharSet:=CharSet.Ansi, Pack:=8)>
-Friend Structure JplHeaderNative
-    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=3 * 85)>
-    Public TitlesFlat As Byte()
-
-    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=400 * 7)>
-    Public ConstantNamesFlat As Byte()
-
-    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=2)>
-    Public StartJd As Double()
-
-    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=2)>
-    Public EndJd As Double()
-
-    Public StepDays As Double
-    Public ConstantCount As Integer
-    Public AstronomicalUnitKm As Double
-    Public EarthMoonMassRatio As Double
-
-    <MarshalAs(UnmanagedType.ByValArray, SizeConst:=12)>
-    Public Pointers As JplPointerNative()
-
-    Public EphemerisNumber As Integer
-    Public ReferenceFrame As Integer
-    Public LibrationPointer As JplPointerNative
-    Public TtTdbPointer As JplPointerNative
-    Public HasTtTdb As Integer
-    Public RecordDoubleCount As ULong
-    Public ByteOrder As Integer
-End Structure
-
 <StructLayout(LayoutKind.Sequential, Pack:=8)>
 Friend Structure JplDateNative
     Public Hi As Double
@@ -95,7 +64,58 @@ Friend Module Native
     End Sub
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
-    Public Function jpl_get_header(ephemeris As IntPtr) As IntPtr
+    Public Function jpl_header_titles(
+        ephemeris As IntPtr,
+        <Out, MarshalAs(UnmanagedType.LPArray, SizeConst:=3 * 85)> titles As Byte()) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_coverage(
+        ephemeris As IntPtr,
+        <Out()> ByRef start_jd As JplDateNative,
+        <Out()> ByRef end_jd As JplDateNative,
+        <Out()> ByRef step_days As Double) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_shape(
+        ephemeris As IntPtr,
+        <Out()> ByRef constant_count As Integer,
+        <Out()> ByRef record_double_count As ULong,
+        <Out()> ByRef byte_order As Integer) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_identity(
+        ephemeris As IntPtr,
+        <Out()> ByRef ephemeris_number As Integer,
+        <Out()> ByRef reference_frame As Integer) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_scalars(
+        ephemeris As IntPtr,
+        <Out()> ByRef astronomical_unit_km As Double,
+        <Out()> ByRef earth_moon_mass_ratio As Double,
+        <Out()> ByRef has_tt_tdb As Integer) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_pointer(
+        ephemeris As IntPtr, slot As Integer,
+        <Out()> ByRef out_pointer As JplPointerNative) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_libration_pointer(
+        ephemeris As IntPtr,
+        <Out()> ByRef out_pointer As JplPointerNative) As JplStatus
+    End Function
+
+    <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>
+    Public Function jpl_header_tt_tdb_pointer(
+        ephemeris As IntPtr,
+        <Out()> ByRef out_pointer As JplPointerNative) As JplStatus
     End Function
 
     <DllImport(DllName, CallingConvention:=CallingConvention.Cdecl)>

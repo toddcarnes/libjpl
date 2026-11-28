@@ -82,14 +82,7 @@ public sealed class JplEphemeris : SafeHandle
 
     public JplHeader GetHeader()
     {
-        return WithHandle(h =>
-        {
-            IntPtr headerPtr = Native.jpl_get_header(h);
-            if (headerPtr == IntPtr.Zero)
-                throw new JplException(JplStatus.ErrorArgument);
-
-            return JplHeader.FromNative(headerPtr, idx => GetConstantNameFromHandle(h, idx));
-        });
+        return WithHandle(h => JplHeader.FromHandle(h, idx => GetConstantNameFromHandle(h, idx)));
     }
 
     private static string GetConstantNameFromHandle(IntPtr h, long index)
@@ -107,12 +100,11 @@ public sealed class JplEphemeris : SafeHandle
     {
         return WithHandle(h =>
         {
-            IntPtr headerPtr = Native.jpl_get_header(h);
-            if (headerPtr == IntPtr.Zero)
-                throw new JplException(JplStatus.ErrorArgument);
+            JplStatus shapeStatus = Native.jpl_header_shape(h, out int constantCount, out _, out _);
+            if (shapeStatus != JplStatus.Ok)
+                throw new JplException(shapeStatus);
 
-            JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
-            double[] values = new double[native.ConstantCount];
+            double[] values = new double[constantCount];
             JplStatus status = Native.jpl_read_constants(h, values, values.Length);
             if (status != JplStatus.Ok)
             {
@@ -131,12 +123,11 @@ public sealed class JplEphemeris : SafeHandle
     {
         return WithHandle(h =>
         {
-            IntPtr headerPtr = Native.jpl_get_header(h);
-            if (headerPtr == IntPtr.Zero)
-                throw new JplException(JplStatus.ErrorArgument);
+            JplStatus shapeStatus = Native.jpl_header_shape(h, out _, out ulong recordDoubleCount, out _);
+            if (shapeStatus != JplStatus.Ok)
+                throw new JplException(shapeStatus);
 
-            JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
-            double[] values = new double[(long)native.RecordDoubleCount];
+            double[] values = new double[(long)recordDoubleCount];
             JplStatus status = Native.jpl_read_record(h, recordIndex, values, values.Length);
             if (status != JplStatus.Ok)
             {

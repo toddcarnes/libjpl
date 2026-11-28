@@ -61,12 +61,13 @@ public class JplHeader
     public long RecordDoubleCount { get; internal set; }
     public JplByteOrder ByteOrder { get; internal set; }
 
-internal static JplHeader FromNative(IntPtr headerPtr, Func<long, string>? getOverflowName = null)
+internal static JplHeader FromHandle(IntPtr handle, Func<long, string> getName)
 {
-    if (headerPtr == IntPtr.Zero)
-        throw new ArgumentException("Invalid header pointer");
-
-    JplHeaderNative native = Marshal.PtrToStructure<JplHeaderNative>(headerPtr);
+    static void Check(JplStatus status)
+    {
+        if (status != JplStatus.Ok)
+            throw new JplException(status);
+    }
 
     static string FixedString(byte[] bytes, int offset, int length)
     {
@@ -76,51 +77,48 @@ internal static JplHeader FromNative(IntPtr headerPtr, Func<long, string>? getOv
         return System.Text.Encoding.UTF8.GetString(bytes, offset, end - offset);
     }
 
+    var titleBytes = new byte[3 * 85];
+    Check(Native.jpl_header_titles(handle, titleBytes));
     var titles = new string[3];
     for (int i = 0; i < titles.Length; ++i)
-    {
-        titles[i] = FixedString(native.TitlesFlat, i * 85, 85);
-    }
+        titles[i] = FixedString(titleBytes, i * 85, 85);
 
-    int totalNames = Math.Max(native.ConstantCount, 0);
-    int inlineCount = Math.Min(totalNames, Native.JplMaxConstantNames);
-    var constantNames = new string[getOverflowName != null ? totalNames : inlineCount];
-    for (int i = 0; i < inlineCount; ++i)
-    {
-        constantNames[i] = FixedString(native.ConstantNamesFlat, i * 7, 7);
-    }
-    if (getOverflowName != null)
-    {
-        for (int i = inlineCount; i < totalNames; ++i)
-        {
-            constantNames[i] = getOverflowName(i);
-        }
-    }
+    Check(Native.jpl_header_coverage(handle, out JplDate start, out JplDate end, out double step));
+    Check(Native.jpl_header_shape(handle, out int constantCount, out ulong recordDoubleCount, out int byteOrder));
+    Check(Native.jpl_header_identity(handle, out int ephemerisNumber, out int frame));
+    Check(Native.jpl_header_scalars(handle, out double au, out double emrat, out int hasTtTdb));
 
     var pointers = new JplPointer[12];
     for (int i = 0; i < pointers.Length; ++i)
     {
-        pointers[i] = ToPointer(native.Pointers[i]);
+        Check(Native.jpl_header_pointer(handle, i, out JplPointerNative pointer));
+        pointers[i] = ToPointer(pointer);
     }
+    Check(Native.jpl_header_libration_pointer(handle, out JplPointerNative libration));
+    Check(Native.jpl_header_tt_tdb_pointer(handle, out JplPointerNative ttTdb));
+
+    var names = new string[Math.Max(constantCount, 0)];
+    for (int i = 0; i < names.Length; ++i)
+        names[i] = getName(i);
 
     return new JplHeader
     {
         Titles = titles,
-        ConstantNames = constantNames,
-        StartJd = new[] { native.StartJd[0], native.StartJd[1] },
-        EndJd = new[] { native.EndJd[0], native.EndJd[1] },
-        StepDays = native.StepDays,
-        AstronomicalUnitKm = native.AstronomicalUnitKm,
-        ConstantCount = native.ConstantCount,
-        EarthMoonMassRatio = native.EarthMoonMassRatio,
+        ConstantNames = names,
+        StartJd = new[] { start.Hi, start.Lo },
+        EndJd = new[] { end.Hi, end.Lo },
+        StepDays = step,
+        AstronomicalUnitKm = au,
+        ConstantCount = constantCount,
+        EarthMoonMassRatio = emrat,
         Pointers = pointers,
-        EphemerisNumber = native.EphemerisNumber,
-        ReferenceFrame = (JplReferenceFrame)native.ReferenceFrame,
-        LibrationPointer = ToPointer(native.LibrationPointer),
-        TtTdbPointer = ToPointer(native.TtTdbPointer),
-        HasTtTdb = native.HasTtTdb,
-        RecordDoubleCount = (long)native.RecordDoubleCount,
-        ByteOrder = (JplByteOrder)native.ByteOrder
+        EphemerisNumber = ephemerisNumber,
+        ReferenceFrame = (JplReferenceFrame)frame,
+        LibrationPointer = ToPointer(libration),
+        TtTdbPointer = ToPointer(ttTdb),
+        HasTtTdb = hasTtTdb,
+        RecordDoubleCount = (long)recordDoubleCount,
+        ByteOrder = (JplByteOrder)byteOrder
     };
 }
 

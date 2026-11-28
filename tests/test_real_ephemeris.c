@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Could not open %s: %s\n", argv[1], jpl_status_string(status));
         return 1;
     }
-    header = jpl_get_header(ephemeris);
+    header = jpl_private_get_header(ephemeris);
     if (header == NULL || header->ephemeris_number <= 0 ||
         header->start_jd[0] >= header->end_jd[0] || header->constant_count <= 0 ||
         header->record_double_count <= 2 || jpl_record_count(ephemeris) == 0) {

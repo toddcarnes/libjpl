@@ -33,6 +33,30 @@
  * except Earth/EMB, so the EMB slot is named explicitly. */
 #define JPL_FILE_SLOT_EMB 2
 
+/* Private header layout. Callers outside the library use the jpl_header_*()
+ * accessor set; the binding adapters no longer mirror this struct. */
+struct jpl_header {
+    char titles[3][JPL_TITLE_LINE_LENGTH + 1];
+    char constant_names[JPL_MAX_CONSTANT_NAMES][JPL_CONSTANT_NAME_LENGTH + 1];
+    double start_jd[2];
+    double end_jd[2];
+    double step_days;
+    int constant_count;
+    double astronomical_unit_km;
+    double earth_moon_mass_ratio;
+    jpl_pointer pointers[JPL_TARGET_COUNT];
+    int ephemeris_number;
+    jpl_reference_frame reference_frame;
+    jpl_pointer libration_pointer;
+    jpl_pointer tt_tdb_pointer;
+    int has_tt_tdb;
+    size_t record_double_count;
+    jpl_byte_order byte_order;
+};
+
+/* Private header view for white-box tests; not installed or exported. */
+const jpl_header *jpl_private_get_header(const jpl_ephemeris *e);
+
 /* Schwarzschild radius of the Sun in AU (ERFA ERFA_SRS = 1.97412574336e-8). */
 #define JPL_SRS_AU 1.97412574336e-8
 /* Nominal solar radius from Horizons' Sun target radii, for limiting

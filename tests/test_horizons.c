@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[3], "full") != 0) { jpl_close(e); return 2; }
         require_full = 1;
     }
-    header = jpl_get_header(e);
+    header = jpl_private_get_header(e);
     if (!header || header->ephemeris_number != 441) {
         jpl_close(e);
         return 1;

@@ -13,10 +13,10 @@ four-way diff.
 
 ## 1. Header snapshot
 
-- Inline constant names come from the native struct for
-  `0 <= i < JPL_MAX_CONSTANT_NAMES` (400); indices at or above the limit
-  go through `jpl_get_constant_name`. The limit is the C constant, not a
-  per-language literal.
+- Header metadata is read through the `jpl_header_*` accessors; no binding
+  mirrors the private `jpl_header` struct or its field offsets.
+- Constant names come from `jpl_get_constant_name` for every index; the
+  binding must not use a per-language 400-name literal.
 - `len(constant_names) == constant_count`, and each entry equals a direct
   `constant_name(i)` call (pinned at indices 0, 399, 400, last).
 - Snapshots are plain values, safe to use after the handle closes.

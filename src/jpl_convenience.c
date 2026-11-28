@@ -36,7 +36,7 @@ jpl_status jpl_km_to_au(double km, double *au) {
     return JPL_OK;
 }
 
-/* TT→TDB policy (see jpl_private.h): file-interpolated refinement over a
+/* TT?TDB policy (see jpl_private.h): file-interpolated refinement over a
  * guaranteed model baseline. The model converts first (seed and fallback);
  * when the file carries TT-TDB and the seed is in coverage, fixed-point
  * refinements TDB = TT - f(TDB)/86400 converge the millisecond-scale
@@ -44,7 +44,7 @@ jpl_status jpl_km_to_au(double km, double *au) {
  * span-invalid data, corrupt coefficients, out-of-coverage seed) keeps
  * the model result: the file is an enhancement, never a new failure mode.
  * Deterministic: fixed iteration count, no convergence error. The model
- * leg is accurate to ±3 ns over 1950–2050 (see jpl_tt_to_tdb); outside
+ * leg is accurate to ?3 ns over 1950?2050 (see jpl_tt_to_tdb); outside
  * that envelope the model value still stands, unchanged from before. */
 jpl_status jpl_tt_to_tdb_policy(const jpl_ephemeris *e, const jpl_date *tt, jpl_date *tdb) {
     double tt_arr[2], cur[2], sec;
@@ -121,7 +121,7 @@ static jpl_status convenience_epoch(const jpl_ephemeris *e, const jpl_date *jd_t
     jpl_pair_to_date(jd_tt_arr, tt);
     s = jpl_tt_to_tdb_policy(e, tt, tdb);
     if (s != JPL_OK) return s;
-    header = jpl_get_header(e);
+    header = jpl_private_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
     jpl_date_to_pair(tdb, tdb_arr);
     /* Coverage is checked on the TDB epoch the data reads use, so an
@@ -143,7 +143,7 @@ jpl_status jpl_planet_position(const jpl_ephemeris *e, const jpl_date *jd_tt, in
     jpl_status s;
     if(!e||!st||!jd_tt) return JPL_ERROR_ARGUMENT;
     if(!isfinite(jd_tt->hi)||!isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
-    header = jpl_get_header(e);
+    header = jpl_private_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
     if (jpl_body_plan_for(JPL_QUERY_PLANET, header, planet, center, &plan) != JPL_OK)
         return JPL_ERROR_ARGUMENT;
@@ -273,7 +273,7 @@ static jpl_status apparent_position_at_tt(const jpl_ephemeris *e,
     jpl_status s;
     if (!e || !jd_tt || !position) return JPL_ERROR_ARGUMENT;
     if (!isfinite(jd_tt->hi) || !isfinite(jd_tt->lo)) return JPL_ERROR_ARGUMENT;
-    header = jpl_get_header(e);
+    header = jpl_private_get_header(e);
     if (!header) return JPL_ERROR_ARGUMENT;
     if (jpl_body_plan_for(JPL_QUERY_APPARENT, header, target, JPL_EARTH, &plan) != JPL_OK)
         return JPL_ERROR_ARGUMENT;

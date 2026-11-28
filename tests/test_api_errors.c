@@ -72,7 +72,7 @@ static jpl_status lighttime_with_budget(const jpl_ephemeris *ephemeris,
 
 int main(void) {
     const char *path = "jpl_test_api_errors.bin";
-    double constants[2] = {1.0, 2.0};
+    double constants[ERR_DOUBLES] = {1.0, 2.0};
     const double mars[6] = {JPL_TEST_AU_KM, 0.0, 0.0, 2.0 * JPL_TEST_AU_KM, 0.0, 0.0};
     jpl_fixture_series series;
     jpl_fixture_spec spec;

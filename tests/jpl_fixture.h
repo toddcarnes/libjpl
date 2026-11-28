@@ -40,7 +40,7 @@ typedef struct jpl_fixture_spec {
     double earth_moon_mass_ratio;
     size_t record_doubles;      /* >= JPL_TEST_RECORD_BYTES / 8 */
     size_t records;             /* advertised data records */
-    const double *constants;    /* constant_count values, or NULL for zeros */
+    const double *constants;    /* constant_count values; remainder zero-filled */
     size_t constant_count;
     const jpl_fixture_series *series;
     size_t series_count;
@@ -53,7 +53,7 @@ typedef struct jpl_fixture_spec {
     int libration_subintervals;
     const double *libration_coefficients; /* records * 3 comps * sub * coeffs */
     int big_endian;
-    int trailing_record;
+    int trailing_record;        /* append one zero-filled record past the advertised count */
     const char *title;
 } jpl_fixture_spec;
 

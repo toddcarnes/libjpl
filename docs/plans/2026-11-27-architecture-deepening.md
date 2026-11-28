@@ -216,6 +216,8 @@ jpl_status jpl_entry_coverage(const jpl_entry_ctx *ctx, const double data_epoch[
 
 ## Step 4: RecordStore (candidate 3) — FOURTH
 
+**Status:** implemented on `refactor/record-store`. Source selection, raw reads, decoded record views, and the cache live in `src/jpl_record_store.c`; the evaluator borrows views and no longer allocates per evaluation. Direct store tests cover LE/BE, cache hits, and out-of-range records.
+
 **Rationale for position:** The storage seam has three remaining bypasses and a cache policy outside it. It goes after VerifiedEpoch so the evaluation signature is settled, and before RecordSchedule/TtTdbTable so those modules consume one record source.
 
 **Files:**
@@ -246,10 +248,10 @@ void jpl_record_view_release(jpl_record_view *view);
 - Public raw reads still copy into caller buffers.
 - `jpl_evaluate` no longer branches on `is_mmap` or casts away `const` to publish cache state.
 
-- [ ] **Step 4.1: Extract the store with current copy semantics** (pure relocation; suite green).
-- [ ] **Step 4.2: Move source selection and cache policy inside;** delete `is_mmap` branches from `read_doubles`, `jpl_get_constant_name`, and the interp helpers.
-- [ ] **Step 4.3: Introduce borrowed record views** (mmap direct, FILE cache, swapped per-call); update the evaluator.
-- [ ] **Step 4.4: Direct store tests** for bounds, endian, cache hit/miss, failed-read non-poisoning, and view lifetime.
+- [x] **Step 4.1: Extract the store with current copy semantics** (pure relocation; suite green).
+- [x] **Step 4.2: Move source selection and cache policy inside;** delete `is_mmap` branches from `read_doubles`, `jpl_get_constant_name`, and the interp helpers.
+- [x] **Step 4.3: Introduce borrowed record views** (mmap direct, FILE cache, swapped per-call); update the evaluator.
+- [x] **Step 4.4: Direct store tests** for bounds, endian, cache hit/miss, failed-read non-poisoning, and view lifetime.
 - [ ] **Step 4.5: Run the matrix, including thread/clone tests; CHANGELOG bullet; merge.**
 
 **Acceptance:** No `is_mmap` branch outside the store, open/clone/close, and the mapping helpers; no per-evaluation `malloc` for native-order records; public raw-read copy semantics unchanged; cache tests are direct and do not need interpolation; 46+/50+ everywhere.

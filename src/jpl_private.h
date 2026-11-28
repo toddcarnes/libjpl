@@ -317,6 +317,50 @@ typedef struct jpl_byte_source {
 typedef struct jpl_mmap_source { const unsigned char *base; size_t size; } jpl_mmap_source;
 typedef struct jpl_file_source { FILE *file; size_t size; } jpl_file_source;
 
+/* Raw byte-source adapters shared by the parser and RecordStore. */
+jpl_status jpl_file_read_bytes(void *context, size_t offset,
+                               unsigned char *out, size_t count);
+jpl_status jpl_mmap_read_bytes(void *context, size_t offset,
+                               unsigned char *out, size_t count);
+
+/* A decoded record view. values is borrowed until the next store call on the
+ * same handle (or until release for the swapped-mmap case); owned is non-NULL
+ * only when the caller must release a per-call decode buffer. */
+typedef struct jpl_record_view {
+    const double *values;
+    double *owned;
+} jpl_record_view;
+
+/* RecordStore: source selection, decoded record access, and the per-handle
+ * single-record cache. The store is embedded in the handle; FILE reads use
+ * the cache, native-order mmap reads point into the mapping, and swapped
+ * files decode through a per-call buffer (or the FILE cache). */
+typedef struct jpl_record_store {
+    jpl_byte_source source;
+    jpl_file_source file;
+    jpl_mmap_source mmap;
+    int is_mmap;
+    jpl_byte_order byte_order;
+    struct {
+        double *record;
+        size_t index;
+        int valid;
+    } cache;
+} jpl_record_store;
+
+jpl_status jpl_store_init_file(jpl_record_store *store, FILE *file,
+                               size_t size, jpl_byte_order byte_order);
+jpl_status jpl_store_init_mmap(jpl_record_store *store,
+                               const unsigned char *base, size_t size,
+                               jpl_byte_order byte_order);
+jpl_status jpl_store_read_raw(const jpl_record_store *store, size_t offset,
+                              void *out, size_t count);
+jpl_status jpl_store_read_doubles(const jpl_record_store *store, size_t offset,
+                                  double *values, size_t count);
+jpl_status jpl_store_record(jpl_record_store *store, size_t record_doubles,
+                            size_t index, jpl_record_view *out);
+void jpl_record_view_release(jpl_record_view *view);
+
 /* TT→TDB policy: file data when present and in coverage, else the model.
  * The model converts first (seed and guaranteed baseline); when the file
  * carries TT-TDB and the seed is in coverage, fixed-point refinements

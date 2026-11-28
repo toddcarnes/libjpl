@@ -24,19 +24,6 @@ Module Program
                     Environment.Exit(1)
                 End If
 
-                ' The managed mirror of jpl_header must match the C layout, or
-                ' fields would be read from the wrong offsets.
-                If Marshal.SizeOf(Of LibJpl.JplHeaderNative)() <> 3320 Then
-                    Console.Error.WriteLine($"JplHeaderNative size is {Marshal.SizeOf(Of LibJpl.JplHeaderNative)()}, expected 3320")
-                    Environment.Exit(1)
-                End If
-                Dim ephemerisOffset = Marshal.OffsetOf(Of LibJpl.JplHeaderNative)(
-                    NameOf(LibJpl.JplHeaderNative.EphemerisNumber)).ToInt32()
-                If ephemerisOffset <> 3264 Then
-                    Console.Error.WriteLine($"EphemerisNumber offset is {ephemerisOffset}, expected 3264")
-                    Environment.Exit(1)
-                End If
-
                 ' Header metadata must be populated from the native struct.
                 If header.ConstantCount <= 400 OrElse header.ConstantNames.Length <> header.ConstantCount Then
                     Console.Error.WriteLine($"Unexpected ConstantNames length {header.ConstantNames.Length} vs ConstantCount {header.ConstantCount}")

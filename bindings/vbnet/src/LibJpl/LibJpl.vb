@@ -58,58 +58,77 @@ Public Class JplHeader
     Public Property RecordDoubleCount As Long
     Public Property ByteOrder As JplByteOrder
 
-    Friend Shared Function FromNative(headerPtr As IntPtr, Optional getOverflowName As Func(Of Long, String) = Nothing) As JplHeader
-        If headerPtr = IntPtr.Zero Then
-            Throw New ArgumentException("Invalid header pointer")
-        End If
-
-        Dim native As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
-
+    Friend Shared Function FromHandle(handle As IntPtr, getName As Func(Of Long, String)) As JplHeader
+        Dim titleBytes(3 * 85 - 1) As Byte
+        Check(Native.jpl_header_titles(handle, titleBytes))
         Dim headings(2) As String
         For i = 0 To headings.Length - 1
-            headings(i) = FixedString(native.TitlesFlat, i * 85, 85)
+            headings(i) = FixedString(titleBytes, i * 85, 85)
         Next
 
-        Dim totalNames As Integer = Math.Max(native.ConstantCount, 0)
-        Dim inlineCount As Integer = Math.Min(totalNames, LibJpl.Native.JplMaxConstantNames)
-        Dim nameCount As Integer = If(getOverflowName IsNot Nothing, totalNames, inlineCount)
-        Dim names As String() = Array.Empty(Of String)()
-        If nameCount > 0 Then
-            ReDim names(nameCount - 1)
-            For i = 0 To inlineCount - 1
-                names(i) = FixedString(native.ConstantNamesFlat, i * 7, 7)
-            Next
-            If getOverflowName IsNot Nothing Then
-                For i = inlineCount To totalNames - 1
-                    names(i) = getOverflowName(i)
-                Next
-            End If
-        End If
+        Dim start_jd As JplDateNative
+        Dim end_jd As JplDateNative
+        Dim step_days As Double
+        Check(Native.jpl_header_coverage(handle, start_jd, end_jd, step_days))
+
+        Dim constantCount As Integer
+        Dim recordDoubleCount As ULong
+        Dim byteOrder As Integer
+        Check(Native.jpl_header_shape(handle, constantCount, recordDoubleCount, byteOrder))
+
+        Dim ephemerisNumber As Integer
+        Dim referenceFrame As Integer
+        Check(Native.jpl_header_identity(handle, ephemerisNumber, referenceFrame))
+
+        Dim au As Double
+        Dim emrat As Double
+        Dim hasTtTdb As Integer
+        Check(Native.jpl_header_scalars(handle, au, emrat, hasTtTdb))
 
         Dim targetPointers(11) As JplPointer
         For i = 0 To targetPointers.Length - 1
-            targetPointers(i) = ToPointer(native.Pointers(i))
+            Dim pointer As JplPointerNative
+            Check(Native.jpl_header_pointer(handle, i, pointer))
+            targetPointers(i) = ToPointer(pointer)
         Next
+        Dim libration As JplPointerNative
+        Check(Native.jpl_header_libration_pointer(handle, libration))
+        Dim ttTdb As JplPointerNative
+        Check(Native.jpl_header_tt_tdb_pointer(handle, ttTdb))
+
+        Dim names As String() = Array.Empty(Of String)()
+        If constantCount > 0 Then
+            ReDim names(constantCount - 1)
+            For i = 0 To names.Length - 1
+                names(i) = getName(i)
+            Next
+        End If
 
         Return New JplHeader With {
             .Titles = headings,
             .ConstantNames = names,
-            .StartJd = New Double() {native.StartJd(0), native.StartJd(1)},
-            .EndJd = New Double() {native.EndJd(0), native.EndJd(1)},
-            .StepDays = native.StepDays,
-            .ConstantCount = native.ConstantCount,
-            .AstronomicalUnitKm = native.AstronomicalUnitKm,
-            .EarthMoonMassRatio = native.EarthMoonMassRatio,
+            .StartJd = New Double() {start_jd.Hi, start_jd.Lo},
+            .EndJd = New Double() {end_jd.Hi, end_jd.Lo},
+            .StepDays = step_days,
+            .ConstantCount = constantCount,
+            .AstronomicalUnitKm = au,
+            .EarthMoonMassRatio = emrat,
             .Pointers = targetPointers,
-            .EphemerisNumber = native.EphemerisNumber,
-            .ReferenceFrame = CType(native.ReferenceFrame, JplReferenceFrame),
-            .LibrationPointer = ToPointer(native.LibrationPointer),
-            .TtTdbPointer = ToPointer(native.TtTdbPointer),
-            .HasTtTdb = native.HasTtTdb,
-            .RecordDoubleCount = CLng(native.RecordDoubleCount),
-            .ByteOrder = CType(native.ByteOrder, JplByteOrder)
+            .EphemerisNumber = ephemerisNumber,
+            .ReferenceFrame = CType(referenceFrame, JplReferenceFrame),
+            .LibrationPointer = ToPointer(libration),
+            .TtTdbPointer = ToPointer(ttTdb),
+            .HasTtTdb = hasTtTdb,
+            .RecordDoubleCount = CLng(recordDoubleCount),
+            .ByteOrder = CType(byteOrder, JplByteOrder)
         }
     End Function
+
+    Private Shared Sub Check(status As JplStatus)
+        If status <> JplStatus.Ok Then
+            Throw New JplException(status)
+        End If
+    End Sub
 
     Private Shared Function FixedString(bytes As Byte(), offset As Integer, length As Integer) As String
         Dim nulIndex As Integer = Array.IndexOf(bytes, CByte(0), offset, length)

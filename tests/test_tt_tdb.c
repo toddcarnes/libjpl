@@ -37,7 +37,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec, 1, sizeof rec, f) == sizeof rec);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->has_tt_tdb == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e) == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(NULL) == 0);
@@ -137,7 +137,7 @@ int main(void) {
             bm.records = bvals;
             JPL_TEST_CHECK(test_write_mock("jpl_test_tttdb_be.bin", &bm) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_tttdb_be.bin", &be) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_header(be)->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
+            JPL_TEST_CHECK(jpl_private_get_header(be)->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
             JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, &t16_mid, &bsec, &brate) == JPL_OK);
             JPL_TEST_CHECK(fabs(bsec - 0.001) < 1e-18);
             JPL_TEST_CHECK(fabs(brate - 0.00004) < 1e-19);
@@ -193,14 +193,14 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(dat, 1, sizeof dat, f) == sizeof dat);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->has_tt_tdb == 1);
         JPL_TEST_CHECK(h->record_double_count > 938);
         JPL_TEST_CHECK(h->record_double_count == RDBL);
         JPL_TEST_CHECK(h->tt_tdb_pointer.start_index == 939);
         JPL_TEST_CHECK(h->tt_tdb_pointer.coefficients_per_component == 11);
         JPL_TEST_CHECK(h->tt_tdb_pointer.subintervals == 4);
-        JPL_TEST_CHECK(jpl_get_header(e)->has_tt_tdb == 1);
+        JPL_TEST_CHECK(jpl_private_get_header(e)->has_tt_tdb == 1);
         /* Chebyshev value/rate at each subinterval midpoint:
          * value = c0, rate = 2*c1/substep with substep = 0.25 day.
           * Low-part observability: the same midpoint reached via a
@@ -219,8 +219,8 @@ int main(void) {
          * width, constants, and all four subinterval midpoints must agree
          * on both handles. */
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == RDBL);
-        JPL_TEST_CHECK(jpl_get_header(m)->has_tt_tdb == 1);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->record_double_count == RDBL);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->has_tt_tdb == 1);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.001) < 1e-15 && fabs(rate - 8.0 * 0.00002) < 1e-12);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
@@ -261,7 +261,7 @@ int main(void) {
             JPL_TEST_CHECK(fabs(s2 - (0.004 - 0.00005)) < 1e-9);
             /* Byte-order duplicate: the same checks on the mmap handle,
              * which shares the swap-aware read path (read_f64/order). */
-            JPL_TEST_CHECK(jpl_get_header(m)->byte_order == jpl_get_header(e)->byte_order);
+            JPL_TEST_CHECK(jpl_private_get_header(m)->byte_order == jpl_private_get_header(e)->byte_order);
             JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.0, 0.125}, &s2, &r2) == JPL_OK);
             JPL_TEST_CHECK(fabs(s2 - 0.001) < 1e-15 && fabs(r2 - 8.0 * 0.00002) < 1e-12);
             JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.5 + 1e-9, 0.0}, &s2, &r2) == JPL_OK);
@@ -321,7 +321,7 @@ int main(void) {
         JPL_TEST_CHECK(test_write_mock(path, &bmock) == 0);
         JPL_TEST_CHECK(fclose(bf) == 0);
         JPL_TEST_CHECK(jpl_open(path, &be) == JPL_OK);
-        bh = jpl_get_header(be);
+        bh = jpl_private_get_header(be);
         JPL_TEST_CHECK(bh != NULL && bh->has_tt_tdb == 1);
         JPL_TEST_CHECK(bh->record_double_count == BDBL);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(be, &(const jpl_date){2451545.5, 0.0}, &bsec, &brate) == JPL_OK);
@@ -393,7 +393,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(dat, 1, sizeof dat, f) == sizeof dat);
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->has_tt_tdb == 1);
         JPL_TEST_CHECK(h->constant_count == NCONST);
         JPL_TEST_CHECK(h->record_double_count == RDBL);
@@ -411,9 +411,9 @@ int main(void) {
         /* Same file via mmap: FILE and mmap share one validator, so
          * width, constants, and the mid-coverage value/rate agree. */
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == RDBL);
-        JPL_TEST_CHECK(jpl_get_header(m)->constant_count == NCONST);
-        JPL_TEST_CHECK(jpl_get_header(m)->has_tt_tdb == 1);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->record_double_count == RDBL);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->constant_count == NCONST);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->has_tt_tdb == 1);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.125, 0.0}, &sec, &rate) == JPL_OK);
         JPL_TEST_CHECK(fabs(sec - 0.005) < 1e-15 && fabs(rate - 8.0 * 0.00004) < 1e-12);
         JPL_TEST_CHECK(jpl_get_tt_minus_tdb(m, &(const jpl_date){2451545.375, 0.0}, &sec, &rate) == JPL_OK);
@@ -438,10 +438,10 @@ int main(void) {
         jpl_close(e);
         JPL_TEST_CHECK(remove(path) == 0);
     }
-    /* TT→TDB policy: file refinement over a guaranteed model baseline.
+    /* TT?TDB policy: file refinement over a guaranteed model baseline.
      * The mock carries a 1.0-second constant TT-TDB dataset plus a
      * constant 2 AU Mars, so the file leg is unmistakable (the model
-     * gives milliseconds) and the file-TT × apparent-place combination
+     * gives milliseconds) and the file-TT ? apparent-place combination
      * is pinned. */
     {
         enum { QDBL = 360 };
@@ -502,7 +502,7 @@ int main(void) {
             jpl_close(qb);
             JPL_TEST_CHECK(remove("jpl_test_policy_bad.bin") == 0);
         }
-        /* File-TT × apparent-place golden: constant 2 AU Mars at
+        /* File-TT ? apparent-place golden: constant 2 AU Mars at
          * light-time-corrected SSB geometry. */
         JPL_TEST_CHECK(jpl_planet_position(qe, &qtt, JPL_MARS, JPL_SSB, &qs) == JPL_OK);
         JPL_TEST_CHECK(fabs(qs.x - 2.0) < 1e-9);

@@ -24,25 +24,6 @@ ffi.cdef("""
 
     typedef struct { int start_index; int coefficients_per_component; int subintervals; } jpl_pointer;
 
-    typedef struct {
-        char titles[3][85];
-        char constant_names[400][7];
-        double start_jd[2];
-        double end_jd[2];
-        double step_days;
-        int constant_count;
-        double astronomical_unit_km;
-        double earth_moon_mass_ratio;
-        jpl_pointer pointers[12];
-        int ephemeris_number;
-        jpl_reference_frame reference_frame;
-        jpl_pointer libration_pointer;
-        jpl_pointer tt_tdb_pointer;
-        int has_tt_tdb;
-        size_t record_double_count;
-        jpl_byte_order byte_order;
-    } jpl_header;
-
     typedef struct jpl_ephemeris jpl_ephemeris;
 
     typedef struct {
@@ -78,7 +59,22 @@ ffi.cdef("""
     const char *jpl_status_string(jpl_status status);
     jpl_status jpl_open(const char *path, jpl_ephemeris **out_ephemeris);
     void jpl_close(jpl_ephemeris *ephemeris);
-    const jpl_header *jpl_get_header(const jpl_ephemeris *ephemeris);
+    jpl_status jpl_header_titles(const jpl_ephemeris *ephemeris, char titles[3][85]);
+    jpl_status jpl_header_coverage(const jpl_ephemeris *ephemeris, jpl_date *start,
+                                   jpl_date *end, double *step_days);
+    jpl_status jpl_header_shape(const jpl_ephemeris *ephemeris, int *constant_count,
+                                size_t *record_double_count, jpl_byte_order *byte_order);
+    jpl_status jpl_header_identity(const jpl_ephemeris *ephemeris, int *ephemeris_number,
+                                   jpl_reference_frame *reference_frame);
+    jpl_status jpl_header_scalars(const jpl_ephemeris *ephemeris,
+                                  double *astronomical_unit_km,
+                                  double *earth_moon_mass_ratio, int *has_tt_tdb);
+    jpl_status jpl_header_pointer(const jpl_ephemeris *ephemeris, int slot,
+                                  jpl_pointer *out_pointer);
+    jpl_status jpl_header_libration_pointer(const jpl_ephemeris *ephemeris,
+                                            jpl_pointer *out_pointer);
+    jpl_status jpl_header_tt_tdb_pointer(const jpl_ephemeris *ephemeris,
+                                         jpl_pointer *out_pointer);
     jpl_status jpl_read_constants(const jpl_ephemeris *ephemeris, double *values, size_t value_count);
     jpl_status jpl_get_constant_name(const jpl_ephemeris *ephemeris, size_t index,
                                      char name[7]);

@@ -124,7 +124,7 @@ static int check_layout_roundtrip(const char *path) {
     handles[0] = e;
     handles[1] = m;
     for (k = 0; k < 2; ++k) {
-        const jpl_header *h = jpl_get_header(handles[k]);
+        const jpl_header *h = jpl_private_get_header(handles[k]);
         JPL_TEST_CHECK(h != NULL);
         JPL_TEST_CHECK(h->pointers[0].start_index == 3 &&
                        h->pointers[0].coefficients_per_component == 2 &&
@@ -195,8 +195,8 @@ static int check_constant_names(const char *path, int big_endian) {
     handles[2] = clone;
     for (i = 0; i < 3; ++i) {
         double values[NCONST];
-        JPL_TEST_CHECK(jpl_get_header(handles[i])->constant_count == NCONST);
-        JPL_TEST_CHECK(strcmp(jpl_get_header(handles[i])->constant_names[399], "EDGE39") == 0);
+        JPL_TEST_CHECK(jpl_private_get_header(handles[i])->constant_count == NCONST);
+        JPL_TEST_CHECK(strcmp(jpl_private_get_header(handles[i])->constant_names[399], "EDGE39") == 0);
         JPL_TEST_CHECK(jpl_read_constants(handles[i], values, NCONST) == JPL_OK);
         JPL_TEST_CHECK(values[NCONST - 1] == 42.0);
         JPL_TEST_CHECK(jpl_get_constant_name(handles[i], 0, name) == JPL_OK && strcmp(name, "FIRST") == 0);
@@ -271,10 +271,10 @@ static int check_360_t15_absent(const char *path, uint32_t s, uint32_t c, uint32
     JPL_TEST_CHECK(test_write_mock(path, &m360) == 0);
     JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
     JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-    JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == 360);
-    JPL_TEST_CHECK(jpl_get_header(e)->has_tt_tdb == 0);
-    JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == 360);
-    JPL_TEST_CHECK(jpl_get_header(m)->has_tt_tdb == 0);
+    JPL_TEST_CHECK(jpl_private_get_header(e)->record_double_count == 360);
+    JPL_TEST_CHECK(jpl_private_get_header(e)->has_tt_tdb == 0);
+    JPL_TEST_CHECK(jpl_private_get_header(m)->record_double_count == 360);
+    JPL_TEST_CHECK(jpl_private_get_header(m)->has_tt_tdb == 0);
     JPL_TEST_CHECK(jpl_record_count(m) == jpl_record_count(e));
     JPL_TEST_CHECK(jpl_has_tt_tdb(m) == 0);
     JPL_TEST_CHECK(jpl_read_constants(m, got, 2) == JPL_OK);
@@ -309,13 +309,13 @@ int main(void) {
         JPL_TEST_CHECK(write_baseline(path, &mock, hdr, constants, records) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->constant_count == 2 &&
                        h->record_double_count == PARSER_DOUBLES &&
                        jpl_record_count(e) == 1);
         JPL_TEST_CHECK(h->ephemeris_number == 441);
         JPL_TEST_CHECK(h->reference_frame == JPL_FRAME_ICRF);
-        JPL_TEST_CHECK(jpl_get_header(m)->reference_frame == JPL_FRAME_ICRF);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->reference_frame == JPL_FRAME_ICRF);
         JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
         JPL_TEST_CHECK(got[0] == 11.0 && got[1] == 22.0);
         JPL_TEST_CHECK(jpl_read_record(e, 0, rec, PARSER_DOUBLES) == JPL_OK);
@@ -528,8 +528,8 @@ int main(void) {
         JPL_TEST_CHECK(test_write_mock(path, &m360) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == 360);
-        JPL_TEST_CHECK(jpl_get_header(m)->record_double_count == 360);
+        JPL_TEST_CHECK(jpl_private_get_header(e)->record_double_count == 360);
+        JPL_TEST_CHECK(jpl_private_get_header(m)->record_double_count == 360);
         JPL_TEST_CHECK(jpl_record_count(e) == 2);
         JPL_TEST_CHECK(jpl_record_count(m) == 2);
         JPL_TEST_CHECK(jpl_read_constants(e, got, 2) == JPL_OK);
@@ -624,7 +624,7 @@ int main(void) {
         JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->record_double_count == C357);
         JPL_TEST_CHECK(jpl_record_count(e) == 1);
         JPL_TEST_CHECK(h->has_tt_tdb == 0);
@@ -861,7 +861,7 @@ int main(void) {
         JPL_TEST_CHECK(test_write_mock(path, &mbe) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
         JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-        h = jpl_get_header(e);
+        h = jpl_private_get_header(e);
         JPL_TEST_CHECK(h != NULL && h->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
         JPL_TEST_CHECK(h->ephemeris_number == 102);
         JPL_TEST_CHECK(h->reference_frame == JPL_FRAME_DYNAMICAL_1950);
@@ -999,7 +999,7 @@ int main(void) {
             JPL_TEST_CHECK(se == JPL_OK);
             JPL_TEST_CHECK(sm == JPL_OK);
         }
-        JPL_TEST_CHECK(jpl_get_header(e)->record_double_count == WDOUBLES);
+        JPL_TEST_CHECK(jpl_private_get_header(e)->record_double_count == WDOUBLES);
         JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
         JPL_TEST_CHECK(state.x == 5.0 / JPL_TEST_AU_KM);
         JPL_TEST_CHECK(jpl_get_state(m, &(const jpl_date){2451545.5, 0.0}, JPL_MARS, 0, &state) == JPL_OK);
@@ -1029,9 +1029,9 @@ int main(void) {
             JPL_TEST_CHECK(test_write_mock(path, &mock) == 0);
             JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
             JPL_TEST_CHECK(jpl_open_mmap(path, &m) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == cases[c].denum);
-            JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == cases[c].frame);
-            JPL_TEST_CHECK(jpl_get_header(m)->reference_frame == cases[c].frame);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->ephemeris_number == cases[c].denum);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == cases[c].frame);
+            JPL_TEST_CHECK(jpl_private_get_header(m)->reference_frame == cases[c].frame);
             /* Unknown/legacy DENUM stays readable in its native frame. */
             JPL_TEST_CHECK(jpl_get_state(e, &(const jpl_date){2451545.5, 0.0}, JPL_NUTATIONS, 0, &state) == JPL_OK);
             JPL_TEST_CHECK(state.x == 2.0 && state.y == 3.0);

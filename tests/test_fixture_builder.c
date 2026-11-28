@@ -49,7 +49,7 @@ static int check_fixture(const char *path) {
     static const jpl_date jd = {2451545.5, 0.0};
 
     JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-    header = jpl_get_header(e);
+    header = jpl_private_get_header(e);
     JPL_TEST_CHECK(header != NULL);
     JPL_TEST_CHECK(header->ephemeris_number == 441);
     JPL_TEST_CHECK(header->reference_frame == JPL_FRAME_ICRF);

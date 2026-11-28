@@ -1180,7 +1180,78 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     *out_clone = c;
     return JPL_OK;
 }
-const jpl_header *jpl_get_header(const jpl_ephemeris *e) { return e ? &e->header : NULL; }
+jpl_status jpl_header_titles(const jpl_ephemeris *e,
+                             char titles[3][JPL_TITLE_LINE_LENGTH + 1]) {
+    if (!e || !titles) return JPL_ERROR_ARGUMENT;
+    memcpy(titles, e->header.titles, sizeof e->header.titles);
+    return JPL_OK;
+}
+
+jpl_status jpl_header_coverage(const jpl_ephemeris *e, jpl_date *start,
+                               jpl_date *end, double *step_days) {
+    if (!e || !start || !end || !step_days) return JPL_ERROR_ARGUMENT;
+    jpl_pair_to_date(e->header.start_jd, start);
+    jpl_pair_to_date(e->header.end_jd, end);
+    *step_days = e->header.step_days;
+    return JPL_OK;
+}
+
+jpl_status jpl_header_shape(const jpl_ephemeris *e, int *constant_count,
+                            size_t *record_double_count, jpl_byte_order *byte_order) {
+    if (!e || !constant_count || !record_double_count || !byte_order)
+        return JPL_ERROR_ARGUMENT;
+    *constant_count = e->header.constant_count;
+    *record_double_count = e->header.record_double_count;
+    *byte_order = e->header.byte_order;
+    return JPL_OK;
+}
+
+jpl_status jpl_header_identity(const jpl_ephemeris *e, int *ephemeris_number,
+                               jpl_reference_frame *reference_frame) {
+    if (!e || !ephemeris_number || !reference_frame) return JPL_ERROR_ARGUMENT;
+    *ephemeris_number = e->header.ephemeris_number;
+    *reference_frame = e->header.reference_frame;
+    return JPL_OK;
+}
+
+jpl_status jpl_header_scalars(const jpl_ephemeris *e, double *astronomical_unit_km,
+                              double *earth_moon_mass_ratio, int *has_tt_tdb) {
+    if (!e || !astronomical_unit_km || !earth_moon_mass_ratio || !has_tt_tdb)
+        return JPL_ERROR_ARGUMENT;
+    *astronomical_unit_km = e->header.astronomical_unit_km;
+    *earth_moon_mass_ratio = e->header.earth_moon_mass_ratio;
+    *has_tt_tdb = e->tt_tdb.present;
+    return JPL_OK;
+}
+
+jpl_status jpl_header_pointer(const jpl_ephemeris *e, int slot,
+                              jpl_pointer *out_pointer) {
+    if (!e || !out_pointer || slot < 0 || slot >= JPL_TARGET_COUNT)
+        return JPL_ERROR_ARGUMENT;
+    *out_pointer = e->header.pointers[slot];
+    return JPL_OK;
+}
+
+jpl_status jpl_header_libration_pointer(const jpl_ephemeris *e,
+                                        jpl_pointer *out_pointer) {
+    if (!e || !out_pointer) return JPL_ERROR_ARGUMENT;
+    *out_pointer = e->header.libration_pointer;
+    return JPL_OK;
+}
+
+jpl_status jpl_header_tt_tdb_pointer(const jpl_ephemeris *e,
+                                     jpl_pointer *out_pointer) {
+    if (!e || !out_pointer) return JPL_ERROR_ARGUMENT;
+    *out_pointer = e->header.tt_tdb_pointer;
+    return JPL_OK;
+}
+
+/* White-box header access for existing C tests. Production and bindings use
+ * the public accessor set; this private entry point is declared only in
+ * jpl_private.h and is never installed or exported. */
+const jpl_header *jpl_private_get_header(const jpl_ephemeris *e) {
+    return e ? &e->header : NULL;
+}
 size_t jpl_record_count(const jpl_ephemeris *e) { return e ? e->record_count : 0; }
 int jpl_has_tt_tdb(const jpl_ephemeris *e) { return e ? e->tt_tdb.present : 0; }
 jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t count) {

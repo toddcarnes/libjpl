@@ -28,19 +28,6 @@ class Program
                 Environment.Exit(1);
             }
 
-            // The managed mirror of jpl_header must match the C layout, or
-            // fields would be read from the wrong offsets.
-            if (Marshal.SizeOf<JplHeaderNative>() != 3320)
-            {
-                Console.Error.WriteLine($"JplHeaderNative size is {Marshal.SizeOf<JplHeaderNative>()}, expected 3320");
-                Environment.Exit(1);
-            }
-            if (Marshal.OffsetOf<JplHeaderNative>(nameof(JplHeaderNative.EphemerisNumber)).ToInt32() != 3264)
-            {
-                Console.Error.WriteLine($"EphemerisNumber offset is {Marshal.OffsetOf<JplHeaderNative>(nameof(JplHeaderNative.EphemerisNumber))}, expected 3264");
-                Environment.Exit(1);
-            }
-
             // Header metadata must be populated from the native struct.
             if (header.ConstantCount <= 400 || header.ConstantNames.Length != header.ConstantCount)
             {

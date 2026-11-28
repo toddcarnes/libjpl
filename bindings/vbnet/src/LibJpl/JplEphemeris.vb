@@ -94,23 +94,19 @@ Public NotInheritable Class JplEphemeris
     End Function
 
     Public Function GetHeader() As JplHeader
-        Return WithHandle(Function(h)
-            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
-            If headerPtr = IntPtr.Zero Then
-                Throw New JplException(JplStatus.ErrorArgument)
-            End If
-            Return JplHeader.FromNative(headerPtr, Function(idx) GetConstantNameFromHandle(h, idx))
-        End Function)
+        Return WithHandle(Function(h) JplHeader.FromHandle(h, Function(idx) GetConstantNameFromHandle(h, idx)))
     End Function
 
     Public Function ReadConstants() As Double()
         Return WithHandle(Function(h)
-            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
-            If headerPtr = IntPtr.Zero Then
-                Throw New JplException(JplStatus.ErrorArgument)
+            Dim constantCount As Integer
+            Dim recordDoubleCount As ULong
+            Dim byteOrder As Integer
+            Dim shapeStatus As JplStatus = Native.jpl_header_shape(h, constantCount, recordDoubleCount, byteOrder)
+            If shapeStatus <> JplStatus.Ok Then
+                Throw New JplException(shapeStatus)
             End If
-            Dim nativeHdr As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
-            Dim values(nativeHdr.ConstantCount - 1) As Double
+            Dim values(constantCount - 1) As Double
             Dim status As JplStatus = Native.jpl_read_constants(h, values, values.Length)
             If status <> JplStatus.Ok Then
                 Throw New JplException(status)
@@ -125,12 +121,14 @@ Public NotInheritable Class JplEphemeris
 
     Public Function ReadRecord(recordIndex As Long) As Double()
         Return WithHandle(Function(h)
-            Dim headerPtr As IntPtr = Native.jpl_get_header(h)
-            If headerPtr = IntPtr.Zero Then
-                Throw New JplException(JplStatus.ErrorArgument)
+            Dim constantCount As Integer
+            Dim recordDoubleCount As ULong
+            Dim byteOrder As Integer
+            Dim shapeStatus As JplStatus = Native.jpl_header_shape(h, constantCount, recordDoubleCount, byteOrder)
+            If shapeStatus <> JplStatus.Ok Then
+                Throw New JplException(shapeStatus)
             End If
-            Dim nativeHdr As JplHeaderNative = Marshal.PtrToStructure(Of JplHeaderNative)(headerPtr)
-            Dim values(CInt(nativeHdr.RecordDoubleCount) - 1) As Double
+            Dim values(CInt(recordDoubleCount) - 1) As Double
             Dim status As JplStatus = Native.jpl_read_record(h, recordIndex, values, values.Length)
             If status <> JplStatus.Ok Then
                 Throw New JplException(status)

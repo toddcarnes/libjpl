@@ -358,7 +358,7 @@ int main(void) {
             JPL_TEST_CHECK(fwrite(dat, 1, sizeof dat, f) == sizeof dat);
             JPL_TEST_CHECK(fclose(f) == 0);
             JPL_TEST_CHECK(jpl_open("jpl_test_numeric_legacy.bin", &h) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_header(h)->reference_frame == JPL_FRAME_DYNAMICAL_2000);
+            JPL_TEST_CHECK(jpl_private_get_header(h)->reference_frame == JPL_FRAME_DYNAMICAL_2000);
             JPL_TEST_CHECK(jpl_planet_position(h, &jd, JPL_MERCURY, JPL_SUN, &out) == JPL_ERROR_UNSUPPORTED);
             JPL_TEST_CHECK(memcmp(&out, &keep, sizeof out) == 0);
             jpl_close(h);

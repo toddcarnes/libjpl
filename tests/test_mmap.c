@@ -328,7 +328,7 @@ static int t13_lifetimes(void) {
         fprintf(stderr, "t13 lifetimes: file clone failed\n"); rc = 1; goto done;
     }
     jpl_close(e); e = NULL;
-    h = jpl_get_header(c);
+    h = jpl_private_get_header(c);
     if (h == NULL || h->constant_count != 2 || jpl_record_count(c) != 1) {
         fprintf(stderr, "t13 lifetimes: file survivor header invalid\n"); rc = 1; goto done;
     }
@@ -341,7 +341,7 @@ static int t13_lifetimes(void) {
         fprintf(stderr, "t13 lifetimes: mmap clone failed\n"); rc = 1; goto done;
     }
     jpl_close(m); m = NULL;
-    h = jpl_get_header(mc);
+    h = jpl_private_get_header(mc);
     if (h == NULL || h->constant_count != 2 || jpl_record_count(mc) != 1) {
         fprintf(stderr, "t13 lifetimes: mmap survivor header invalid\n"); rc = 1; goto done;
     }
@@ -374,7 +374,7 @@ int main(void){
     for(i=2;i<360;++i) test_put_f64(rec+i*8,(double)i);
     JPL_TEST_CHECK(fwrite(rec,1,360*8,f)==360*8); JPL_TEST_CHECK(fclose(f)==0);
     JPL_TEST_CHECK(jpl_open_mmap(path,&e)==JPL_OK);
-    h=jpl_get_header(e); JPL_TEST_CHECK(h && h->constant_count==2 && jpl_record_count(e)==1);
+    h=jpl_private_get_header(e); JPL_TEST_CHECK(h && h->constant_count==2 && jpl_record_count(e)==1);
     JPL_TEST_CHECK(jpl_ephemeris_clone(e,&c)==JPL_OK);
     JPL_TEST_CHECK(jpl_read_record(e,0,vals,360)==JPL_OK && vals[0]==2451545.0 && vals[356]==356.0);
     JPL_TEST_CHECK(jpl_read_record(c,0,vals,360)==JPL_OK && vals[1]==2451546.0);

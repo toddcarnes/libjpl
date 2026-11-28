@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "could not open ephemeris %s\n", argv[1]);
         return 1;
     }
-    header = jpl_get_header(ephemeris);
+    header = jpl_private_get_header(ephemeris);
     if (header == NULL) {
         fputs("could not read ephemeris header\n", stderr);
         jpl_close(ephemeris);

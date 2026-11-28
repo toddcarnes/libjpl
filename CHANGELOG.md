@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.12.0] - 2026-11-27
 
 ### Added
 
@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - TT-TDB: availability is validated once at open (`TtTdbTable`); `jpl_has_tt_tdb()` now means the dataset is usable (the coefficient span fits the record), and the query/policy consume that fact without recomputing the span per call.
 - Core: body validity and execution plans now come from BodyCatalog (`src/jpl_body_catalog.c`). `jpl_get_state`, light-time, and the convenience helpers share one target/center table and no longer duplicate raw body ranges or the dead TT-TDB state branch.
 - Core: scheduled endpoint, record lookup, record-bounds verification, and subinterval selection now live in RecordSchedule (`src/jpl_schedule.c`); the evaluator and layout validator compose the same value-span interface instead of re-deriving boundary arithmetic.
+- **BREAKING**: `jpl_header` is opaque and `jpl_get_header()` is removed. Header metadata is now read through eight grouped accessors (`jpl_header_titles`, `jpl_header_coverage`, `jpl_header_shape`, `jpl_header_identity`, `jpl_header_scalars`, `jpl_header_pointer`, `jpl_header_libration_pointer`, `jpl_header_tt_tdb_pointer`); bindings build their existing public `Header` classes from these calls and no longer mirror the native layout. See `docs/migration-header-access.md` and `docs/adr/0001-opaque-header-accessors.md`.
 
 ## [0.11.0] - 2026-11-27
 

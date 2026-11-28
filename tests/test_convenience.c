@@ -105,7 +105,7 @@ int main(void) {
         test_put_f64(rec + 8 * 8, 384400.0);
         JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-        JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
+        JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == JPL_FRAME_ICRF);
         jpl_test_reset_get_state_call_count();
         jpl_test_reset_entry_prepare_call_count();
         JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_SUN, JPL_EARTH_MOON_BARYCENTER, &got) == JPL_OK);
@@ -482,8 +482,8 @@ int main(void) {
             test_put_f64(rec + 20 * 8, 2.0 * JPL_TEST_AU_KM);
             JPL_TEST_CHECK(fwrite(rec, 1, JPL_TEST_HEADER_BYTES, f) == JPL_TEST_HEADER_BYTES); JPL_TEST_CHECK(fclose(f) == 0);
             JPL_TEST_CHECK(jpl_open(path, &e) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == cases[c].denum);
-            JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == cases[c].frame);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->ephemeris_number == cases[c].denum);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == cases[c].frame);
             /* Core native-frame read succeeds for every DENUM. */
             JPL_TEST_CHECK(jpl_get_state(e, &jd, JPL_MERCURY, JPL_SUN, &core) == JPL_OK);
             if (cases[c].frame == JPL_FRAME_ICRF) {
@@ -617,8 +617,8 @@ int main(void) {
             jpl_state via0, via12;
             size_t k;
             JPL_TEST_CHECK(jpl_open(found, &e) == JPL_OK);
-            JPL_TEST_CHECK(jpl_get_header(e)->ephemeris_number == 441);
-            JPL_TEST_CHECK(jpl_get_header(e)->reference_frame == JPL_FRAME_ICRF);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->ephemeris_number == 441);
+            JPL_TEST_CHECK(jpl_private_get_header(e)->reference_frame == JPL_FRAME_ICRF);
             JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, 0, &via0) == JPL_OK);
             JPL_TEST_CHECK(jpl_planet_position(e, &jd, JPL_MERCURY, JPL_SOLAR_SYSTEM_BARYCENTER, &via12) == JPL_OK);
             for (k = 0; k < 6; ++k) JPL_TEST_CHECK(test_state_component(&via0, (int)k) == test_state_component(&via12, (int)k));

@@ -14,7 +14,14 @@
  * - @ref jpl_open_mmap "jpl_open_mmap()" - Open a DE binary with memory mapping.
  * - @ref jpl_ephemeris_clone "jpl_ephemeris_clone()" - Clone a handle for concurrent readers.
  * - @ref jpl_close "jpl_close()" - Release a handle.
- * - @ref jpl_get_header "jpl_get_header()" - Inspect file coverage and metadata.
+ * - @ref jpl_header_titles "jpl_header_titles()" - Read the header title lines.
+ * - @ref jpl_header_coverage "jpl_header_coverage()" - Read the coverage interval and record step.
+ * - @ref jpl_header_shape "jpl_header_shape()" - Read the constant/record shape and byte order.
+ * - @ref jpl_header_identity "jpl_header_identity()" - Read the DE number and reference frame.
+ * - @ref jpl_header_scalars "jpl_header_scalars()" - Read AU, Earth-Moon ratio, and TT-TDB availability.
+ * - @ref jpl_header_pointer "jpl_header_pointer()" - Read one coefficient-layout slot.
+ * - @ref jpl_header_libration_pointer "jpl_header_libration_pointer()" - Read the libration layout.
+ * - @ref jpl_header_tt_tdb_pointer "jpl_header_tt_tdb_pointer()" - Read the TT-TDB layout.
  * - @ref jpl_read_constants "jpl_read_constants()" - Read the constants record.
  * - @ref jpl_get_constant_name "jpl_get_constant_name()" - Read any constant name, including names past the first 400.
  * - @ref jpl_read_record "jpl_read_record()" - Read a raw coefficient record.
@@ -49,6 +56,7 @@
  * - @ref jpl_date "jpl_date" - Two-part Julian date (`{hi, lo}`).
  * - @ref jpl_state "jpl_state" - Six-component position and velocity state vector.
  * - @ref jpl_lighttime_solution "jpl_lighttime_solution" - Atomic light-time solution value.
+ * - @ref jpl_header "jpl_header" - Opaque parsed header metadata.
  * - @ref jpl_frame_context "jpl_frame_context" - Opaque cached frame conversion context.
  *
  * ## Status and errors

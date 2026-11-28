@@ -44,7 +44,7 @@ int main(void) {
     JPL_TEST_CHECK(fclose(file) == 0);
 
     JPL_TEST_CHECK(jpl_open(path, &ephemeris) == JPL_OK);
-    header = jpl_get_header(ephemeris);
+    header = jpl_private_get_header(ephemeris);
     JPL_TEST_CHECK(header != NULL && header->constant_count == 2);
     JPL_TEST_CHECK(header->record_double_count == RECORD_DOUBLES);
     JPL_TEST_CHECK(jpl_record_count(ephemeris) == 1);
@@ -81,7 +81,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(be, 1, DATA_BYTES, bf) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(bf) == 0);
         JPL_TEST_CHECK(jpl_open(path, &bee) == JPL_OK);
-        beh = jpl_get_header(bee);
+        beh = jpl_private_get_header(bee);
         JPL_TEST_CHECK(beh != NULL && beh->byte_order == JPL_BYTE_ORDER_BIG_ENDIAN);
         JPL_TEST_CHECK(jpl_read_constants(bee, c0, 2) == JPL_OK);
         JPL_TEST_CHECK(c0[0] == 1.0 && c0[1] == 2.0);
@@ -126,7 +126,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec2, 1, DATA_BYTES, f2) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(f2) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e2) == JPL_OK);
-        h2 = jpl_get_header(e2);
+        h2 = jpl_private_get_header(e2);
         JPL_TEST_CHECK(h2 != NULL && h2->tt_tdb_pointer.start_index == 300);
         JPL_TEST_CHECK(h2->tt_tdb_pointer.coefficients_per_component == 11);
         JPL_TEST_CHECK(h2->tt_tdb_pointer.subintervals == 4);
@@ -160,7 +160,7 @@ int main(void) {
         JPL_TEST_CHECK(fwrite(rec3, 1, DATA_BYTES, f3) == DATA_BYTES);
         JPL_TEST_CHECK(fclose(f3) == 0);
         JPL_TEST_CHECK(jpl_open(path, &e3) == JPL_OK);
-        h3 = jpl_get_header(e3);
+        h3 = jpl_private_get_header(e3);
         JPL_TEST_CHECK(h3 != NULL && h3->has_tt_tdb == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(e3) == 0);
         JPL_TEST_CHECK(jpl_has_tt_tdb(NULL) == 0);

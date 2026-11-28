@@ -275,7 +275,7 @@ int main(void) {
         JPL_TEST_CHECK(check_unchanged(&s, &before));
     }
 
-    /* Entry gate: validate → normalize → coverage, owned once. Direct
+    /* Entry gate: validate ? normalize ? coverage, owned once. Direct
      * unit tests pin the gate contract the five query prefixes share:
      * NULL/nonfinite/overflow inputs, normalized outputs, edge-inclusive
      * coverage, and RANGE-before-UNSUPPORTED ordering at the entry points
@@ -992,14 +992,14 @@ int main(void) {
         JPL_TEST_CHECK(jpl_ephemeris_clone(e, &c1) == JPL_OK && c1 != NULL);
         JPL_TEST_CHECK(jpl_ephemeris_clone(e, &c2) == JPL_OK && c2 != NULL);
         jpl_close(e); e = NULL;
-        h = jpl_get_header(c1);
+        h = jpl_private_get_header(c1);
         JPL_TEST_CHECK(h != NULL && h->constant_count == 2 && jpl_record_count(c1) == 2);
         JPL_TEST_CHECK(jpl_get_state(c1, &tq, JPL_MARS, 0, &s) == JPL_OK);
-        h = jpl_get_header(c2);
+        h = jpl_private_get_header(c2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(c2) == 2);
         JPL_TEST_CHECK(jpl_get_state(c2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(c1); c1 = NULL;
-        h = jpl_get_header(c2);
+        h = jpl_private_get_header(c2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(c2) == 2);
         JPL_TEST_CHECK(jpl_get_state(c2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(c2); c2 = NULL;
@@ -1008,11 +1008,11 @@ int main(void) {
         JPL_TEST_CHECK(jpl_ephemeris_clone(m, &mc1) == JPL_OK && mc1 != NULL);
         JPL_TEST_CHECK(jpl_ephemeris_clone(m, &mc2) == JPL_OK && mc2 != NULL);
         jpl_close(m); m = NULL;
-        h = jpl_get_header(mc1);
+        h = jpl_private_get_header(mc1);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(mc1) == 2);
         JPL_TEST_CHECK(jpl_get_state(mc1, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(mc1); mc1 = NULL;
-        h = jpl_get_header(mc2);
+        h = jpl_private_get_header(mc2);
         JPL_TEST_CHECK(h != NULL && jpl_record_count(mc2) == 2);
         JPL_TEST_CHECK(jpl_get_state(mc2, &tq, JPL_MARS, 0, &s) == JPL_OK);
         jpl_close(mc2); mc2 = NULL;

@@ -32,6 +32,8 @@ set(JPL_LICENSE_FIRST_PARTY
   "docs/api.dox"
   "docs/validation.md"
   "docs/migration-two-part-dates.md"
+  "docs/migration-header-access.md"
+  "docs/adr/0001-opaque-header-accessors.md"
   "docs/agents/issue-tracker.md"
   "docs/agents/triage-labels.md"
   "docs/agents/domain.md"

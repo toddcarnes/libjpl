@@ -86,49 +86,64 @@ public:
     };
 
     [[nodiscard]] Header header() const {
-        const jpl_header* c_hdr = ::jpl_get_header(handle_);
-        if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
-        Header h;
-        for (int i = 0; i < 3; ++i) h.titles[i] = c_hdr->titles[i];
-        h.constant_names.reserve(static_cast<size_t>(c_hdr->constant_count));
-        for (int i = 0; i < c_hdr->constant_count; ++i) {
-            if (i < JPL_MAX_CONSTANT_NAMES) {
-                h.constant_names.emplace_back(c_hdr->constant_names[i]);
-            } else {
-                char name[JPL_CONSTANT_NAME_LENGTH + 1];
-                throw_if_error(::jpl_get_constant_name(handle_, static_cast<size_t>(i), name));
-                h.constant_names.emplace_back(name);
-            }
-        }
-        h.start_jd = {c_hdr->start_jd[0], c_hdr->start_jd[1]};
-        h.end_jd = {c_hdr->end_jd[0], c_hdr->end_jd[1]};
-        h.step_days = c_hdr->step_days;
-        h.constant_count = c_hdr->constant_count;
-        h.astronomical_unit_km = c_hdr->astronomical_unit_km;
-        h.earth_moon_mass_ratio = c_hdr->earth_moon_mass_ratio;
+        Header h{};
+        jpl_date start{}, end{};
+        double step = 0.0, au = 0.0, emrat = 0.0;
+        int constant_count = 0, ephemeris_number = 0, has_tt_tdb = 0;
+        size_t record_double_count = 0;
+        jpl_byte_order byte_order{};
+        jpl_reference_frame reference_frame{};
+        jpl_pointer pointer{};
+        char titles[3][JPL_TITLE_LINE_LENGTH + 1];
+
+        throw_if_error(::jpl_header_titles(handle_, titles));
+        for (int i = 0; i < 3; ++i) h.titles[i] = titles[i];
+        throw_if_error(::jpl_header_coverage(handle_, &start, &end, &step));
+        h.start_jd = {start.hi, start.lo};
+        h.end_jd = {end.hi, end.lo};
+        h.step_days = step;
+        throw_if_error(::jpl_header_shape(handle_, &constant_count,
+                                          &record_double_count, &byte_order));
+        h.constant_count = constant_count;
+        h.record_double_count = record_double_count;
+        h.byte_order = byte_order;
+        throw_if_error(::jpl_header_identity(handle_, &ephemeris_number, &reference_frame));
+        h.ephemeris_number = ephemeris_number;
+        h.reference_frame = reference_frame;
+        throw_if_error(::jpl_header_scalars(handle_, &au, &emrat, &has_tt_tdb));
+        h.astronomical_unit_km = au;
+        h.earth_moon_mass_ratio = emrat;
+        h.has_tt_tdb = has_tt_tdb;
         for (int i = 0; i < 12; ++i) {
-            h.pointers[i] = {c_hdr->pointers[i].start_index,
-                             c_hdr->pointers[i].coefficients_per_component,
-                             c_hdr->pointers[i].subintervals};
+            throw_if_error(::jpl_header_pointer(handle_, i, &pointer));
+            h.pointers[i] = {pointer.start_index,
+                             pointer.coefficients_per_component,
+                             pointer.subintervals};
         }
-        h.ephemeris_number = c_hdr->ephemeris_number;
-        h.reference_frame = c_hdr->reference_frame;
-        h.libration_pointer = {c_hdr->libration_pointer.start_index,
-                               c_hdr->libration_pointer.coefficients_per_component,
-                               c_hdr->libration_pointer.subintervals};
-        h.tt_tdb_pointer = {c_hdr->tt_tdb_pointer.start_index,
-                            c_hdr->tt_tdb_pointer.coefficients_per_component,
-                            c_hdr->tt_tdb_pointer.subintervals};
-        h.has_tt_tdb = c_hdr->has_tt_tdb;
-        h.record_double_count = c_hdr->record_double_count;
-        h.byte_order = c_hdr->byte_order;
+        throw_if_error(::jpl_header_libration_pointer(handle_, &pointer));
+        h.libration_pointer = {pointer.start_index,
+                               pointer.coefficients_per_component,
+                               pointer.subintervals};
+        throw_if_error(::jpl_header_tt_tdb_pointer(handle_, &pointer));
+        h.tt_tdb_pointer = {pointer.start_index,
+                            pointer.coefficients_per_component,
+                            pointer.subintervals};
+        h.constant_names.reserve(static_cast<size_t>(h.constant_count));
+        for (int i = 0; i < h.constant_count; ++i) {
+            char name[JPL_CONSTANT_NAME_LENGTH + 1];
+            throw_if_error(::jpl_get_constant_name(handle_, static_cast<size_t>(i), name));
+            h.constant_names.emplace_back(name);
+        }
         return h;
     }
 
     [[nodiscard]] std::vector<double> constants() const {
-        const jpl_header* c_hdr = ::jpl_get_header(handle_);
-        if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
-        std::vector<double> vals(static_cast<size_t>(c_hdr->constant_count));
+        int constant_count = 0;
+        size_t record_double_count = 0;
+        jpl_byte_order byte_order{};
+        throw_if_error(::jpl_header_shape(handle_, &constant_count,
+                                          &record_double_count, &byte_order));
+        std::vector<double> vals(static_cast<size_t>(constant_count));
         throw_if_error(::jpl_read_constants(handle_, vals.data(), vals.size()));
         return vals;
     }
@@ -140,9 +155,12 @@ public:
     }
 
     [[nodiscard]] std::vector<double> read_record(size_t record_index) const {
-        const jpl_header* c_hdr = ::jpl_get_header(handle_);
-        if (c_hdr == nullptr) { throw JplError(JPL_ERROR_ARGUMENT); }
-        std::vector<double> vals(c_hdr->record_double_count);
+        int constant_count = 0;
+        size_t record_double_count = 0;
+        jpl_byte_order byte_order{};
+        throw_if_error(::jpl_header_shape(handle_, &constant_count,
+                                          &record_double_count, &byte_order));
+        std::vector<double> vals(record_double_count);
         throw_if_error(::jpl_read_record(handle_, record_index, vals.data(), vals.size()));
         return vals;
     }

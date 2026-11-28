@@ -352,7 +352,7 @@ jpl_status jpl_body_plan_for(jpl_query_mode mode, const jpl_header *header,
 
 ## Step 7: RecordSchedule (candidate 6) - SEVENTH
 
-**Status:** implemented on `refactor/record-schedule`. Scheduled endpoints, record lookup, bounds verification, and subinterval selection live in `src/jpl_schedule.c`; the evaluator and layout validator compose value spans. Direct schedule tests cover endpoints, interior/final/out-of-range records, bounds, and subintervals. Goldens unchanged.
+**Status:** implemented on `refactor/record-schedule`. Scheduled endpoints, record lookup, bounds verification, and subinterval selection live in `src/jpl_schedule.c`; the evaluator and layout validator compose value spans. Direct schedule tests cover endpoints, interior/final/out-of-range records, bounds, and subintervals. Verification: MSVC Debug/Release 51/51 default and 55/55 bindings, zero warnings; WSL GCC Debug 51/51 and WSL Clang 14 Debug 51/51. Goldens unchanged.
 
 **Rationale for position:** It changes the evaluator internals last, after the gate, storage, and body plan are settled. The layout validator also consumes the endpoint helper, so it runs after the storage/table interface is stable.
 
@@ -397,7 +397,7 @@ jpl_status jpl_schedule_subinterval(const jpl_record_span *span, size_t nsub,
 - [x] **Step 7.2: Extract bounds verification and subinterval location;** convert the evaluator.
 - [x] **Step 7.3: Convert layout validation to the shared endpoint helper.**
 - [x] **Step 7.4: Add fallback tests** for the one-neighbor correction and binary-search branch (currently only one selector test).
-- [ ] **Step 7.5: Run the matrix; CHANGELOG bullet; merge.**
+- [x] **Step 7.5: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Scheduled boundary arithmetic exists only in `jpl_schedule.c`; the evaluator is a composition; the selector fallback has direct tests; 46+/50+ everywhere and all goldens byte-identical.
 

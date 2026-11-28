@@ -71,7 +71,6 @@ _Static_assert((size_t)JPL_TT_TDB_TAIL_BASE + 24 > (size_t)CLASSIC_HEADER_BYTES,
  * here to keep one definition each (sole forward-declaration block). */
 static uint32_t read_u32(const unsigned char *p, jpl_byte_order order);
 static double read_f64(const unsigned char *p, jpl_byte_order order);
-static int seek_to(FILE *file, size_t offset);
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out);
 static jpl_status parse_header(jpl_header *header, const unsigned char *bytes, size_t size,
                                 jpl_byte_order order);

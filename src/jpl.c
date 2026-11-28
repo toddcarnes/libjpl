@@ -347,19 +347,6 @@ static jpl_status parser_read_bytes(const jpl_byte_source *source, size_t offset
  * advertised coverage start pair plus index*step, computed with the private
  * compensated helpers. parse_header already promoted the scalar header
  * epochs to {encoded_value, 0.0}; query comparisons keep both parts. */
-static jpl_status scheduled_endpoint(const double start[2], double step, size_t index,
-                                     double out[2]) {
-    double coverage[2];
-    jpl_status status;
-    if (!start || !out) return JPL_ERROR_FORMAT;
-    if (!isfinite(start[0]) || !isfinite(start[1]) || !isfinite(step) || step <= 0.0)
-        return JPL_ERROR_FORMAT;
-    status = jpl_date_normalize(start, coverage);
-    if (status != JPL_OK) return JPL_ERROR_FORMAT;
-    status = jpl_date_add_scaled(coverage, step, index, out);
-    return status == JPL_OK ? JPL_OK : JPL_ERROR_FORMAT;
-}
-
 /* Reconstructed endpoints are compared to encoded file endpoints with a
  * magnitude-aware binary64 allowance: derive it from the ULPs
  * adjacent to the encoded endpoint and the scheduled high part, not from a

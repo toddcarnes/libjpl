@@ -20,6 +20,7 @@ int jpl_fixture_write(const char *path, const jpl_fixture_spec *spec) {
     size_t *starts = NULL;
     jpl_test_mock mock;
     size_t record_bytes, i, r, s, c, k, next_start = 3;
+    size_t data_records;
     size_t libration_start = 0, tt_tdb_start = 0;
     double start_scalar;
     int ok = 0;
@@ -27,9 +28,15 @@ int jpl_fixture_write(const char *path, const jpl_fixture_spec *spec) {
     if (!path || !spec) return 1;
     if (spec->record_doubles < (size_t)JPL_TEST_RECORD_BYTES / 8) return 1;
     if (spec->records == 0) return 1;
-    if (spec->records > SIZE_MAX / spec->record_doubles) return 1;
+    data_records = spec->records + (spec->trailing_record ? (size_t)1 : (size_t)0);
+    if (data_records < spec->records) return 1;
+    if (data_records > SIZE_MAX / spec->record_doubles) return 1;
     if (spec->series_count > 0 && !spec->series) return 1;
     if (spec->constant_count > 0 && !spec->constants) return 1;
+    /* test_write_mock() serializes the whole record-sized constants block,
+     * reading every slot, so a partial block must still be backed by a
+     * full-size, zero-filled allocation. */
+    if (spec->constant_count > spec->record_doubles) return 1;
     if (spec->tt_tdb_present &&
         (spec->tt_tdb_coeffs <= 0 || spec->tt_tdb_subintervals <= 0 ||
          !spec->tt_tdb_coefficients)) return 1;
@@ -39,10 +46,10 @@ int jpl_fixture_write(const char *path, const jpl_fixture_spec *spec) {
 
     record_bytes = spec->record_doubles * 8;
     header = (unsigned char *)calloc(record_bytes, 1);
-    records = (double *)calloc(spec->records * spec->record_doubles, sizeof(double));
+    records = (double *)calloc(data_records * spec->record_doubles, sizeof(double));
     if (!header || !records) goto done;
     if (spec->constant_count > 0) {
-        constants = (double *)calloc(spec->constant_count, sizeof(double));
+        constants = (double *)calloc(spec->record_doubles, sizeof(double));
         if (!constants) goto done;
         memcpy(constants, spec->constants, spec->constant_count * sizeof(double));
     }

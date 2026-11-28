@@ -144,7 +144,7 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 
 ## Step 2: FixtureBuilder (candidate 4) — SECOND
 
-**Status:** completed on `refactor/fixture-migrations`. The builder and its LE/BE self-test are in place; `test_threads`, the `test_mmap` identity probes, `test_lighttime` linear mocks, `test_numeric` polynomial/oracle mocks, all `test_convenience` behavior mocks, the normal and policy TT-TDB mocks, the `test_api_errors` valid baseline, and `make_validator_data` now declare bodies and series. Raw construction remains only where the bytes are the subject: parser/layout negatives, large-file geometry, fault-injection corruption, boundary/overflow T15 cases, and deliberate NaN/truncation corpora.
+**Status:** completed on `refactor/fixture-migrations`. The builder and its LE/BE self-test are in place; `test_threads`, the `test_mmap` identity probes, `test_lighttime` linear mocks, `test_numeric` polynomial/oracle mocks, all `test_convenience` behavior mocks, the normal and policy TT-TDB mocks, the `test_api_errors` valid baseline, and `make_validator_data` now declare bodies and series. Raw construction remains only where the bytes are the subject: parser/layout negatives, large-file geometry, fault-injection corruption, boundary/overflow T15 cases, and deliberate NaN/truncation corpora. Verification: MSVC Debug/Release 51/51 default and 55/55 bindings, zero warnings; WSL GCC Debug 51/51 and WSL Clang 14 Debug 51/51.
 
 **Rationale for position:** Test-only, behavior-neutral, and it makes the remaining six steps cheaper to test. Landing it second means the core surgery runs on the new harness instead of migrating tests later.
 
@@ -165,7 +165,7 @@ New module/role names, recorded in `GLOSSARY.md` as each step lands:
 - [x] **Step 2.4: Migrate `test_convenience.c`.**
 - [x] **Step 2.5: Migrate normal TT-TDB cases and `test_api_errors.c`;** keep raw layout construction for boundary-span, overflow-name, T15 placement, and fault injection.
 - [x] **Step 2.6: Migrate `make_validator_data.c`;** keep raw negative corpora (NaN, truncation, ambiguous widths).
-- [ ] **Step 2.7: Run the matrix; CHANGELOG bullet; merge.**
+- [x] **Step 2.7: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Migrated behavior tests declare bodies and series, not slot indices or constants-record layout; parser/core/large-file tests remain byte-level; every assertion and expected value is unchanged; the builder self-test pins the emitted header fields and record bytes; `grep` shows no new `test_put_ptr` uses in migrated tests.
 

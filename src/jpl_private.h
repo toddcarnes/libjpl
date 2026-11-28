@@ -361,6 +361,19 @@ jpl_status jpl_store_record(jpl_record_store *store, size_t record_doubles,
                             size_t index, jpl_record_view *out);
 void jpl_record_view_release(jpl_record_view *view);
 
+/* Validated TT-TDB availability: present means the coefficient span fits the
+ * record. Built once at open; the public flag, query, and refinement policy
+ * consume this single fact. */
+typedef struct jpl_tt_tdb_table {
+    int present;
+    jpl_pointer pointer;
+    size_t span_end;
+} jpl_tt_tdb_table;
+
+jpl_status jpl_tt_tdb_table_build(const jpl_header *header,
+                                  jpl_tt_tdb_table *out);
+int jpl_tt_tdb_span_end(const jpl_pointer *pointer, size_t *out);
+
 /* TT→TDB policy: file data when present and in coverage, else the model.
  * The model converts first (seed and guaranteed baseline); when the file
  * carries TT-TDB and the seed is in coverage, fixed-point refinements

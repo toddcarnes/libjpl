@@ -262,6 +262,8 @@ void jpl_record_view_release(jpl_record_view *view);
 
 ## Step 5: TtTdbTable (candidate 5) - FIFTH
 
+**Status:** implemented on `refactor/tt-tdb-table`. Availability is built once at open; the public flag, query, and policy consume it; direct table tests cover absent, valid, boundary, past-width, and malformed spans. Verification: MSVC Debug/Release 49/49 default and 53/53 bindings, zero warnings; WSL GCC Debug 49/49 and WSL Clang 14 Debug 49/49. Goldens unchanged.
+
 **Rationale for position:** It is small, independent, and fixes a public predicate that currently over-promises. It goes after RecordStore so the query path has a single record source when the table replaces the recheck.
 
 **Files:**
@@ -287,10 +289,10 @@ jpl_status jpl_tt_tdb_table_build(const jpl_header *header, jpl_tt_tdb_table *ou
 - `jpl_get_tt_minus_tdb()` consumes the table and never recomputes the span.
 - `jpl_tt_to_tdb_policy()` refines only when `table.present`.
 
-- [ ] **Step 5.1: Build the table at open;** keep the public flag and query behavior identical.
-- [ ] **Step 5.2: Convert the public flag, query, and policy;** delete the per-call span check.
-- [ ] **Step 5.3: Add direct table tests** for absent, valid, span-equal-to-width, partial, overflowing, and overflow-name-tail cases.
-- [ ] **Step 5.4: Run the matrix; CHANGELOG bullet; merge.**
+- [x] **Step 5.1: Build the table at open;** keep the public flag and query behavior identical.
+- [x] **Step 5.2: Convert the public flag, query, and policy;** delete the per-call span check.
+- [x] **Step 5.3: Add direct table tests** for absent, valid, span-equal-to-width, partial, overflowing, and overflow-name-tail cases.
+- [x] **Step 5.4: Run the matrix; CHANGELOG bullet; merge.**
 
 **Acceptance:** Exactly one availability predicate; `jpl_has_tt_tdb()` equals "a valid in-coverage `jpl_get_tt_minus_tdb()` can succeed" for every fixture; no per-call span recomputation; 46+/50+ everywhere.
 

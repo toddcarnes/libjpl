@@ -116,6 +116,9 @@ struct jpl_ephemeris {
      * per-handle single-record cache. Clones start cold (calloc). */
     jpl_record_store store;
 
+    /* Validated TT-TDB availability, built once at open. */
+    jpl_tt_tdb_table tt_tdb;
+
     /* Copy of path for plain FILE handles so clones can fopen independently.
      * NULL for mmap handles (clones share the mapping instead). */
     char *path;
@@ -283,26 +286,6 @@ static void refcount_inc(atomic_int *r) { atomic_fetch_add(r, 1); }
 /* Returns the remaining count after decrement (fetch_sub yields previous). */
 static int refcount_dec(atomic_int *r) { return atomic_fetch_sub(r, 1) - 1; }
 #endif
-
-/* TT-TDB span end (1-based slot count) for a parsed pointer: computes
- * (start - 1) + coeff * sub with overflow guards. Returns 0 on success,
- * -1 when the triple is absent (non-positive) or overflows. Guards in
- * order: start/coeff/sub are strictly positive so (size_t)start - 1
- * cannot underflow; the product guard rejects coeff*sub overflow before
- * multiplying; the sum guard rejects (start-1)+product overflow before
- * adding. Callers treat any -1 as absent without enlarging the record. */
-static int tt_tdb_span_end(const jpl_pointer *pointer, size_t *out) {
-    size_t product, end;
-    if (!pointer || !out) return -1;
-    if (pointer->start_index <= 0 || pointer->coefficients_per_component <= 0 ||
-        pointer->subintervals <= 0) return -1;
-    if ((size_t)pointer->subintervals > SIZE_MAX / (size_t)pointer->coefficients_per_component) return -1;
-    product = (size_t)pointer->coefficients_per_component * (size_t)pointer->subintervals;
-    if (product > SIZE_MAX - ((size_t)pointer->start_index - 1)) return -1;
-    end = ((size_t)pointer->start_index - 1) + product;
-    *out = end;
-    return 0;
-}
 
 /* Optional 24-byte TT-TDB tail decoder: skips the T14 words, reads the
  * T15 triplet at offset 12, checks integer bounds, and leaves
@@ -636,7 +619,7 @@ static jpl_status validate_layout(const jpl_byte_source *source,
                  * valid: its last coefficient occupies slot width-1 and is
                  * interpolated. */
                 if (tail_inside &&
-                    tt_tdb_span_end(&tentative, &end) == 0 &&
+                    jpl_tt_tdb_span_end(&tentative, &end) == 0 &&
                     end <= reparsed.record_double_count) {
                     reparsed.tt_tdb_pointer = tentative;
                     reparsed.has_tt_tdb = 1;
@@ -1007,6 +990,7 @@ jpl_status jpl_open(const char *path, jpl_ephemeris **out) {
     e->file_size = file_size;
     e->record_count = record_count;
     e->covered_record_count = covered_record_count;
+    (void)jpl_tt_tdb_table_build(&e->header, &e->tt_tdb);
     status = jpl_store_init_file(&e->store, e->file, file_size, header.byte_order);
     if (status != JPL_OK) { jpl_close(e); return status; }
     *out = e; return JPL_OK;
@@ -1143,6 +1127,7 @@ jpl_status jpl_open_mmap(const char *path, jpl_ephemeris **out) {
     e->file_size = file_size;
     e->record_count = record_count;
     e->covered_record_count = covered_record_count;
+    (void)jpl_tt_tdb_table_build(&e->header, &e->tt_tdb);
     status = jpl_store_init_mmap(&e->store, e->mmap.base, file_size, header.byte_order);
     if (status != JPL_OK) { jpl_close(e); return status; }
     *out = e;
@@ -1160,6 +1145,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
     c->file_size = ephem->file_size;
     c->record_count = ephem->record_count;
     c->covered_record_count = ephem->covered_record_count;
+    c->tt_tdb = ephem->tt_tdb;
     c->is_mmap = ephem->is_mmap;
     if (ephem->is_mmap) {
         if (!ephem->refcount) { free(c); return JPL_ERROR_ARGUMENT; }
@@ -1209,7 +1195,7 @@ jpl_status jpl_ephemeris_clone(const jpl_ephemeris *ephem, jpl_ephemeris **out_c
 }
 const jpl_header *jpl_get_header(const jpl_ephemeris *e) { return e ? &e->header : NULL; }
 size_t jpl_record_count(const jpl_ephemeris *e) { return e ? e->record_count : 0; }
-int jpl_has_tt_tdb(const jpl_ephemeris *e) { return e ? e->header.has_tt_tdb : 0; }
+int jpl_has_tt_tdb(const jpl_ephemeris *e) { return e ? e->tt_tdb.present : 0; }
 jpl_status jpl_read_constants(const jpl_ephemeris *e, double *values, size_t count) {
     size_t offset;
     if (!e || !values || count < (size_t)e->header.constant_count) return JPL_ERROR_ARGUMENT;
@@ -2139,7 +2125,6 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, 
     double value, rate;
     jpl_status status;
     const jpl_pointer *tt;
-    size_t span_end;
     double jd_arr[2];
     jpl_entry_ctx entry;
     jpl_verified_epoch verified;
@@ -2153,14 +2138,9 @@ jpl_status jpl_get_tt_minus_tdb(const jpl_ephemeris *e, const jpl_date *jd_tdb, 
     if (status != JPL_OK) return status;
     status = jpl_entry_coverage(&entry, entry.norm, &verified);
     if (status != JPL_OK) return status;
-    if (!e->header.has_tt_tdb) return JPL_ERROR_UNSUPPORTED;
-    /* Span end is the 1-based slot count (start-1)+coeff*sub, so equality
-     * with the record width means the final subinterval ends exactly in
-     * the last slot (e.g. DE440t (1019-1) + 13*8 = 1122 in 1122
-     * doubles). Only a span past the width is absent. */
-    tt = &e->header.tt_tdb_pointer;
-    if (tt_tdb_span_end(tt, &span_end) != 0 || span_end > e->header.record_double_count)
-        return JPL_ERROR_UNSUPPORTED;
+    if (!e->tt_tdb.present) return JPL_ERROR_UNSUPPORTED;
+    /* The table was validated at open: span_end fits the record width. */
+    tt = &e->tt_tdb.pointer;
     /* One-component Chebyshev set: state[0] is TT-TDB in seconds and
      * state[3] its rate in seconds/day (span is in days, so the engine
      * derivative needs no unit conversion). Slots [1],[2],[4],[5] unused.

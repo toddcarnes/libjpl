@@ -816,16 +816,6 @@ static double read_f64(const unsigned char *p, jpl_byte_order order) {
  * side of the present, so do not restrict a Julian date to modern eras. */
 static int plausible_date(double value) { return value > JPL_PLAUSIBLE_JD_MIN && value < JPL_PLAUSIBLE_JD_MAX; }
 
-static int seek_to(FILE *file, size_t offset) {
-    /* On 64-bit size_t the offset can exceed the file-offset range;
-     * on 32-bit size_t every value fits, so no comparison is needed
-     * (and comparing would be vacuous). */
-#if SIZE_MAX > INT64_MAX
-    if ((uintmax_t)offset > (uintmax_t)INT64_MAX) return -1;
-#endif
-    return JPL_FSEEK(file, (jpl_file_offset)offset, SEEK_SET);
-}
-
 static int checked_record_offset(size_t index, size_t record_doubles, size_t *out) {
     size_t width;
     if (record_doubles == 0 || record_doubles > SIZE_MAX / 8) return -1;
